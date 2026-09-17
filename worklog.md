@@ -911,3 +911,27 @@ Stage Summary:
 - Mini-service tracking-realtime : bun run dev (hot) dans mini-services/tracking-realtime — ports 3003 (socket, frontend via /?XTransformPort=3003) + 3004 (API interne signée, Next) ; à redémarrer après tout reboot machine (ps + kill par port si doublon).
 - PRÉPARATION NEON : schéma actuel = SQLite (provider sqlite, DATABASE_URL file:) ; pour la migration Postgres/Neon → changer provider, adapter DATABASE_URL, les types Float/DateTime sont compatibles ; ensuite prisma db push (ou migrate) ; les seed/comptes devront être rejoués si base neuve.
 - Erreurs tsc préexistantes scripts/dev-seed-demo-client.ts (3 × loyaltyAccount) — non traitées (hors périmètre module GPS, présentes avant mes changements).
+
+---
+Task ID: 18
+Agent: main (Z.ai Code)
+Task: MIGRATION COMPLÈTE SQLite → PostgreSQL (Neon) — accès fourni par l'utilisateur, demande de migration totale.
+
+Work Log:
+- Accès Neon reçu (pooler eu-central-1). Connectivité testée OK avec l'URL complète incluant channel_binding=require (prisma db execute via pooler ET hôte direct).
+- Découverte CRITIQUE : la sandbox injecte DATABASE_URL=file:…custom.db au niveau système (shell + serveur dev au boot) qui ÉCRASE le .env chargé par Bun/Next (preuves : printenv + /proc/<pid>/environ). Résolu à deux niveaux : (1) src/lib/db.ts auto-correction — si DATABASE_URL héritée ne commence pas par « postgres », relire l'URL du .env du projet (option datasourceUrl) ; (2) exports explicites dans la session de travail.
+- prisma/schema.prisma : provider sqlite → postgresql + directUrl (pattern Neon : DATABASE_URL pooler pgbouncer=true&connection_limit=5 pour le runtime ; DIRECT_DATABASE_URL hôte sans -pooler pour le DDL).
+- bun run db:push : schéma créé sur Neon (35 tables) via hôte direct + client Prisma régénéré.
+- scripts/migrate-to-neon.ts (one-shot) : ordre topologique des FK (graphe dérivé du DDL SQLite, vérifié acyclique), conversion Boolean 0/1→true/false + DateTime epoch-millis→Date (format de stockage Prisma SQLite vérifié : INTEGER millisecondes UTC), lots de 50 via $executeRawUnsafe, transaction unique tout-ou-rien, garde-fous (base vide sinon --force), nettoyage des références orphelines (4 AuditLog.userId → NULL : utilisateur de test supprimé), contrôles métier finaux.
+- Migration exécutée : 35/35 tables, 572 lignes copiées, 4 références orphelines nettoyées, comptes OK (11 utilisateurs, 7 réservations NZK, 44 voyages, 3 comptes fidélité, session GPS conservée).
+- Redémarrage propre : kill des processus (serveur dev + doublon mini-service détecté), purge .next (piège Turbopack), relance via .zscripts/dev.sh avec env Neon exporté → Ready 1,5 s, mini-service unique sur 3003/3004.
+- Validation E2E : logins admin@nzoko.cg + superadmin@nzoko.cg via API 200 ; scripts/test-gps-e2e.ts 100 % contre Neon (session chauffeur, 6/6 points persistés, 3/3 événements socket, nettoyage) ; API admin (bookings NZK-2026-DEMO90…, stats réelles) ; agent-browser : workspace admin 12 onglets, Réservations = 7 réservations migrées, Suivi GPS rendu (« 0 car en ligne », état vide propre, VLM-vérifié), espace client test.supauth@nzoko.cg (Silver, 600 pts, progression Gold), responsive 375 px sans débordement, 0 erreur console/page.
+- Sécurité : .env (identifiants Neon) NON versionné ; sauvegardes locales db/custom.sqlite.bak-pre-neon + .env.bak-pre-neon ignorées (.gitignore étendu : db/*.bak*, db/*.sqlite*, .env.bak*, tool-results/) ; BUG CORRIGÉ : le pattern .env* du .gitignore ignorait .env.example → jamais poussé depuis la Task 15 → négation !.env.example ajoutée, fichier documenté (Neon pooler/direct) et versionné.
+- lint exit 0.
+
+Stage Summary:
+- PROJET MIGRÉ SUR NEON POSTGRESQL (eu-central-1) : schéma + intégralité des données (572 lignes / 35 tables), applicatif inchangé (aucun raw SQL, schéma portable), GPS temps réel revalidé E2E.
+- Convention : DATABASE_URL = pooler (runtime) ; DIRECT_DATABASE_URL = direct (db push/migrate) — les deux dans .env (non versionné).
+- Auto-correction src/lib/db.ts : une injection système d'URL SQLite périmée est neutralisée (le .env du projet prime) — protège les reboots sandbox futurs.
+- Piège documenté : prisma db push n'utilise que directUrl du .env (insensible à l'env système), seule la runtime PrismaClient lisait le DATABASE_URL hérité — d'où l'échec initial du script de migration, résolu par l'auto-correction + exports.
+- Sauvegardes : SQLite original conservé (db/custom.sqlite.bak-pre-neon). Rejouer si besoin : bun run db:push && bun run scripts/migrate-to-neon.ts --force.

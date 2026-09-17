@@ -1,16 +1,18 @@
 // NZOKO TRANSPORT — Schéma Prisma complet
-// SQLite en environnement sandbox — portable vers PostgreSQL :
+// Base : PostgreSQL (Neon) — migrée depuis SQLite le 2026-09-17 :
 //  - les "enums" sont des champs String validés côté application (src/lib/constants.ts + Zod)
 //  - les champs JSON sont des String sérialisés (helpers parse/stringify)
 //  - les montants sont des entiers (XAF/FCFA — pas de sous-unité)
+//  - DATABASE_URL = pooler (runtime) ; DIRECT_DATABASE_URL = DDL (db push / migrate)
 
 generator client {
   provider = "prisma-client-js"
 }
 
 datasource db {
-  provider = "sqlite"
-  url      = env("DATABASE_URL")
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_DATABASE_URL")
 }
 
 // ============================================================

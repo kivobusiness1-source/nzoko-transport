@@ -59,3 +59,14 @@ db/*.db-journal
 # Fichiers d'état éphémères de la sandbox
 .zscripts/dev.pid
 *.pid
+
+# Sauvegardes locales de bases & env (peuvent contenir des secrets)
+db/*.bak*
+db/*.sqlite*
+.env.bak*
+
+# Artefacts éphémères des outils d'agent (Read tool output)
+tool-results/
+
+# Le modèle de configuration DOIT être versionné (malgré le pattern .env*)
+!.env.example
