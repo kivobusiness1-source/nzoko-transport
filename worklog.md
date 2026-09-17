@@ -843,3 +843,25 @@ Stage Summary:
 - Interface client « MON ESPACE NZOKO » entièrement refondue : shell application (sidebar desktop / chips mobile), héros fidélité gradient, KPI, graphique recharts, catalogue paliers/récompenses, réclamations en bulles de chat — mobile-first 375px, aucune couleur bleue, 0 erreur console.
 - Deux pièges documentés pour les tâches futures : ① Turbopack peut servir des modules périmés après édition → en cas de comportement incohérent, `rm -rf .next` + redémarrage + vérifier le contenu des sous-chunks servis ; ② zod v4 : jamais de `.regex()`/`.refine()` chaînés APRÈS `.transform()` avec react-hook-form (valider la valeur brute, le serveur normalise).
 - Nettoyage démo : `bun run scripts/dev-seed-demo-client.ts --cleanup` (restaure aussi les voyages SCHEDULED).
+
+---
+Task ID: 15
+Agent: main (Z.ai Code)
+Task: Créer un dépôt GitHub et publier le code du projet NZOKO TRANSPORT (demande utilisateur avec ses accès GitHub).
+
+Work Log:
+- Audit sécurité AVANT publication : .env et db/custom.db étaient TRACKÉS dans l'ancien historique Git (messages en UUID, sans valeur) → nettoyage complet effectué.
+- CRÉÉ .env.example (doc de la seule variable : DATABASE_URL SQLite).
+- COMPLÉTÉ .gitignore : db/*.db, db/*.db-journal, .zscripts/dev.pid, *.pid.
+- UNTRACK : git rm --cached .env db/custom.db .zscripts/dev.pid (fichiers locaux INTACTS, serveur dev vérifié 200 OK après opération).
+- Historique propre : branche orpheline + commit initial unique documenté (311 fichiers, zéro secret) → ancien historique supprimé, branche renommée main.
+- Token GitHub fourni par l'utilisateur (classique, 7 jours) : validé via GET /user → login réel « kivobusiness1-source » (Geor Makoma, id 328158760).
+- Problème de scopes : le jeton n'avait PAS la permission « repo » (nécessaire pour créer un dépôt PRIVÉ) malgré 2 relances à l'utilisateur (ils avaient coché public_repo et des sous-options). Décision pragmatique : création en PUBLIC (autorisée par public_repo) puis bascule privée à la charge de l'utilisateur via l'UI.
+- POST /user/repos → https://github.com/kivobusiness1-source/nzoko-transport créé (public, branche main).
+- PUSH réussi (exit 0) du commit initial sur main, sans persister le token dans la config Git : remote origin = URL propre sans identifiants.
+- Vérification API : commit visible, contenu src/ (app, components, features, hooks, lib, proxy.ts, services, types) en ligne.
+
+Stage Summary:
+- Dépôt GitHub : https://github.com/kivobusiness1-source/nzoko-transport (public à la création — l'utilisateur doit le passer en PRIVÉ via Settings → Danger Zone → Change visibility, le jeton ne permettant pas la création privée).
+- Sécurité : historique local réécrit sans secrets (.env, base SQLite, PID exclus) ; token non persisté dans git config ; recommandation donnée à l'utilisateur de révoquer le jeton après bascule en privé.
+- Convention : futures pousses = git push https://<token>@github.com/kivobusiness1-source/nzoko-transport.git main (token requis à chaque fois, jamais stocké).
