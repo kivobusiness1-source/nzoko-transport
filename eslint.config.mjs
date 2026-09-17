@@ -61,6 +61,13 @@ const eslintConfig = [...nextCoreWebVitals, ...nextTypescript, {
     "@typescript-eslint/no-non-null-assertion": "off",
   },
 }, {
+  // mini-services/*.ts : services daemon CLI (socket.io GPS…) — les console.*
+  // tracent les démarrages/ports dans les logs du service (exploitation).
+  files: ["mini-services/**/*.ts"],
+  rules: {
+    "no-console": "off",
+  },
+}, {
   ignores: ["node_modules/**", ".next/**", "out/**", "build/**", "next-env.d.ts", "examples/**", "skills"]
 }];
 

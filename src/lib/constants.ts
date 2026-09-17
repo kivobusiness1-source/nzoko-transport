@@ -348,7 +348,43 @@ export const RATE_LIMITS = {
   complaintCreate: { limit: 5, windowMs: 60 * 60 * 1000 },
   ratingCreate: { limit: 10, windowMs: 60 * 60 * 1000 },
   redeem: { limit: 3, windowMs: 60 * 60 * 1000 },
+  // Suivi GPS temps réel — écriture points (8 s en mouvement + bursts offline
+  // reflushés par lots de 50 → 120/min par chauffeur), et actions session.
+  trackingWrite: { limit: 120, windowMs: 60 * 1000 },
+  trackingSession: { limit: 30, windowMs: 60 * 1000 },
 } as const;
+
+// ---------- SUIVI GPS TEMPS RÉEL (module tracking) ----------
+// Fréquences pilotées par la vitesse : envoi intelligent côté client,
+// pas de timer serveur. Le serveur rejette les points hors fenêtres.
+export const TRACKING = {
+  /** Intervalle d'envoi en mouvement (vitesse ≥ stoppedSpeedKmh). */
+  movingIntervalMs: 8_000,
+  /** Intervalle d'envoi à l'arrêt (vitesse < stoppedSpeedKmh). */
+  stoppedIntervalMs: 30_000,
+  /** Seuil km/h en dessous duquel le car est considéré à l'arrêt. */
+  stoppedSpeedKmh: 5,
+  /** Plancher anti-burst : JAMAIS deux envois plus rapprochés que ça. */
+  minSendIntervalMs: 4_000,
+  /** Tolérance passé : les points plus anciens sont purgés/rejetés (> 6 h). */
+  pastToleranceMs: 6 * 60 * 60 * 1000,
+  /** Lot maximum envoyé au flush de la file offline IndexedDB. */
+  batchMaxPoints: 50,
+  /** Historique trail renvoyé à l'admin pour une session (fenêtre glissante). */
+  trailMaxPoints: 500,
+} as const;
+
+export const TRACKING_STATUS_LABELS: Record<string, string> = {
+  ACTIVE: "En cours",
+  PAUSED: "En pause",
+  COMPLETED: "Terminée",
+};
+
+export const DRIVER_STATE_LABELS: Record<string, string> = {
+  AVAILABLE: "Disponible",
+  ON_TRIP: "En voyage",
+  OFF_DUTY: "Hors service",
+};
 
 // Garde-fous de l'assistant IA (LLM) — appliqués côté client ET serveur
 export const ASSISTANT_LIMITS = {

@@ -1,7 +1,7 @@
 "use client";
 
 // ============================================================
-// NZOKO TRANSPORT — Espace ADMIN / SUPER_ADMIN — 11 onglets
+// NZOKO TRANSPORT — Espace ADMIN / SUPER_ADMIN — 12 onglets
 // Les onglets sont masqués selon les permissions de session ;
 // le serveur revalide systématiquement les accès.
 // ============================================================
@@ -12,6 +12,7 @@ import {
   FileText,
   LayoutDashboard,
   MessageSquare,
+  Radar,
   ScrollText,
   ShieldCheck,
   Star,
@@ -38,6 +39,7 @@ import { AdminLogs } from "@/features/admin/admin-logs";
 import { AdminReports } from "@/features/admin/admin-reports";
 import { AdminComplaints } from "@/features/admin/admin-complaints";
 import { AdminLoyalty } from "@/features/admin/admin-loyalty";
+import { AdminTracking } from "@/features/admin/admin-tracking";
 
 interface AdminTab {
   key: string;
@@ -61,6 +63,7 @@ const TABS: AdminTab[] = [
     icon: Truck,
     anyOf: ["bus:read", "route:read", "city:read", "agency:read", "seatlayout:read"],
   },
+  { key: "tracking", label: "Suivi GPS", icon: Radar, anyOf: ["stats:global"] },
   { key: "staff", label: "Personnel", icon: Users, anyOf: ["driver:read"] },
   { key: "users", label: "Utilisateurs", icon: UserRound, anyOf: ["user:read"] },
   { key: "loyalty", label: "Clients & fidélité", icon: Star, anyOf: ["user:read"] },
@@ -110,6 +113,7 @@ export default function AdminWorkspace() {
             {activeTab === "complaints" && <AdminComplaints refreshKey={refreshKey} />}
             {activeTab === "trips" && <AdminTrips refreshKey={refreshKey} />}
             {activeTab === "fleet" && <AdminFleet refreshKey={refreshKey} />}
+            {activeTab === "tracking" && <AdminTracking />}
             {activeTab === "staff" && <AdminStaff refreshKey={refreshKey} />}
             {activeTab === "users" && <AdminUsers refreshKey={refreshKey} />}
             {activeTab === "loyalty" && <AdminLoyalty refreshKey={refreshKey} />}

@@ -1,0 +1,13 @@
+{
+  "name": "nzoko-tracking-realtime",
+  "version": "1.0.0",
+  "private": true,
+  "description": "NZOKO — service temps réel du suivi GPS (socket.io, salon flotte, jetons HMAC)",
+  "scripts": {
+    "dev": "bun --hot index.ts",
+    "start": "bun index.ts"
+  },
+  "dependencies": {
+    "socket.io": "^4.8.3"
+  }
+}

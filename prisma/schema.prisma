@@ -149,6 +149,7 @@ model Agency {
   bookings     Booking[]
   transactions Transaction[]
   expenses     Expense[]
+  trackingSessions TrackingSession[]
 
   @@index([cityId])
   @@index([isActive])
@@ -242,9 +243,52 @@ model Bus {
   updatedAt          DateTime    @updatedAt
 
   trips Trip[]
+  trackingSessions TrackingSession[]
 
   @@index([agencyId])
   @@index([status])
+}
+
+// ============================================================
+// SUIVI GPS TEMPS RÉEL — une session par trajet/portion de trajet
+// ============================================================
+model TrackingSession {
+  id        String   @id @default(cuid())
+  driverId  String
+  driver    Driver   @relation(fields: [driverId], references: [id])
+  tripId    String?  // voyage rattaché (null = repositionnement/entretien)
+  trip      Trip?    @relation(fields: [tripId], references: [id])
+  busId     String?
+  bus       Bus?     @relation(fields: [busId], references: [id])
+  agencyId  String
+  agency    Agency   @relation(fields: [agencyId], references: [id])
+  status    String   @default("ACTIVE") // ACTIVE | PAUSED | COMPLETED
+  startedAt DateTime @default(now())
+  endedAt   DateTime?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  points GpsPoint[]
+
+  @@index([status, agencyId])
+  @@index([driverId, startedAt])
+  @@index([tripId])
+}
+
+model GpsPoint {
+  id         String          @id @default(cuid())
+  sessionId  String
+  session    TrackingSession @relation(fields: [sessionId], references: [id])
+  latitude   Float
+  longitude Float
+  speed      Float? // km/h (m/s × 3,6 côté client)
+  heading    Float? // degrés 0–360
+  accuracy   Float? // rayon de confiance en mètres
+  altitude   Float? // mètres
+  recordedAt DateTime // horodatage ORIGINAL du GPS — jamais réécrit
+  createdAt  DateTime @default(now()) // réception serveur (diagnostic latence)
+
+  @@index([sessionId, recordedAt])
 }
 
 model Driver {
@@ -262,6 +306,7 @@ model Driver {
   updatedAt     DateTime @updatedAt
 
   trips Trip[]
+  trackingSessions TrackingSession[]
 
   @@index([agencyId])
   @@index([status])
@@ -295,6 +340,7 @@ model Trip {
   occupancies SeatOccupancy[]
   expenses    Expense[]
   tripRatings TripRating[] @relation("TripRatings")
+  trackingSessions TrackingSession[]
 
   @@index([routeId])
   @@index([agencyId, departureTime])

@@ -8,6 +8,7 @@ import { CSRF_HEADER, CSRF_HEADER_VALUE } from "@/lib/auth-shared";
 import type {
   AgencyDTO, AgencyStatsDTO, AdminStatsDTO, AssistantReplyDTO, AuditLogDTO, BoardingTripDTO, BookingDTO,
   BookingDetailDTO, BusDTO, CityDTO, DriverDTO, DriverTripDTO, ExpenseDTO, FinanceSummaryDTO,
+  GpsPointInput, TrackingSessionDTO, TrackingSessionActionDTO, TrackingFleetDTO, TrackingBatchResultDTO,
   MomoOverviewDTO, NotificationDTO, Paginated, PaymentDTO, RefundMode, ReportDTO, RoleDTO, RouteDTO, ScanResultDTO,
   SeatLayoutDTO, SeatMapDTO, SecurityLogDTO, SessionUser, TransactionDTO, TripContactsDTO, TripSearchDTO, UserDTO,
   RegisterInput, OtpRequestDTO, OtpVerifyInput, RegisterResult, ClientProfileDTO, ClientStatsDTO, ClientTripDTO, TripRatingInput,
@@ -138,6 +139,46 @@ export const api = {
   },
 
   // ============================================================
+  // SUIVI GPS TEMPS RÉEL — session du chauffeur connecté
+  // ============================================================
+  tracking: {
+    /** Session courante (ACTIVE/PAUSED) — réconciliation après rechargement. */
+    session: () => request<TrackingSessionDTO | null>("/tracking/session"),
+    start: (input: { tripId?: string | null } = {}) =>
+      request<TrackingSessionActionDTO>("/tracking/session", {
+        method: "POST",
+        body: JSON.stringify({ action: "START", tripId: input.tripId ?? null }),
+      }),
+    pause: () =>
+      request<TrackingSessionActionDTO>("/tracking/session", {
+        method: "POST",
+        body: JSON.stringify({ action: "PAUSE" }),
+      }),
+    resume: () =>
+      request<TrackingSessionActionDTO>("/tracking/session", {
+        method: "POST",
+        body: JSON.stringify({ action: "RESUME" }),
+      }),
+    stop: () =>
+      request<TrackingSessionActionDTO>("/tracking/session", {
+        method: "POST",
+        body: JSON.stringify({ action: "STOP" }),
+      }),
+    /** Point isolé (envoi en ligne). */
+    location: (sessionId: string, point: GpsPointInput) =>
+      request<void>("/tracking/location", {
+        method: "POST",
+        body: JSON.stringify({ sessionId, ...point }),
+      }),
+    /** Lot de points ≤ TRACKING.batchMaxPoints (flush file offline). */
+    batch: (sessionId: string, points: GpsPointInput[]) =>
+      request<TrackingBatchResultDTO>("/tracking/batch", {
+        method: "POST",
+        body: JSON.stringify({ sessionId, points }),
+      }),
+  },
+
+  // ============================================================
   // AGENCE
   // ============================================================
   agency: {
@@ -225,6 +266,9 @@ export const api = {
     refundStatus: (paymentId: string) => request<PaymentDTO>(`/admin/payments/${paymentId}/refund`, { method: "GET" }),
     // MTN MoMo — état de configuration + soldes
     momoOverview: () => request<MomoOverviewDTO>("/admin/momo/overview"),
+    // Suivi GPS temps réel — flotte live + trail d'une session
+    tracking: (sessionId?: string) =>
+      request<TrackingFleetDTO>(`/admin/tracking${sessionId ? `?sessionId=${encodeURIComponent(sessionId)}` : ""}`),
   },
 
   // ============================================================

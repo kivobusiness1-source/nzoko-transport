@@ -405,6 +405,73 @@ export interface DriverTripDTO {
   soldCount: number;
 }
 
+// ---------- SUIVI GPS TEMPS RÉEL (module tracking) ----------
+export interface GpsPointInput {
+  latitude: number;
+  longitude: number;
+  /** km/h (conversion m/s × 3,6 faite côté client). */
+  speed?: number | null;
+  /** Cap en degrés 0–360. */
+  heading?: number | null;
+  /** Rayon de confiance en mètres. */
+  accuracy?: number | null;
+  /** Altitude en mètres. */
+  altitude?: number | null;
+  /** Horodatage ORIGINAL du GPS (ISO 8601) — jamais réécrit. */
+  recordedAt: string;
+}
+
+export interface GpsPointDTO {
+  latitude: number;
+  longitude: number;
+  speed?: number | null;
+  heading?: number | null;
+  accuracy?: number | null;
+  recordedAt: string;
+}
+
+export type TrackingSessionStatus = "ACTIVE" | "PAUSED" | "COMPLETED";
+
+export interface TrackingSessionDTO {
+  id: string;
+  status: TrackingSessionStatus;
+  startedAt: string;
+  endedAt: string | null;
+  driver: { id: string; firstName: string; lastName: string; phone: string | null };
+  agency: { id: string; name: string };
+  trip: {
+    id: string;
+    code: string;
+    originCityName: string;
+    destinationCityName: string;
+    departureTime: string;
+  } | null;
+  bus: { id: string; registrationNumber: string; model: string | null } | null;
+  lastPoint: GpsPointDTO | null;
+  pointsCount: number;
+}
+
+/** Réponse de démarrage/arrêt — inclut le jeton temps réel (socket.io). */
+export interface TrackingSessionActionDTO extends TrackingSessionDTO {
+  socketUrl: string;
+}
+
+/** Vue flotte admin : sessions actives + dernier point + jeton socket. */
+export interface TrackingFleetDTO {
+  sessions: TrackingSessionDTO[];
+  /** Présent uniquement en réponse à ?sessionId= — historique de la session. */
+  trail?: GpsPointDTO[];
+  generatedAt: string;
+  socketUrl: string;
+  socketToken: string; // HMAC court — abonnement salon temps réel
+}
+
+/** Réponse du flush de la file offline. */
+export interface TrackingBatchResultDTO {
+  accepted: number;
+  rejected: number; // points hors fenêtre de tolérance ou invalides
+}
+
 // ---------- DASHBOARD ADMIN ----------
 export interface AdminStatsDTO {
   kpis: {

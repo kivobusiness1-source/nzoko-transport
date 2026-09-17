@@ -55,7 +55,8 @@ export default function proxy(request: NextRequest) {
     "default-src 'self'",
     scriptSrc,
     "style-src 'self' 'unsafe-inline'",
-    "img-src 'self' data: blob:",
+    // Tuiles cartographiques du suivi GPS (OpenStreetMap — sous-domaines a/b/c).
+    "img-src 'self' data: blob: https://tile.openstreetmap.org https://*.tile.openstreetmap.org",
     "font-src 'self' data:",
     "connect-src 'self'",
     "manifest-src 'self'",
