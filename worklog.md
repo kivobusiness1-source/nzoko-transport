@@ -960,3 +960,25 @@ Stage Summary:
 - MODULE GPS TEMPS RÉEL REVALIDÉ 10/10 SUR NEON : API (session/location/batch, auth + rate limit + Zod), file offline IndexedDB (lots signés, purge 6 h, repli mémoire), hook adaptatif (8 s/30 s selon vitesse, anti-burst 4 s, conflits 409/404), mini-service socket.io (salon fleet HMAC, pont interne signé, health), admin (vue flotte + trail 500 pts + jeton 30 min).
 - DURABILITÉ (nouveau) : watchdog 2 stades + rétention 30 j/90 j, exécutés par le scheduler autonome du mini-service toutes les 5 min via route signée HMAC — la base Neon ne croît pas indéfiniment, les sessions orphelines n'existent plus, les chauffeurs bloqués ON_TRIP sont libérés.
 - Limite environnement : la permission géolocalisation ne peut pas être accordée au Chromium headless (state « denied ») — le flux watchPosition temps réel n'est pas jouable en navigateur sandbox, couvert intégralement par le test E2E API (10/10).
+
+---
+Task ID: 20
+Agent: main (Z.ai Code)
+Task: ERREUR BUILD VERCEL (TypeError examples/websocket/server.ts « Cannot find module socket.io ») — corriger le typecheck de build + rendre le déploiement Vercel robuste.
+
+Work Log:
+- Diagnostic : tsconfig incluait **/*.ts → next build typecheckait examples/, mini-services/, scripts/ (dépendances autonomes : socket.io n'est installé que dans mini-services/tracking-realtime). En local le dev server ne compile que les routes atteignables → jamais vu ; Vercel fait tsc sur tout → échec.
+- Fix : tsconfig exclude [examples, mini-services, scripts, tests, skills] (skills/ non versionné — erreurs tsc locales uniquement). `bunx tsc --noEmit` → exit 0.
+- Durabilité serverless : le mini-service socket.io ne peut pas tourner sur Vercel → GET /api/tracking/maintenance accepte « Authorization: Bearer <CRON_SECRET> » (convention Vercel Cron / cron-job.org), POST HMAC inchangé, rate limit trackingMaintenance (30/h, constants.ts), timingSafeEqual sur les deux secrets. Testé 4/4 : POST HMAC 200, GET Bearer 200, GET sans/mauvais Bearer 401.
+- vercel.json : cron quotidien 03:17 UTC sur /api/tracking/maintenance — schedule compatible plan Hobby (les fréquences < 1 jour font échouer le déploiement en Hobby) ; pour 5 min : plan Pro OU cron externe gratuit avec en-tête Bearer (documenté dans .env.example).
+- TRACKING_PUBLIC_SOCKET_URL (nouveau, services/tracking.ts) : URL socket publique en prod — chaîne vide = temps réel désactivé, admin en polling 10 s assumé. UI admin-tracking.tsx : état realtime DÉRIVÉ (socketEnabled ? socketState : "polling") — corrige au passage react-hooks/set-state-in-effect du lint.
+- BLINDAGE SANDBOX : nouveau reset de la machine en cours de session → .env réécrit en SQLite, dev.log supprimé, node_modules mini-service effacé (l'auto-correction db.ts ne suffisait plus : elle relisait un .env écrasé). Chaîne de repli étendue : env système → .env → .env.neon (sauvegarde non versionnée, protégée par .gitignore pattern .env*). Mini-service réinstallé (bun install), serveur relancé, réveil Neon (PrismaClientInitializationError au 1er accès — compute suspendu, résolu seul).
+- Revalidation complète : login admin OK, module GPS E2E 10/10 (token HMAC, socket gateway, START/location/batch/STOP, 3/3 événements, 6/6 points, nettoyage), onglet admin « Suivi GPS » rendu sans erreur, maintenance 4/4. lint exit 0, tsc exit 0.
+- Hygiène repo : tool-results/ (19 fichiers internes de lecture, potentiellement sensibles) et upload/Pasted Content retirés du tracking git (fichiers locaux conservés, .gitignore + upload/).
+- Commit 91402ab poussé (b6014a0..91402ab).
+
+Stage Summary:
+- BUILD VERCEL RÉPARÉ : tsconfig exclut les outils autonomes du typecheck ; à redéployer.
+- VARIABLES VERCEL À DÉFINIR (Settings → Environment Variables) : DATABASE_URL (pooler pgbouncer=true), TRACKING_SECRET, CRON_SECRET, TRACKING_PUBLIC_SOCKET_URL (vide si pas de mini-service déployé), PAYMENTS_SIMULATION=true (+ MOMO plus tard). DIRECT_DATABASE_URL optionnel sur Vercel (DDL uniquement).
+- ARCHITECTURE PROD DOCUMENTÉE : sans mini-service → admin en polling 10 s + cron maintenance quotidien (Hobby) ; avec mini-service déployé (VPS/Railway/Fly) → temps réel complet + TRACKING_REALTIME_URL + TRACKING_PUBLIC_SOCKET_URL à définir.
+- Le fichier .env.neon (non versionné) garantit la résilience locale contre les réécritures sandbox de .env — garder DATABASE_URL à jour dedans.
