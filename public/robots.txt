@@ -1,0 +1,16 @@
+# NZOKO TRANSPORT — robots.txt
+# Application monopage : seule la racine est indexable.
+# Les routes API, le SW et les fichiers internes restent hors indexation.
+
+User-agent: *
+Allow: /
+Disallow: /api/
+
+# Robots sociaux (aperçus de liens)
+User-agent: Twitterbot
+Allow: /
+
+User-agent: facebookexternalhit
+Allow: /
+
+Sitemap: https://www.nzoko.cg/sitemap.xml

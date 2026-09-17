@@ -1,0 +1,592 @@
+     1→// ============================================================
+     2→// NZOKO TRANSPORT — Seed de démonstration (DÉVELOPPEMENT UNIQUEMENT)
+     3→// ⚠️ Les mots de passe ci-dessous ne doivent JAMAIS être utilisés en production.
+     4→// Exécution : bun prisma/seed.ts
+     5→// ============================================================
+     6→
+     7→import { PrismaClient } from "@prisma/client";
+     8→import bcrypt from "bcryptjs";
+     9→import crypto from "node:crypto";
+    10→
+    11→const db = new PrismaClient();
+    12→
+    13→const ROLES = [
+    14→  { code: "SUPER_ADMIN", name: "Super Administrateur", description: "Accès global à toute la plateforme" },
+    15→  { code: "ADMIN", name: "Administrateur", description: "Gestion opérationnelle complète" },
+    16→  { code: "AGENCY_MANAGER", name: "Responsable d'agence", description: "Gestion de son agence uniquement" },
+    17→  { code: "AGENT", name: "Agent de guichet", description: "Vente et encaissement au guichet" },
+    18→  { code: "CHECKER", name: "Contrôleur embarquement", description: "Scan QR et contrôle des billets" },
+    19→  { code: "ACCOUNTANT", name: "Comptable", description: "Finances, dépenses et rapports" },
+    20→  { code: "DRIVER", name: "Chauffeur", description: "Consultation de ses voyages" },
+    21→  { code: "SUPPORT", name: "Support client", description: "Assistance aux clients" },
+    22→];
+    23→
+    24→const PERMISSIONS: { code: string; name: string }[] = [
+    25→  { code: "agency:manage", name: "Gérer les agences" },
+    26→  { code: "agency:read", name: "Consulter les agences" },
+    27→  { code: "user:manage", name: "Gérer les utilisateurs" },
+    28→  { code: "user:read", name: "Consulter les utilisateurs" },
+    29→  { code: "role:read", name: "Consulter les rôles" },
+    30→  { code: "city:manage", name: "Gérer les villes" },
+    31→  { code: "city:read", name: "Consulter les villes" },
+    32→  { code: "route:manage", name: "Gérer les routes" },
+    33→  { code: "route:read", name: "Consulter les routes" },
+    34→  { code: "bus:manage", name: "Gérer les bus" },
+    35→  { code: "bus:read", name: "Consulter les bus" },
+    36→  { code: "driver:manage", name: "Gérer les chauffeurs" },
+    37→  { code: "driver:read", name: "Consulter les chauffeurs" },
+    38→  { code: "seatlayout:manage", name: "Gérer les configurations de sièges" },
+    39→  { code: "seatlayout:read", name: "Consulter les configurations" },
+    40→  { code: "trip:manage", name: "Gérer les voyages" },
+    41→  { code: "trip:read", name: "Consulter les voyages" },
+    42→  { code: "booking:manage", name: "Gérer les réservations" },
+    43→  { code: "booking:read", name: "Consulter les réservations" },
+    44→  { code: "booking:create", name: "Créer des réservations" },
+    45→  { code: "payment:manage", name: "Gérer les paiements" },
+    46→  { code: "payment:read", name: "Consulter les paiements" },
+    47→  { code: "payment:cash-collect", name: "Encaisser les paiements espèces" },
+    48→  { code: "ticket:read", name: "Consulter les billets" },
+    49→  { code: "checker:scan", name: "Scanner les billets" },
+    50→  { code: "finance:read", name: "Consulter les finances" },
+    51→  { code: "expense:manage", name: "Gérer les dépenses" },
+    52→  { code: "expense:read", name: "Consulter les dépenses" },
+    53→  { code: "transaction:read", name: "Consulter les transactions" },
+    54→  { code: "report:read", name: "Consulter les rapports" },
+    55→  { code: "notification:read", name: "Consulter les notifications" },
+    56→  { code: "audit:read", name: "Consulter le journal d'audit" },
+    57→  { code: "security:read", name: "Consulter le journal de sécurité" },
+    58→  { code: "stats:global", name: "Statistiques globales" },
+    59→  { code: "stats:agency", name: "Statistiques d'agence" },
+    60→];
+    61→
+    62→const ROLE_PERMISSIONS: Record<string, string[]> = {
+    63→  SUPER_ADMIN: PERMISSIONS.map((p) => p.code),
+    64→  ADMIN: [
+    65→    "agency:read", "user:manage", "user:read", "role:read",
+    66→    "city:manage", "city:read", "route:manage", "route:read",
+    67→    "bus:manage", "bus:read", "driver:manage", "driver:read",
+    68→    "seatlayout:manage", "seatlayout:read", "trip:manage", "trip:read",
+    69→    "booking:manage", "booking:read", "booking:create",
+    70→    "payment:manage", "payment:read", "payment:cash-collect", "ticket:read",
+    71→    "finance:read", "expense:manage", "expense:read", "transaction:read",
+    72→    "report:read", "notification:read", "audit:read", "security:read",
+    73→    "stats:global", "stats:agency",
+    74→  ],
+    75→  AGENCY_MANAGER: [
+    76→    "agency:read", "user:read", "city:read", "route:read", "bus:read",
+    77→    "driver:manage", "driver:read", "seatlayout:read", "trip:manage", "trip:read",
+    78→    "booking:manage", "booking:read", "booking:create",
+    79→    "payment:read", "payment:cash-collect", "ticket:read",
+    80→    "finance:read", "expense:manage", "expense:read", "transaction:read",
+    81→    "report:read", "notification:read", "audit:read", "stats:agency",
+    82→  ],
+    83→  AGENT: ["city:read", "route:read", "trip:read", "booking:read", "booking:create", "payment:cash-collect", "ticket:read", "notification:read"],
+    84→  CHECKER: ["trip:read", "booking:read", "ticket:read", "checker:scan", "notification:read"],
+    85→  ACCOUNTANT: ["agency:read", "city:read", "route:read", "booking:read", "payment:read", "ticket:read", "finance:read", "expense:manage", "expense:read", "transaction:read", "report:read", "notification:read", "audit:read", "stats:agency", "stats:global"],
+    86→  DRIVER: ["trip:read", "booking:read", "ticket:read", "notification:read"],
+    87→  SUPPORT: ["booking:read", "trip:read", "city:read", "route:read", "notification:read"],
+    88→};
+    89→
+    90→// ---------- Générateurs ----------
+    91→function ref(len: number): string {
+    92→  const alphabet = "ABCDEFGHJKMNPQRSTUVWXYZ23456789";
+    93→  const bytes = crypto.randomBytes(len);
+    94→  let out = "";
+    95→  for (let i = 0; i < len; i++) out += alphabet[bytes[i] % alphabet.length];
+    96→  return out;
+    97→}
+    98→const bookingRef = () => `NZK-2026-${ref(6)}`;
+    99→const ticketToken = () => `nzk_tkt_${crypto.randomBytes(24).toString("base64url")}`;
+   100→const tripCode = () => `TRP-${ref(6)}`;
+   101→
+   102→function at(dateStr: string, hour: number, minute = 0): Date {
+   103→  return new Date(`${dateStr}T${String(hour).padStart(2, "0")}:${String(minute).padStart(2, "0")}:00+01:00`);
+   104→}
+   105→function dateStr(offsetDays: number): string {
+   106→  const d = new Date(Date.now() + offsetDays * 86400_000 + 3600_000);
+   107→  return d.toISOString().slice(0, 10);
+   108→}
+   109→
+   110→const FIRST_NAMES = ["Jean", "Marie", "Joseph", "Grace", "Pierre", "Chancelle", "Paul", "Mireille", "André", "Nadège", "Serge", "Prisca", "Blaise", "Carine", "Didier", "Estelle"];
+   111→const LAST_NAMES = ["Mabiala", "Ngoma", "Loemba", "Tchibamba", "Moussavou", "Bakala", "Nkouka", "Loubaki", "Massamba", "Youlou", "Kimbembé", "Tati", "Samba", "Milandou", "Bantsimba", "Nzaou"];
+   112→
+   113→function rand<T>(arr: T[]): T {
+   114→  return arr[Math.floor(Math.random() * arr.length)];
+   115→}
+   116→function randInt(min: number, max: number): number {
+   117→  return Math.floor(Math.random() * (max - min + 1)) + min;
+   118→}
+   119→
+   120→async function main(): Promise<void> {
+   121→  console.log("🌱 Seed NZOKO TRANSPORT — démarrage…");
+   122→
+   123→  // ---------- Purge ----------
+   124→  await db.securityLog.deleteMany();
+   125→  await db.auditLog.deleteMany();
+   126→  await db.notification.deleteMany();
+   127→  await db.expense.deleteMany();
+   128→  await db.transaction.deleteMany();
+   129→  await db.ticket.deleteMany();
+   130→  await db.seatOccupancy.deleteMany();
+   131→  await db.payment.deleteMany();
+   132→  await db.booking.deleteMany();
+   133→  await db.passenger.deleteMany();
+   134→  await db.trip.deleteMany();
+   135→  await db.driver.deleteMany();
+   136→  await db.bus.deleteMany();
+   137→  await db.routeStop.deleteMany();
+   138→  await db.route.deleteMany();
+   139→  await db.session.deleteMany();
+   140→  await db.user.deleteMany();
+   141→  await db.rolePermission.deleteMany();
+   142→  await db.permission.deleteMany();
+   143→  await db.role.deleteMany();
+   144→  await db.agency.deleteMany();
+   145→  await db.seat.deleteMany();
+   146→  await db.seatLayout.deleteMany();
+   147→  await db.city.deleteMany();
+   148→
+   149→  // ---------- Villes (Congo-Brazzaville) ----------
+   150→  const cityData = [
+   151→    { name: "Pointe-Noire", country: "CG" },
+   152→    { name: "Brazzaville", country: "CG" },
+   153→    { name: "Dolisie", country: "CG" },
+   154→    { name: "Nkayi", country: "CG" },
+   155→    { name: "Ouesso", country: "CG" },
+   156→    { name: "Gamboma", country: "CG" },
+   157→    { name: "Owando", country: "CG" },
+   158→  ];
+   159→  const cities = new Map<string, string>();
+   160→  for (const c of cityData) {
+   161→    const city = await db.city.create({ data: c });
+   162→    cities.set(c.name, city.id);
+   163→  }
+   164→  console.log(`✓ ${cityData.length} villes`);
+   165→
+   166→  // ---------- Agences ----------
+   167→  const agencyPN = await db.agency.create({
+   168→    data: {
+   169→      code: "PNR-CENTRE",
+   170→      name: "NZOKO Pointe-Noire Centre",
+   171→      cityId: cities.get("Pointe-Noire")!,
+   172→      address: "Boulevard Charles de Gaulle, Pointe-Noire",
+   173→      phone: "+242 06 123 45 67",
+   174→      email: "pointenoire@nzoko.cg",
+   175→    },
+   176→  });
+   177→  const agencyBZV = await db.agency.create({
+   178→    data: {
+   179→      code: "BZV-CENTRE",
+   180→      name: "NZOKO Brazzaville Centre",
+   181→      cityId: cities.get("Brazzaville")!,
+   182→      address: "Avenue Marien Ngouabi, Brazzaville",
+   183→      phone: "+242 06 765 43 21",
+   184→      email: "brazzaville@nzoko.cg",
+   185→    },
+   186→  });
+   187→  console.log("✓ 2 agences");
+   188→
+   189→  // ---------- Configurations de sièges ----------
+   190→  async function createLayout(name: string, rows: number, columns: number, aisleAfter: number, vipRows: number[], description: string) {
+   191→    const layout = await db.seatLayout.create({ data: { name, rows, columns, aisleAfter, description } });
+   192→    const letters = "ABCDEFGH".slice(0, columns).split("");
+   193→    let num = 1;
+   194→    for (let r = 1; r <= rows; r++) {
+   195→      for (let c = 0; c < columns; c++) {
+   196→        await db.seat.create({
+   197→          data: {
+   198→            seatLayoutId: layout.id,
+   199→            seatNumber: String(num).padStart(2, "0"),
+   200→            row: r,
+   201→            column: letters[c],
+   202→            type: vipRows.includes(r) ? "VIP" : "STANDARD",
+   203→          },
+   204→        });
+   205→        num++;
+   206→      }
+   207→    }
+   208→    return layout;
+   209→  }
+   210→
+   211→  const layoutStandard = await createLayout("Standard 2+2 (40 places)", 10, 4, 2, [1], "Classique : 2+2 avec rangée 1 VIP");
+   212→  const layoutVip = await createLayout("VIP 1+2 (24 places)", 8, 3, 1, [1, 2, 3, 4], "Classe affaires : 1+2, rangées 1-4 VIP");
+   213→  const layoutMini = await createLayout("Minibus 2+2 (28 places)", 7, 4, 2, [], "Minibus interurbain");
+   214→  console.log("✓ 3 configurations de sièges");
+   215→
+   216→  // ---------- Bus ----------
+   217→  const busData = [
+   218→    { registrationNumber: "PN-4521-AB", brand: "Toyota", model: "Hiace Luxury", year: 2022, layout: layoutMini, agency: agencyPN },
+   219→    { registrationNumber: "PN-7834-CD", brand: "Yutong", model: "ZK6122H", year: 2021, layout: layoutStandard, agency: agencyPN },
+   220→    { registrationNumber: "PN-1192-EF", brand: "Yutong", model: "ZK6122H", year: 2023, layout: layoutStandard, agency: agencyPN },
+   221→    { registrationNumber: "PN-9900-GH", brand: "Higer", model: "KLQ6119", year: 2024, layout: layoutVip, agency: agencyPN },
+   222→    { registrationNumber: "BZ-3341-IJ", brand: "Golden Dragon", model: "XML6957", year: 2022, layout: layoutStandard, agency: agencyBZV },
+   223→    { registrationNumber: "BZ-6675-KL", brand: "Yutong", model: "ZK6105", year: 2020, layout: layoutStandard, agency: agencyBZV },
+   224→    { registrationNumber: "BZ-8809-MN", brand: "Higer", model: "KLQ6125", year: 2023, layout: layoutVip, agency: agencyBZV },
+   225→  ];
+   226→  const buses = new Map<string, { id: string; capacity: number; agencyId: string; seats: { id: string; seatNumber: string; type: string }[] }>();
+   227→  for (const b of busData) {
+   228→    const seats = await db.seat.findMany({ where: { seatLayoutId: b.layout.id }, orderBy: { seatNumber: "asc" } });
+   229→    const bus = await db.bus.create({
+   230→      data: {
+   231→        registrationNumber: b.registrationNumber,
+   232→        brand: b.brand,
+   233→        model: b.model,
+   234→        year: b.year,
+   235→        capacity: seats.length,
+   236→        status: "ACTIVE",
+   237→        agencyId: b.agency.id,
+   238→        seatLayoutId: b.layout.id,
+   239→      },
+   240→    });
+   241→    buses.set(bus.id, { id: bus.id, capacity: seats.length, agencyId: bus.agencyId, seats });
+   242→  }
+   243→  console.log(`✓ ${busData.length} bus`);
+   244→
+   245→  // ---------- Chauffeurs ----------
+   246→  const driverData = [
+   247→    { firstName: "Jean-Félix", lastName: "Mabiala", phone: "+242 06 111 22 33", license: "CG-PC-19871", userId: null as string | null },
+   248→    { firstName: "Michel", lastName: "Ngoma", phone: "+242 06 222 33 44", license: "CG-PC-20512", userId: null as string | null },
+   249→    { firstName: "Alain", lastName: "Loemba", phone: "+242 06 333 44 55", license: "CG-PC-22980", userId: null as string | null },
+   250→    { firstName: "Sylvain", lastName: "Tchibamba", phone: "+242 06 444 55 66", license: "CG-BZ-18700", userId: null as string | null },
+   251→    { firstName: "Guy-Roger", lastName: "Moussavou", phone: "+242 06 555 66 77", license: "CG-BZ-19235", userId: null as string | null },
+   252→    { firstName: "Firmin", lastName: "Bakala", phone: "+242 06 666 77 88", license: "CG-BZ-20114", userId: null as string | null },
+   253→  ];
+   254→  const drivers: { id: string; agencyId: string }[] = [];
+   255→  for (let i = 0; i < driverData.length; i++) {
+   256→    const agency = i < 3 ? agencyPN : agencyBZV;
+   257→    const created = await db.driver.create({
+   258→      data: {
+   259→        firstName: driverData[i].firstName,
+   260→        lastName: driverData[i].lastName,
+   261→        phone: driverData[i].phone,
+   262→        licenseNumber: driverData[i].license,
+   263→        agencyId: agency.id,
+   264→        status: "AVAILABLE",
+   265→      },
+   266→    });
+   267→    drivers.push({ id: created.id, agencyId: agency.id });
+   268→  }
+   269→
+   270→  // ---------- Rôles & permissions ----------
+   271→  const permissionIds = new Map<string, string>();
+   272→  for (const p of PERMISSIONS) {
+   273→    const perm = await db.permission.create({ data: p });
+   274→    permissionIds.set(p.code, perm.id);
+   275→  }
+   276→  const roleIds = new Map<string, string>();
+   277→  for (const r of ROLES) {
+   278→    const role = await db.role.create({ data: r });
+   279→    roleIds.set(r.code, role.id);
+   280→    for (const code of ROLE_PERMISSIONS[r.code]) {
+   281→      await db.rolePermission.create({
+   282→        data: { roleId: role.id, permissionId: permissionIds.get(code)! },
+   283→      });
+   284→    }
+   285→  }
+   286→  console.log(`✓ ${ROLES.length} rôles / ${PERMISSIONS.length} permissions`);
+   287→
+   288→  // ---------- Utilisateurs de démonstration ----------
+   289→  // ⚠️ MOTS DE PASSE DE DÉMONSTRATION — DÉVELOPPEMENT UNIQUEMENT
+   290→  const demoUsers = [
+   291→    { email: "superadmin@nzoko.cg", password: "Nzoko@2026!", firstName: "Aimé", lastName: "Directeur", role: "SUPER_ADMIN", agencyId: null },
+   292→    { email: "admin@nzoko.cg", password: "Admin@2026!", firstName: "Clarisse", lastName: "Opérée", role: "ADMIN", agencyId: null },
+   293→    { email: "manager.pn@nzoko.cg", password: "Manager@2026!", firstName: "Hervé", lastName: "Responsable", role: "AGENCY_MANAGER", agencyId: agencyPN.id },
+   294→    { email: "agent.pn@nzoko.cg", password: "Agent@2026!", firstName: "Bénédicte", lastName: "Guichet", role: "AGENT", agencyId: agencyPN.id },
+   295→    { email: "checker.pn@nzoko.cg", password: "Checker@2026!", firstName: "Wilfried", lastName: "Contrôleur", role: "CHECKER", agencyId: agencyPN.id },
+   296→    { email: "comptable@nzoko.cg", password: "Compta@2026!", firstName: "Flore", lastName: "Comptable", role: "ACCOUNTANT", agencyId: null },
+   297→    { email: "chauffeur.jean@nzoko.cg", password: "Chauffeur@2026!", firstName: "Jean-Félix", lastName: "Mabiala", role: "DRIVER", agencyId: agencyPN.id },
+   298→    { email: "support@nzoko.cg", password: "Support@2026!", firstName: "Léa", lastName: "Assistance", role: "SUPPORT", agencyId: null },
+   299→  ];
+   300→  const users = new Map<string, string>();
+   301→  for (const u of demoUsers) {
+   302→    const user = await db.user.create({
+   303→      data: {
+   304→        email: u.email,
+   305→        firstName: u.firstName,
+   306→        lastName: u.lastName,
+   307→        passwordHash: await bcrypt.hash(u.password, 12),
+   308→        roleId: roleIds.get(u.role)!,
+   309→        agencyId: u.agencyId,
+   310→        isActive: true,
+   311→        phone: "+242 06 000 00 00",
+   312→      },
+   313→    });
+   314→    users.set(u.role, user.id);
+   315→  }
+   316→  // Lien chauffeur ↔ compte (Jean-Félix = premier chauffeur)
+   317→  await db.driver.update({
+   318→    where: { id: drivers[0].id },
+   319→    data: { userId: users.get("DRIVER")! },
+   320→  });
+   321→  console.log(`✓ ${demoUsers.length} utilisateurs démo`);
+   322→
+   323→  // ---------- Routes ----------
+   324→  async function createRoute(origin: string, dest: string, distanceKm: number, durationMin: number, basePrice: number, stops: { city: string; minutes: number }[]) {
+   325→    const route = await db.route.create({
+   326→      data: {
+   327→        code: `${origin.slice(0, 2).toUpperCase()}-${dest.slice(0, 2).toUpperCase()}-${ref(3)}`,
+   328→        originCityId: cities.get(origin)!,
+   329→        destinationCityId: cities.get(dest)!,
+   330→        distanceKm,
+   331→        estimatedDurationMinutes: durationMin,
+   332→        basePrice,
+   333→      },
+   334→    });
+   335→    for (let i = 0; i < stops.length; i++) {
+   336→      await db.routeStop.create({
+   337→        data: {
+   338→          routeId: route.id,
+   339→          cityId: cities.get(stops[i].city)!,
+   340→          position: i,
+   341→          minutesFromStart: stops[i].minutes,
+   342→        },
+   343→      });
+   344→    }
+   345→    return route;
+   346→  }
+   347→
+   348→  const routePNR_BZV = await createRoute("Pointe-Noire", "Brazzaville", 535, 600, 18000, [
+   349→    { city: "Dolisie", minutes: 180 },
+   350→    { city: "Nkayi", minutes: 300 },
+   351→  ]);
+   352→  const routeBZV_PNR = await createRoute("Brazzaville", "Pointe-Noire", 535, 600, 18000, [
+   353→    { city: "Nkayi", minutes: 150 },
+   354→    { city: "Dolisie", minutes: 420 },
+   355→  ]);
+   356→  const routePNR_DOL = await createRoute("Pointe-Noire", "Dolisie", 165, 210, 7000, []);
+   357→  const routeDOL_BZV = await createRoute("Dolisie", "Brazzaville", 370, 400, 13000, [{ city: "Nkayi", minutes: 120 }]);
+   358→  const routeBZV_OUE = await createRoute("Brazzaville", "Ouesso", 830, 900, 30000, [
+   359→    { city: "Owando", minutes: 420 },
+   360→  ]);
+   361→  const routeBZV_PNM = await createRoute("Brazzaville", "Gamboma", 250, 270, 9000, []);
+   362→  console.log("✓ 6 routes");
+   363→
+   364→  // ---------- Passagers ----------
+   365→  const passengers: { id: string }[] = [];
+   366→  for (let i = 0; i < 30; i++) {
+   367→    const p = await db.passenger.create({
+   368→      data: {
+   369→        firstName: rand(FIRST_NAMES),
+   370→        lastName: rand(LAST_NAMES),
+   371→        phone: `+242 0${randInt(1, 6)} ${randInt(100, 999)} ${randInt(10, 99)} ${randInt(10, 99)}`,
+   372→        email: i % 3 === 0 ? `passager${i}@mail.cg` : null,
+   373→      },
+   374→    });
+   375→    passengers.push(p);
+   376→  }
+   377→
+   378→  // ---------- Voyages + historique (14 jours passés + 7 jours futurs) ----------
+   379→  interface TripTemplate { route: typeof routePNR_BZV; hour: number; minute: number; agencyId: string; busIds: string[]; driverIdx: number[] }
+   380→  const templates: TripTemplate[] = [
+   381→    { route: routePNR_BZV, hour: 6, minute: 30, agencyId: agencyPN.id, busIds: [...buses.keys()].filter((id) => buses.get(id)!.agencyId === agencyPN.id), driverIdx: [0, 1, 2] },
+   382→    { route: routePNR_BZV, hour: 14, minute: 0, agencyId: agencyPN.id, busIds: [...buses.keys()].filter((id) => buses.get(id)!.agencyId === agencyPN.id), driverIdx: [1, 2, 0] },
+   383→    { route: routeBZV_PNR, hour: 6, minute: 30, agencyId: agencyBZV.id, busIds: [...buses.keys()].filter((id) => buses.get(id)!.agencyId === agencyBZV.id), driverIdx: [3, 4, 5] },
+   384→    { route: routeBZV_PNR, hour: 14, minute: 0, agencyId: agencyBZV.id, busIds: [...buses.keys()].filter((id) => buses.get(id)!.agencyId === agencyBZV.id), driverIdx: [4, 5, 3] },
+   385→    { route: routePNR_DOL, hour: 8, minute: 0, agencyId: agencyPN.id, busIds: [...buses.keys()].filter((id) => buses.get(id)!.agencyId === agencyPN.id).slice(0, 1), driverIdx: [0] },
+   386→    { route: routeBZV_PNM, hour: 9, minute: 30, agencyId: agencyBZV.id, busIds: [...buses.keys()].filter((id) => buses.get(id)!.agencyId === agencyBZV.id).slice(0, 1), driverIdx: [3] },
+   387→  ];
+   388→
+   389→  const now = new Date();
+   390→  let createdTrips = 0;
+   391→  let createdBookings = 0;
+   392→
+   393→  for (let day = -14; day <= 7; day++) {
+   394→    const dStr = dateStr(day);
+   395→    const dailyCount = day < 0 ? 4 : 6; // week-end plus chargé
+   396→    const activeTemplates = templates.slice(0, day < 0 ? 4 : templates.length);
+   397→
+   398→    for (let t = 0; t < activeTemplates.length; t++) {
+   399→      const tpl = activeTemplates[t];
+   400→      const busId = tpl.busIds[t % tpl.busIds.length];
+   401→      const busInfo = buses.get(busId!)!;
+   402→      const driver = drivers[tpl.driverIdx[t % tpl.driverIdx.length]];
+   403→      const departure = at(dStr, tpl.hour, tpl.minute);
+   404→      const arrival = new Date(departure.getTime() + tpl.route.estimatedDurationMinutes * 60_000);
+   405→
+   406→      // Aujourd'hui : seulement les départs futurs
+   407→      if (day === 0 && departure < now) continue;
+   408→
+   409→      const price = tpl.route.basePrice + (t === 0 ? 2000 : 0); // yield léger
+   410→
+   411→      const pastStatus = day < 0 ? "COMPLETED" : "SCHEDULED";
+   412→      const todayStatus = "SCHEDULED";
+   413→
+   414→      const trip = await db.trip.create({
+   415→        data: {
+   416→          code: tripCode(),
+   417→          routeId: tpl.route.id,
+   418→          busId: busInfo.id,
+   419→          driverId: driver.id,
+   420→          agencyId: tpl.agencyId,
+   421→          departureTime: departure,
+   422→          estimatedArrivalTime: arrival,
+   423→          price,
+   424→          status: day < 0 ? pastStatus : day === 0 ? todayStatus : "SCHEDULED",
+   425→        },
+   426→      });
+   427→      createdTrips++;
+   428→
+   429→      // Historique : réservations confirmées + paiements + billets + transactions
+   430→      if (day < 0 || (day === 0 && Math.random() < 0.5)) {
+   431→        const bookingCount = randInt(2, Math.min(8, Math.floor(busInfo.capacity * 0.35)));
+   432→        const shuffled = busInfo.seats.slice().sort(() => Math.random() - 0.5).slice(0, bookingCount);
+   433→        for (const seat of shuffled) {
+   434→          const passenger = rand(passengers);
+   435→          const bookingRefStr = bookingRef();
+   436→          const created = new Date(departure.getTime() - randInt(12, 96) * 3600_000);
+   437→          const providerRoll = Math.random();
+   438→          const provider = providerRoll < 0.55 ? "MTN_MOMO" : providerRoll < 0.75 ? "AIRTEL_MONEY" : "CASH";
+   439→          const channel = provider === "CASH" ? "AGENT" : "WEB";
+   440→
+   441→          const booking = await db.booking.create({
+   442→            data: {
+   443→              bookingReference: bookingRefStr,
+   444→              tripId: trip.id,
+   445→              passengerId: passenger.id,
+   446→              seatId: seat.id,
+   447→              amount: price,
+   448→              status: "CONFIRMED",
+   449→              channel,
+   450→              agencyId: channel === "AGENT" ? tpl.agencyId : tpl.agencyId,
+   451→              createdById: channel === "AGENT" ? users.get("AGENT")! : null,
+   452→              createdAt: created,
+   453→              updatedAt: created,
+   454→            },
+   455→          });
+   456→          await db.seatOccupancy.create({
+   457→            data: { tripId: trip.id, seatId: seat.id, bookingId: booking.id, status: "BOOKED", createdAt: created },
+   458→          });
+   459→          await db.payment.create({
+   460→            data: {
+   461→              bookingId: booking.id,
+   462→              provider,
+   463→              providerTransactionId: provider === "CASH" ? `CASH-${ref(8)}` : `SIM-${ref(10)}`,
+   464→              amount: price,
+   465→              status: "SUCCESS",
+   466→              metadata: JSON.stringify({ isSimulation: provider !== "CASH", instructions: null }),
+   467→              createdById: provider === "CASH" ? users.get("AGENT")! : null,
+   468→              createdAt: created,
+   469→              updatedAt: created,
+   470→            },
+   471→          });
+   472→          const ticket = await db.ticket.create({
+   473→            data: {
+   474→              bookingId: booking.id,
+   475→              token: ticketToken(),
+   476→              status: day < -1 && Math.random() < 0.7 ? "USED" : "VALID",
+   477→              issuedAt: created,
+   478→              ...(day < -1 ? { checkedAt: new Date(departure.getTime() - 20 * 60_000), checkedById: users.get("CHECKER")! } : {}),
+   479→            },
+   480→          });
+   481→          await db.transaction.create({
+   482→            data: {
+   483→              type: "INCOME",
+   484→              amount: price,
+   485→              reference: bookingRefStr,
+   486→              description: `Vente billet ${bookingRefStr} (${provider})`,
+   487→              agencyId: tpl.agencyId,
+   488→              createdById: provider === "CASH" ? users.get("AGENT")! : null,
+   489→              createdAt: created,
+   490→            },
+   491→          });
+   492→          createdBookings++;
+   493→          void ticket;
+   494→        }
+   495→      }
+   496→    }
+   497→  }
+   498→  console.log(`✓ ${createdTrips} voyages / ${createdBookings} réservations historiques`);
+   499→
+   500→  // ---------- Réservation en attente + paiement en cours (démo verrou/paiement) ----------
+   501→  const futureTrips = await db.trip.findMany({ where: { status: "SCHEDULED", departureTime: { gt: now } }, take: 5 });
+   502→  for (const trip of futureTrips.slice(0, 2)) {
+   503→    const busInfo = buses.get(trip.busId)!;
+   504→    const taken = new Set(
+   505→      (await db.seatOccupancy.findMany({ where: { tripId: trip.id }, select: { seatId: true } })).map((o) => o.seatId)
+   506→    );
+   507→    const freeSeat = busInfo.seats.find((s) => !taken.has(s.id));
+   508→    if (!freeSeat) continue;
+   509→    const pendingPassenger = await db.passenger.create({
+   510→      data: { firstName: "Réservé", lastName: "EnAttente", phone: `+242 06 999 88 ${randInt(10, 99)}` },
+   511→    });
+   512→    const expires = new Date(now.getTime() + 8 * 60_000);
+   513→    const pending = await db.booking.create({
+   514→      data: {
+   515→        bookingReference: bookingRef(),
+   516→        tripId: trip.id,
+   517→        passengerId: pendingPassenger.id,
+   518→        seatId: freeSeat.id,
+   519→        amount: trip.price,
+   520→        status: "PENDING",
+   521→        channel: "WEB",
+   522→        expiresAt: expires,
+   523→      },
+   524→    });
+   525→    await db.seatOccupancy.create({
+   526→      data: { tripId: trip.id, seatId: freeSeat.id, bookingId: pending.id, status: "HELD", expiresAt: expires },
+   527→    });
+   528→  }
+   529→
+   530→  // ---------- Dépenses ----------
+   531→  const expenseTemplates = [
+   532→    { category: "FUEL", description: "Carburant trajet Pointe-Noire → Brazzaville", min: 45000, max: 90000 },
+   533→    { category: "MAINTENANCE", description: "Vidange et révision périodique", min: 25000, max: 80000 },
+   534→    { category: "SALARY", description: "Prime chauffeur", min: 15000, max: 40000 },
+   535→    { category: "REPAIR", description: "Réparation climatisation", min: 30000, max: 120000 },
+   536→    { category: "SUPPLIES", description: "Fournitures de bureau agence", min: 5000, max: 15000 },
+   537→  ];
+   538→  for (let day = -14; day <= 0; day++) {
+   539→    for (let i = 0; i < randInt(1, 3); i++) {
+   540→      const tpl = rand(expenseTemplates);
+   541→      await db.expense.create({
+   542→        data: {
+   543→          category: tpl.category,
+   544→          amount: randInt(tpl.min, tpl.max),
+   545→          description: tpl.description,
+   546→          agencyId: rand([agencyPN.id, agencyBZV.id]),
+   547→          createdById: users.get("ACCOUNTANT")!,
+   548→          date: new Date(`${dateStr(day)}T10:00:00+01:00`),
+   549→        },
+   550→      });
+   551→    }
+   552→  }
+   553→  console.log("✓ Dépenses");
+   554→
+   555→  // ---------- Notifications ----------
+   556→  await db.notification.createMany({
+   557→    data: [
+   558→      { userId: users.get("SUPER_ADMIN")!, title: "Bienvenue sur NZOKO", message: "La plateforme est initialisée avec des données de démonstration.", type: "INFO" },
+   559→      { userId: users.get("SUPER_ADMIN")!, title: "Revenus du jour disponibles", message: "Consultez le tableau de bord pour les statistiques du jour.", type: "SUCCESS" },
+   560→      { userId: users.get("SUPER_ADMIN")!, title: "Paiement Mobile Money en mode démo", message: "Les intégrations MTN/Airtel attendent les identifiants officiels.", type: "WARNING" },
+   561→      { userId: users.get("AGENCY_MANAGER")!, title: "Départs du jour", message: "Vérifiez l'affectation des bus pour les départs de ce soir.", type: "INFO" },
+   562→    ],
+   563→  });
+   564→
+   565→  // ---------- Journal d'audit initial ----------
+   566→  await db.auditLog.create({
+   567→    data: { userId: users.get("SUPER_ADMIN")!, action: "SEED_EXECUTED", entity: "System", metadata: JSON.stringify({ version: "1.0.0-demo" }) },
+   568→  });
+   569→
+   570→  console.log("🌱 Seed terminé avec succès !");
+   571→  console.log("──────────────────────────────────────────────────");
+   572→  console.log("🔑 COMPTES DE DÉMONSTRATION (DÉVELOPPEMENT UNIQUEMENT) :");
+   573→  console.log("  superadmin@nzoko.cg     / Nzoko@2026!   (SUPER_ADMIN)");
+   574→  console.log("  admin@nzoko.cg          / Admin@2026!    (ADMIN)");
+   575→  console.log("  manager.pn@nzoko.cg     / Manager@2026!  (AGENCY_MANAGER — Pointe-Noire)");
+   576→  console.log("  agent.pn@nzoko.cg       / Agent@2026!    (AGENT — Pointe-Noire)");
+   577→  console.log("  checker.pn@nzoko.cg     / Checker@2026!  (CHECKER — Pointe-Noire)");
+   578→  console.log("  comptable@nzoko.cg      / Compta@2026!   (ACCOUNTANT)");
+   579→  console.log("  chauffeur.jean@nzoko.cg / Chauffeur@2026! (DRIVER)");
+   580→  console.log("  support@nzoko.cg        / Support@2026!  (SUPPORT)");
+   581→  console.log("──────────────────────────────────────────────────");
+   582→}
+   583→
+   584→main()
+   585→  .catch((e) => {
+   586→    console.error("❌ Échec du seed :", e);
+   587→    process.exit(1);
+   588→  })
+   589→  .finally(async () => {
+   590→    await db.$disconnect();
+   591→  });
+   592→

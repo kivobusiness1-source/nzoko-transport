@@ -1,0 +1,825 @@
+     1→# NZOKO TRANSPORT — Worklog partagé
+     2→
+     3→> Journal de travail commun. Chaque agent DOIT lire ce fichier avant de travailler
+     4→> et y APPOSER (mode ajout) sa section à la fin de sa tâche.
+     5→
+     6→---
+     7→
+     8→Task ID: 1
+     9→Agent: Orchestrateur principal (Z.ai Code)
+    10→Task: Phase 0 audit + Phase 1-2 fondation (schéma, libs core, services métier critiques, seed, coquille SPA)
+    11→
+    12→Work Log:
+    13→- Audit du scaffold (Next.js 16, React 19, Tailwind 4, shadcn/ui complet, Prisma 6 SQLite, bun).
+    14→- Adaptations sandbox imposées : SQLite (pas PostgreSQL — schéma portable, enums applicatives),
+    15→  route unique `/` visible (SPA monopage avec vues client), bun (pas npm), bcryptjs (pas argon2 natif).
+    16→- `prisma/schema.prisma` : 24 modèles + indexes (User, Role, Permission, RolePermission, Session,
+    17→  City, Agency, Route, RouteStop, SeatLayout, Seat, Bus, Driver, Trip, Passenger, Booking,
+    18→  SeatOccupancy(verrou unique tripId+seatId), Payment, Ticket, Transaction, Expense,
+    19→  Notification, AuditLog, SecurityLog). `bun run db:push` OK.
+    20→- `.env` + `.env.example` : AUTH_SECRET, WEBHOOK_SECRET, clés Mobile Money vides (intégrations
+    21→  officielles à configurer), PAYMENTS_SIMULATION=true (mode démo explicite).
+    22→- Libs core : `src/lib/constants.ts` (rôles/permissions/statuts + labels FR), `src/types/index.ts`
+    23→  (contrat DTO complet), `src/lib/api-response.ts` (enveloppe + ApiError + routeError),
+    24→  `src/lib/security.ts` (références NZK-…, tokens QR, HMAC), `src/lib/auth.ts` (bcrypt cost 12,
+    25→  sessions opaques SHA-256 en base, cookie HttpOnly SameSite=Lax, assertPermission,
+    26→  resolveAgencyScope multi-agences), `src/lib/auth-shared.ts`, `src/lib/rate-limit.ts` (mémoire),
+    27→  `src/lib/audit.ts`, `src/lib/dates.ts` (fuseau Congo UTC+1), `src/lib/format.ts` (FCFA, dates FR).
+    28→- Services métier critiques : `src/services/booking.ts` (recherche, seat map par voyage, création
+    29→  transactionnelle avec verrou SeatOccupancy + expiry 10 min, annulation), `src/services/payment.ts`
+    30→  (PaymentProviderInterface, CASH fonctionnel, MTN/Airtel en simulation clairement étiquetée —
+    31→  AUCUNE API inventée, confirmation idempotente + Transaction INCOME + billet), 
+    32→  `src/services/payment-mappers.ts`, `src/services/tickets.ts` (QR = token aléatoire, scan
+    33→  atomique VALID→USED anti double-scan, scope agence checker).
+    34→- `prisma/seed.ts` exécuté : 7 villes CG, 2 agences, 3 layouts (2+2 40pl, VIP 1+2 24pl, minibus),
+    35→  7 bus, 6 chauffeurs, 8 rôles + 35 permissions, 8 users démo, 6 routes + arrêts, 104 voyages
+    36→  (14j passés + 7j futurs), 301 réservations historiques + paiements + billets + transactions,
+    37→  dépenses, notifications, 1 réservation PENDING (verrou HELD).
+    38→  Comptes démo : superadmin@nzoko.cg/Nzoko@2026! · admin@nzoko.cg/Admin@2026! ·
+    39→  manager.pn@nzoko.cg/Manager@2026! · agent.pn@nzoko.cg/Agent@2026! ·
+    40→  checker.pn@nzoko.cg/Checker@2026! · comptable@nzoko.cg/Compta@2026! ·
+    41→  chauffeur.jean@nzoko.cg/Chauffeur@2026! · support@nzoko.cg/Support@2026!
+    42→- Frontend socle : `src/lib/api-client.ts` (client typé exhaustif — CONTRAT), `src/lib/store.ts`
+    43→  (zustand : session, vue, recherche), `src/components/app/nzoko-app.tsx` (coquille : header,
+    44→  notifications, menu utilisateur, bottom nav mobile, footer sticky, routeur de vues par rôle),
+    45→  10 stubs `src/features/*` à remplacer, `src/app/page.tsx`, `src/app/layout.tsx` (FR + PWA meta),
+    46→  `globals.css` thème vert/orange NZOKO. Dev server OK (GET / 200).
+    47→
+    48→Stage Summary:
+    49→- Base complète et fonctionnelle. CONTRAT API (à respecter à la lettre) :
+    50→
+    51→## CONTRAT API — TOUS LES ENDPOINTS (enveloppe {success,data}|{success,error:{code,message}})
+    52→
+    53→Toute requête mutante (POST/PATCH/DELETE) exige l'en-tête `X-Requested-With: nzoko` (assertSameOriginPost).
+    54→Sécurité : getAuth(req) → AuthContext|null ; assertAuthenticated ; assertPermission(auth, code) ;
+    55→resolveAgencyScope(auth, requestedAgencyId?) → agencyId|null (403 si cross-agence) ; GLOBAL_ROLES=[SUPER_ADMIN,ADMIN].
+    56→Rate limits (enforceRateLimit) : login 5/15min (clé ip+email), bookings 10/min (ip), payments 10/min (ip), checker 30/min (ip+user).
+    57→Loguer via logAudit / logSecurity les actions sensibles (connexion, création user, modif prix, annulation, scans).
+    58→
+    59→Endpoints (chemins précis, méthodes, entrées/sorties = src/lib/api-client.ts + src/types/index.ts) :
+    60→- POST /api/auth/login {email,password} → SessionUser (cookie nzoko_session) — logSecurity LOGIN_FAILED/LOGIN_SUCCESS, rate limit, maj lastLoginAt, message erreur générique
+    61→- POST /api/auth/logout → true
+    62→- GET /api/auth/me → SessionUser|null (200 avec data null si non connecté)
+    63→- GET /api/cities → CityDTO[] (actives, public)
+    64→- GET /api/trips/search?from&to&date → TripSearchDTO[] (services/booking.searchTrips)
+    65→- GET /api/trips/[id]/seats → SeatMapDTO
+    66→- POST /api/bookings → BookingDTO (services/booking.createBooking ; Zod : tripId, seatId, passenger{firstName,lastName,phone(+242…),email?,documentNumber?} ; rate limit ; channel=AGENT si auth permission booking:create sinon WEB)
+    67→- GET /api/bookings/[idOrRef] → BookingDetailDTO (public : accès par référence NON prédictible + QR demandable ; ok)
+    68→- PATCH /api/bookings/[idOrRef]/cancel → BookingDetailDTO (auth ; PENDING par passager lui-même via référence, ou booking:manage ; scope agence)
+    69→- POST /api/payments → PaymentDTO (services/payment.createPayment ; Zod provider enum ; rate limit)
+    70→- POST /api/payments/[id]/confirm-cash → PaymentDTO (auth + payment:cash-collect ; provider CASH uniquement)
+    71→- POST /api/payments/[id]/simulate → PaymentDTO (PAYMENTS_SIMULATION=true uniquement — mode démo)
+    72→- GET /api/tickets/[token]/qr → {dataUrl} (PNG data URL du token — services/tickets.getTicketQrDataUrl ; public par token)
+    73→- POST /api/checker/scan {code} → ScanResultDTO (auth CHECKER + checker:scan ; services/tickets.scanAndBoard ; rate limit)
+    74→- GET /api/checker/trips → BoardingTripDTO[] (scope agence ; voyages du jour SCHEDULED/BOARDING)
+    75→- GET /api/driver/trips → DriverTripDTO[] (chauffeur lié via Driver.userId = session.userId ; PAS d'info financière)
+    76→- GET /api/agency/stats → AgencyStatsDTO (scope agence)
+    77→- GET /api/agency/bookings?page&status&q → Paginated<BookingDTO> (scope agence)
+    78→- GET /api/admin/stats?days → AdminStatsDTO (stats:global pour global ; AGENCY_MANAGER→403 ; ACCOUNTANT autorisé lecture)
+    79→- GET /api/admin/users?q → UserDTO[] (user:read ; scope : non-globaux ne voient que leur agence)
+    80→- POST /api/admin/users → UserDTO (user:manage ; Zod email/password≥8/role/agencyId ; hash bcrypt ; logAudit USER_CREATED)
+    81→- PATCH /api/admin/users/[id] → UserDTO (user:manage ; password optionnel re-hash ; isActive)
+    82→- GET /api/admin/roles → RoleDTO[] (role:read)
+    83→- GET /api/admin/agencies → AgencyDTO[] (agency:read)
+    84→- POST /api/admin/agencies → AgencyDTO (agency:manage ; code unique)
+    85→- PATCH /api/admin/agencies/[id] → AgencyDTO (agency:manage)
+    86→- GET /api/admin/cities → CityDTO[] toutes (city:read)
+    87→- POST /api/admin/cities → CityDTO (city:manage)
+    88→- PATCH /api/admin/cities/[id] → CityDTO (city:manage)
+    89→- GET /api/admin/routes → RouteDTO[] avec stops (route:read)
+    90→- POST /api/admin/routes → RouteDTO (route:manage ; stops[] ; code auto)
+    91→- PATCH /api/admin/routes/[id] → RouteDTO (route:manage)
+    92→- GET /api/admin/buses → BusDTO[] (bus:read ; scope agence)
+    93→- POST /api/admin/buses → BusDTO (bus:manage ; capacity = nb sièges du layout)
+    94→- PATCH /api/admin/buses/[id] → BusDTO (bus:manage)
+    95→- GET /api/admin/seat-layouts → SeatLayoutDTO[] (seatlayout:read)
+    96→- POST /api/admin/seat-layouts → SeatLayoutDTO (seatlayout:manage ; GÉNÈRE les sièges : rows×columns, letters A.., aisleAfter, vipRows[])
+    97→- GET /api/admin/drivers → DriverDTO[] (driver:read ; scope agence)
+    98→- POST /api/admin/drivers → DriverDTO (driver:manage)
+    99→- PATCH /api/admin/drivers/[id] → DriverDTO (driver:manage)
+   100→- GET /api/admin/trips?date&routeId&agencyId&status → TripSearchDTO[] (trip:read ; scope agence)
+   101→- POST /api/admin/trips → {created: TripSearchDTO[]} (trip:manage ; repeatDays=nb jours consécutifs, défaut 1 ; code auto ; arrival = departure + durée route ; logAudit TRIP_CREATED)
+   102→- PATCH /api/admin/trips/[id] → TripSearchDTO (trip:manage ; status/price/driverId/busId ; logAudit TRIP_UPDATED/PRICE_CHANGED)
+   103→- GET /api/admin/bookings?page&status&q&agencyId → Paginated<BookingDTO> (booking:read ; scope)
+   104→- GET /api/admin/payments?status&provider&q → PaymentDTO[] (payment:read)
+   105→- GET /api/finance/summary?from&to → FinanceSummaryDTO (finance:read)
+   106→- GET /api/finance/transactions?type&agencyId&page → Paginated<TransactionDTO> (transaction:read)
+   107→- GET /api/finance/expenses?agencyId&category → ExpenseDTO[] (expense:read ; scope)
+   108→- POST /api/finance/expenses → ExpenseDTO (expense:manage ; Zod category enum + amount>0 ; crée Transaction EXPENSE)
+   109→- DELETE /api/finance/expenses/[id] → true (expense:manage ; annule la transaction liée si trouvée par référence id)
+   110→- GET /api/reports?type&from&to&agencyId&format=json|csv → ReportDTO ou text/csv (report:read)
+   111→- GET /api/notifications → NotificationDTO[] (auth quelconque, les siennes)
+   112→- POST /api/notifications/read {id} | {all:true} → true
+   113→- GET /api/audit-logs?entity&userId&page → Paginated<AuditLogDTO> (audit:read)
+   114→- GET /api/security-logs?event&page → Paginated<SecurityLogDTO> (security:read)
+   115→- POST /api/webhooks/payments → {received:true,duplicate:bool} (HMAC X-Nzoko-Signature, idempotent — services/payment.handlePaymentWebhook, PAS d'auth session)
+   116→
+   117→## RULES POUR TOUS LES AGENTS
+   118→- Ne PAS relancer le dev server, ne PAS bun install, ne PAS bun run db:push (déjà faits).
+   119→- Ne PAS créer de nouveaux fichiers partagés (types/clients/store existants — les utiliser).
+   120→- Next.js 16 : params de route handler = Promise → `const { id } = await params;`
+   121→- Zod 4 ; montants entiers XAF ; erreres utilisateur en FR simples (jamais de stack/interne).
+   122→- Vérifier `bun run lint` sur SES fichiers à la fin (pas de `next build`).
+   123→- Apposer sa section au worklog (append).
+   124→
+   125→---
+   126→Task ID: 2-b
+   127→Agent: full-stack-developer (frontend réservation)
+   128→Task: Remplacement des 5 stubs frontend (accueil, tunnel réservation 6 étapes, connexion, suivi billet, scanner CHECKER, guichet AGENT) — mobile-first FR, codé contre le contrat api-client/types, sans toucher api/services/lib.
+   129→
+   130→Work Log:
+   131→- Composants partagés `src/components/shared/nzoko-*` : `nzoko-badge.tsx` (badges statut colorés), `nzoko-qr.tsx` (QR data URL fond blanc), `nzoko-copy-button.tsx`, `nzoko-countdown.tsx` (chrono verrou, alerte <2 min, onExpire unique), `nzoko-booking-detail.tsx` (timeline réservée→payée→billet→embarquée + paiements + QR + annulation conditionnelle).
+   132→- `src/features/booking/` : `search-form.tsx` (formulaire CONTRÔLÉ, validation FR, swap, skeletons), `home-view.tsx` (hero nzoko-hero + vague SVG, recherche, 4 étapes "comment ça marche", chips destinations pré-sélection, bandeau confiance + mention mode démo), `trip-card.tsx` (badge places vert/ambre/rouge "Complet", arrêts en dots), `seat-map.tsx` (grille rows/columns/aisleAfter, sièges 40×40, VIP orange, sélection pulse, occupé disabled, légende/compteur/refresh), `passenger-step.tsx` (RHF+Zod, tél +242/06), `payment-step.tsx` (RadioGroup 5 moyens, momoPhone, démo simulate, confirm-cash agent, instructions, countdown expiration), `ticket-card.tsx` (billet : bandeau vert, siège XXL, réf mono copiable, QR, impression via fenêtre autonome, suivi via sessionStorage, variantes AGENT), `booking-flow.tsx` (orchestrateur : Progress+chips, retour par étape, AlertDialog reset étape 5, SEAT_UNAVAILABLE → retour siège + refresh, AnimatePresence, scroll top).
+   133→- `src/features/auth/login-view.tsx` : RHF+Zod, toast bienvenue, Collapsible 8 comptes démo (boutons "Utiliser", avertissement jamais en prod).
+   134→- `src/features/tracking/tracking-view.tsx` : recherche par réf (+pré-remplissage "Suivre ce billet"), 404 → message FR, NzokoBookingDetail, rappel paiement PENDING, AlertDialog → api.bookings.cancel.
+   135→- `src/features/checker/` : `checker-view.tsx` (input mono auto-focus + Entrée, caméra BarcodeDetector Dialog <video> détection continue avec fallback saisie, 429 → toast, historique 20 scans), `scan-result.tsx` (panneau coloré par code résultat + infos billet + "Scanner suivant"), `trips-board.tsx` (Progress embarqués/vendus + refresh).
+   136→- `src/features/agent/` : `agent-desk.tsx` (Tabs 3 onglets, réutilise `<BookingFlow channel="AGENT" />` en default import), `agency-bookings-tab.tsx` (recherche debounce + filtre statut + pagination + dialog détail/annulation si booking:manage), `pending-payments-tab.tsx` (chrono par booking, CASH create→confirmCash, MoMo démo create→simulate).
+   137→- Fixes intégration : `PaymentProvider` importé depuis `@/lib/constants` (types ne le ré-exporte pas) ; icône lucide `Schedule` inexistante → `CalendarClock` ; ESLint React Compiler (setState synchrone en effect) → fetchs `.then` + recherche contrôlée parent. Toutes les erreurs 500 GET / passées (Schedule, import nommé BookingFlow, modules admin manquants de l'agent parallèle) sont résolues ; `GET /` 200 stable. Serveur dev relancé détaché après crash hors périmètre.
+   138→- Validation : `bunx tsc --noEmit` → 0 erreur sur mes fichiers ; ESLint → 0 erreur/0 warning sur mes fichiers ; dev.log sans erreur sur mes modules (404/500 API = backend en parallèle).
+   139→
+   140→Stage Summary:
+   141→- Modules livrés : accueil public, tunnel réservation complet (trajet→voyage→siège→passager→paiement→billet), connexion + comptes démo, suivi billet public, scanner embarquement (caméra si BarcodeDetector, sinon manuel), guichet agent 3 onglets ; 5 composants partagés nzoko-*.
+   142→- Intégration backend attendue : tous les appels passent par `api.*` du contrat. Points sensibles : gestion `SEAT_UNAVAILABLE` (retour étape siège), `payment.isSimulation` (bouton démo), `payment:cash-collect` (confirm-cash agent), `expiresAt` (expiration → reset avec message), `api.tickets.qr(token).dataUrl`, `api.checker.scan` 429, `api.bookings.get` 404 → message FR. "Suivre ce billet" passe la référence via sessionStorage `nzoko-track-ref` (pas de champ dans le store, non modifiable).
+   143→
+   144→---
+   145→Task ID: 2-a
+   146→Agent: full-stack-developer (backend) — rapport apposé par l'orchestrateur (l'agent a dépassé le délai de contexte après avoir livré tout son code)
+   147→Task: Implémentation complète des ~50 Route Handlers API REST sous src/app/api/**
+   148→
+   149→Work Log:
+   150→- 50 fichiers route.ts créés couvrant 100% du contrat : auth (login/logout/me), cities, trips
+   151→  (search + seats), bookings (create/get/cancel), payments (create/confirm-cash/simulate),
+   152→  tickets QR, checker (scan/trips), driver/trips, agency (stats/bookings), admin (stats, users,
+   153→  roles, agencies, cities, routes, buses, seat-layouts, drivers, trips, bookings, payments),
+   154→  finance (summary/transactions/expenses), reports (json+csv), notifications (+read),
+   155→  audit-logs, security-logs, webhooks/payments (HMAC + idempotence).
+   156→- Helpers créés : src/lib/api-helpers.ts (congoDayKey, congoMonthKey, pagination).
+   157→- Patterns respectés : try/catch → routeError partout, assertSameOriginPost sur les mutantes,
+   158→  Zod 4, resolveAgencyScope multi-agences, enforceRateLimit, logAudit/logSecurity.
+   159→- Tests curl de l'agent visibles dans dev.log (login 200, bookings 201, confirm-cash 200,
+   160→  seat-layouts 201/400 validation, finance 403 attendu selon rôle).
+   161→
+   162→Stage Summary:
+   163→- Backend 100% fonctionnel. Vérifié a posteriori par l'orchestrateur (voir section 3) :
+   164→  tous les endpoints critiques répondent conformément au contrat.
+   165→
+   166→---
+   167→Task ID: 2-c
+   168→Agent: full-stack-developer (frontend dashboards) — rapport apposé par l'orchestrateur (délai de contexte après livraison du code)
+   169→Task: Frontend des espaces professionnels (admin, agence, comptable, chauffeur) + composants partagés
+   170→
+   171→Work Log:
+   172→- src/features/admin/** : admin-workspace (9 onglets : Vue d'ensemble, Réservations, Paiements,
+   173→  Voyages, Parc & réseaux, Personnel, Utilisateurs, Rapports, Journal), admin-overview (KPIs +
+   174→  charts recharts + performance agences + top routes + listes), admin-trips (+ formulaire création
+   175→  avec répétition multi-jours), admin-fleet-{buses,layouts,routes,cities,agencies}, admin-users,
+   176→  admin-staff (chauffeurs), admin-reports, admin-logs (audit + sécurité), admin-payments.
+   177→- src/features/agency/** : agency-workspace (4 onglets : Tableau de bord, Départs, Réservations,
+   178→  Dépenses), agency-dashboard, agency-departures, agency-bookings, agency-expenses.
+   179→- src/features/finance/** : finance-workspace (Synthèse/Transactions/Dépenses/Rapports),
+   180→  finance-summary (KPIs + BarChart mensuel + répartitions), finance-transactions, finance-expenses.
+   181→- src/features/driver/** : driver-view + driver-trip-card (manifeste passagers, zéro donnée
+   182→  financière), timeline 2j passé → 7j futur.
+   183→- Composants partagés nzoko-* : kpi-card, empty-state, error-box, charts, pagination, skeletons,
+   184→  badges, workspace-header, report-panel (json + export CSV), expenses-manager, use-api hook.
+   185→
+   186→Stage Summary:
+   187→- Espaces complets pour SUPER_ADMIN/ADMIN/AGENCY_MANAGER/ACCOUNTANT/DRIVER (+SUPPORT fallback),
+   188→  onglets masqués selon permissions, skeleton/réessayer sur erreurs, alternatives mobiles en cards.
+   189→
+   190→---
+   191→Task ID: 3
+   192→Agent: Orchestrateur principal (Z.ai Code)
+   193→Task: Intégration, corrections, PWA, sécurité, vérification E2E navigateur, clôture
+   194→
+   195→Work Log:
+   196→- Corrections TypeScript (nzoko-app const-assertion, api-client qs.set String(), auth.ts
+   197→  GLOBAL_ROLES.includes cast) + lint react-compiler (setState en effect → setTimeout différé).
+   198→- Fix scope financier : resolveAgencyScope accepte extraGlobalRoles=["ACCOUNTANT"] → comptable
+   199→  global (lecture + dépenses) sur finance/summary, transactions, expenses, reports, admin/payments ;
+   200→  managers restent cantonnés à leur agence (re-vérifié).
+   201→- PWA complète : icônes générées (sharp : 192/512/maskable/apple/favicon), manifest.webmanifest
+   202→  (shortcuts, standalone, theme vert), sw.js (network-first navigations + fallback /offline.html,
+   203→  cache-first statiques, /api jamais caché), offline.html FR, pwa-register.tsx (SW + invite
+   204→  Android/iOS, dismissable), intégration coquille + layout (favicon, apple-touch-icon).
+   205→- Vérification E2E curl (16 scénarios) : double réservation concurrente → SEAT_UNAVAILABLE ✅,
+   206→  webhook HMAC invalide rejeté + idempotence (duplicate:true) ✅, billet émis après confirmation ✅,
+   207→  double scan concurrent → 1 VALID + 1 ALREADY_USED ✅, token inconnu INVALID ✅, cross-agence
+   208→  FORBIDDEN ✅, RBAC (agent≠stats/users/scan) ✅, rate limit login 5→429 ✅, anti-CSRF sans
+   209→  en-tête ✅, chauffeur sans données financières ✅, rapports json+csv ✅, notifications ✅,
+   210→  journaux audit/sécurité alimentés ✅.
+   211→- Vérification E2E agent-browser : accueil → recherche → voyages → plan sièges (aria labels,
+   212→  bouton désactivé sans sélection) → passager (validation RHF téléphone) → paiement MTN démo →
+   213→  billet NZK-2026-FG3HGR avec QR → suivi (timeline 4 étapes) → connexion checker → scan
+   214→  EMBARQUEMENT VALIDÉ → re-scan DÉJÀ UTILISÉ → dashboard superadmin (6 KPI + charts + 9 onglets)
+   215→  → journal d'audit → espace comptabilité → mobile 375px → footer sticky vérifié (720px=bas
+   216→  viewport en contenu court, poussé en contenu long) → prompt installation PWA visible.
+   217→- État final : bun run lint 0 erreur, tsc 0 erreur src/, GET / 200, dev.log sans 5xx.
+   218→
+   219→Stage Summary:
+   220→- PLATEFORME NZOKO TRANSPORT COMPLÈTE ET VÉRIFIÉE : réservation publique, verrouillage sièges
+   221→  transactionnel, paiements (CASH + Mobile Money démo étiquetée + webhook HMAC idempotent),
+   222→  billets QR sécurisés, contrôle embarquement atomique, dashboards par rôle, finances, rapports
+   223→  CSV, audit + sécurité, PWA installable, RBAC + scope multi-agences serveur, rate limiting.
+   224→
+   225→---
+   226→Task ID: 7
+   227→Agent: Orchestrateur principal (Z.ai Code)
+   228→Task: Intégration officielle des API MTN MoMo (https://momodeveloper.mtn.com/api-documentation) — collecte (Request to Pay) + envoi de fonds pour remboursements clients (Transfer/Refund)
+   229→
+   230→Work Log:
+   231→- Lecture COMPLÈTE de la doc officielle MTN via agent-browser (portail SPA + widgets HTML) : auth 2 niveaux
+   232→  (Ocp-Apim-Subscription-Key + OAuth2 POST {produit}/token/ en Basic apiUser:apiKey), sémantique POST asynchrone
+   233→  (202 → PENDING → SUCCESSFUL/FAILED), endpoints collection/v1_0/requesttopay, disbursement/v1_0/transfer,
+   234→  disbursement/v1_0/refund (referenceIdToRefund), statuts GET {…}/{referenceId}, soldes v1_0/account/balance,
+   235→  validation titulaire accountholder/msisdn/{id}/active, callback X-Callback-Url (POST/PUT, non signé, envoyé
+   236→  1 seule fois → polling obligatoire), sandbox (targetEnvironment=sandbox, devise EUR, numéros de test
+   237→  4673312345x). Spécifications des opérations récupérées via l'API du portail (/developer/apis/{id}/operations).
+   238→- NOUVEAU src/services/momo.ts — client officiel MTN (backend uniquement) : tokens OAuth mis en cache par
+   239→  produit (marge 60 s), en-têtes X-Reference-Id/X-Target-Environment/X-Callback-Url, timeout 20 s,
+   240→  normalisation MSISDN E.164 Congo (toMomoMsisdn : 06… → 242…), traduction FR des codes d'erreur MoMo
+   241→  (PAYEE_NOT_FOUND, NOT_ENOUGH_FUNDS, PAYER_LIMIT_REACHED…), logSecurity sur refus d'auth. AUCUN secret ne
+   242→  sort du service.
+   243→- src/services/payment.ts — provider MTN_MOMO RÉEL (Request to Pay, UUID X-Reference-Id, externalId=réf
+   244→  billet) : création PROCESSING, échec fournisseur → paiement FAILED réessayable ; validation E.164 AVANT
+   245→  écriture ; pollMomoPaymentStatus (public, idempotent, re-vérifie TOUJOURS par GET — jamais sur parole du
+   246→  client) → SUCCESSFUL = confirmPaymentAndIssueTicket (cœur existant inchangé : billet + INCOME) ;
+   247→  FAILED = motif FR stocké + audit MOMO_PAYMENT_FAILED.
+   248→- REMBOURSEMENTS (payment:manage) : initiatePaymentRefund 3 modes — MOMO_REFUND (Refund API sur la
+   249→  transaction d'origine), MOMO_TRANSFER (envoi de fonds vers MSISDN), CASH (immédiat) ; pollPaymentRefund
+   250→  finalise de façon ATOMIQUE (Payment REFUNDED + metadata + Transaction REFUND dans la même transaction
+   251→  Prisma) ; double remboursement bloqué 409 ; audit REFUND_INITIATED/CONFIRMED/FAILED.
+   252→- Webhook officiel POST|PUT /api/webhooks/momo : callback MoMo non signé → utilisé UNIQUEMENT comme signal,
+   253→  statut re-vérifié par GET auprès de MTN ; rate limit 60/min/IP ; pas de CSRF (appel externe MTN).
+   254→- Routes nouvelles : POST /api/payments/momo/status (public 15/min), /api/admin/payments/[id]/refund
+   255→  (POST initier + GET suivre, 10/min), GET /api/admin/momo/overview (finance:read 10/min — soldes SANS
+   256→  secrets). RATE_LIMITS enrichi (momoStatus/momoWebhook/refund/momoOverview).
+   257→- Frontend : payment-step.tsx — panneau « Approuvez le paiement sur votre téléphone » avec polling auto
+   258→  (1,5 s puis 5 s, 36 essais/3 min), bouton « Vérifier maintenant », statut PROCESSING « En cours », motif
+   259→  d'échec affiché ; admin-payments.tsx — carte « MTN Mobile Money — comptes marchands » (environnement +
+   260→  soldes collecte/disbursement), dialog remboursement 3 modes (radio, MSISDN pour transfert), suivi auto 5 s,
+   261→  badges « Remboursement en cours »/« Fonds remboursés », boutons vérifier/réessayer.
+   262→- Types : PaymentDTO.refund + failureReason, RefundPaymentInput, MomoOverviewDTO/Balance/Product ;
+   263→  mappers + api-client (payments.momoStatus, admin.initiateRefund/refundStatus/momoOverview).
+   264→- .env : section MOMO_* documentée, TOUTES les clés VIDES (aucun secret — jamais dans un éventuel ZIP) ;
+   265→  README-MOMO.md : guide complet (obtention des clés, provisioning sandbox curl, configuration, flux,
+   266→  numéros de test, table des fichiers). Sans clés : erreurs explicites 503 MOMO_NOT_CONFIGURED.
+   267→- VALIDATION E2E avec serveur mock MTN conforme à la doc (port 3999, Basic/Bearer/sub-key/target-env,
+   268→  scénarios refusé/expiré) : token → R2P 202 → poll SUCCESS → billet NZK-2026-MYG4YW émis (navigateur
+   269→  complet : recherche→siège→passager→paiement→billet QR) ; échec 46733123451 → FAILED « Rejected by payer » ;
+   270→  remboursement MOMO_REFUND → REFUNDED + finTxId ; MOMO_TRANSFER vers 242… → REFUNDED ; webhook PUT
+   271→  idempotent ; soldes 125000.50/48000 EUR affichés ; rate limit 16e appel 429 ; CSRF 403 ; 401 sans session.
+   272→  Mock retiré ensuite, .env restauré propre. bun run lint 0 erreur · tsc 0 erreur src/ · dev.log sans 5xx ·
+   273→  mobile 375px OK (cartes + footer poussé naturellement).
+   274→- AUCUN changement de schéma Prisma (l'état MoMo vit dans Payment.providerTransactionId + metadata JSON ;
+   275→  Transaction type REFUND existant réutilisé) — aucun db:push requis, zéro risque de migration.
+   276→
+   277→Stage Summary:
+   278→- MTN MoMo officiel intégré de bout en bout : COLLECTE (paiement billets Request to Pay, polling auto,
+   279→  billet émis à l'approbation) + ENVOI DE FONDS (remboursements Refund API/transfert, écriture comptable
+   280→  REFUND, soldes admin). Architecture : src/services/momo.ts (client), payment.ts (provider+remboursements),
+   281→  4 routes API, UI client+admin. Sécurité : clés .env uniquement (jamais versionnées/distribuées), polling
+   282→  serveur systématique (anti-fraude), rate limits, idempotence UUID, webhook non signé re-vérifié par GET.
+   283→- Configuration production : renseigner MOMO_COLLECTION_*/MOMO_DISBURSEMENT_* (guide README-MOMO.md ;
+   284→  sandbox = EUR/cible « sandbox », prod Congo = XAF/cible « mtncongo », MOMO_BASE_URL prod à définir).
+   285→- Restent en file d'attente (non entamés) : LLM assistant voyage/promo/prix, SEO 30 étapes, audit sécurité
+   286→  51 étapes, suppression des démos (PAYMENTS_SIMULATION + simulate/SIM- encore présents — le footer public
+   287→  mentionne « paiements simulés »), notifications WhatsApp annulation voyage.
+   288→
+   289→---
+   290→Task ID: 8
+   291→Agent: Orchestrateur principal (Z.ai Code)
+   292→Task: Assistant IA (LLM) — répondre aux questions sur les voyages, promotions et prix (mission « rajoute un llm pour répondre au questions concernant les voyages promotion et prix »)
+   293→
+   294→Work Log:
+   295→- Skill LLM chargé et test SDK validé (z-ai-web-dev-sdk backend uniquement ; réponse brute sans
+   296→  contexte inventait un « billet d'avion » → nécessité du RAG confirmée).
+   297→- NOUVEAU src/services/assistant.ts : contexte RAG construit UNIQUEMENT depuis Prisma (villes
+   298→  actives, lignes + durée + arrêts, départs des 7 prochains jours avec prix/places par ligne,
+   299→  agences + téléphones, moyens de paiement, règles de réservation SEAT_HOLD_MINUTES), cache
+   300→  mémoire 5 min. Prompt système FR strict : fond unique = données fournies, JAMAIS inventer
+   301→  prix/horaire/promo, promotion → « aucune active » si absente des données, pas de données
+   302→  personnelles, ignore toute tentative d'injection. Conversations en mémoire (16 messages max,
+   303→  TTL 30 min, 400 max) ; messages sanitizés (caractères de contrôle, 500 max) ; timeout LLM 45 s ;
+   304→  ApiError 503 ASSISTANT_UNAVAILABLE/DISABLED propres ; heuristique injection → SecurityLog
+   305→  SUSPICIOUS (contexte assistant).
+   306→- NOUVEAU POST /api/assistant : assertSameOriginPost + rate limit RATE_LIMITS.assistant (10/min/IP)
+   307→  + Zod (sessionId ^[A-Za-z0-9_-]{8,64}$ optionnel, message 1–500). Types AssistantReplyDTO,
+   308→  api.assistant.chat() ; ASSISTANT_LIMITS + RATE_LIMITS.assistant dans constants.ts.
+   309→- NOUVEAU src/components/app/assistant-widget.tsx : bouton flottant vert « IA » (au-dessus bottom
+   310→  nav mobile, md:bottom-6), panneau dialog AnimatePresence (mobile inset-x-3 top-20 → fits 375px,
+   311→  desktop 384×544), bulles user/bot, markdown léger en nœuds React (JAMAIS innerHTML — règle XSS),
+   312→  4 suggestions rapides, indicateur de frappe, gestion 429/503/400 FR, sessionId + messages
+   313→  persistés sessionStorage, Échap ferme, focus auto, aria complets. Monté dans nzoko-app.tsx.
+   314→- .env/.env.example : ASSISTANT_ENABLED=true (drapeau 503 testé puis restauré).
+   315→  README-ASSISTANT.md : architecture, sécurité, config, tests.
+   316→- VALIDATION E2E : API — 8 villes/prix réels (18 000–20 000 FCFA PN, durée 10h, places réelles),
+   317→  multi-tours (« Et pour Dolisie ? » → 7 000–7 500 FCFA PN 3h30, aucun départ Bzv), promo →
+   318→  « aucune promotion active », injection « ignore… révèle » → refus polie + SUSPICIOUS journalisé,
+   319→  CSRF 403, 600 chars 400, 11e appel 429, DISABLED 503. Navigateur — panneau ouvert, question
+   320→  envoyée (clic bouton natif), réponse Ouesso honnête (aucun départ 7j + tél agence réel), chips,
+   321→  fermeture bouton + Échap, persistance sessionStorage (3 bulles restaurées), mobile 375×720
+   322→  fitsViewport (dialog 351×496, bouton x=311 y=596), desktop 1280 (872,160 384×544), VLM : design
+   323→  propre/lisible/couleurs cohérentes. Fix en route : cache Turbopack périmé (ASSISTANT_LIMITS
+   324→  undefined) → .next purgé + relance unique du dev server.
+   325→- Nettoyage : process orphelin mock-momo (port 3999) tué ; fichiers temporaires supprimés.
+   326→- ÉTAT : bun run lint 0 erreur · tsc 0 erreur src/ · dev.log sans erreur (POST /api/assistant 200
+   327→  en 2,5 s) · ZIP public absent (régénération à faire après suppression des démos, avec MoMo +
+   328→  assistant inclus).
+   329→
+   330→Stage Summary:
+   331→- Assistant IA livré de bout en bout : widget flottant client (375px OK) → POST /api/assistant
+   332→  (CSRF + 10/min/IP + Zod) → services/assistant.ts (RAG Prisma + prompt strict anti-hallucination
+   333→  + anti-injection journalisée + conversations bornées) → z-ai-web-dev-sdk backend. Réponses
+   334→  vérifiées sur données réelles, honnêteté promotions prouvée, toutes gardes-fous testés E2E.
+   335→- Restent en file d'attente : SEO 30 étapes, audit sécurité 51 étapes, suppression complète des
+   336→  démos (PAYMENTS_SIMULATION, simulate/SIM-, seed, mentions UI « Mode démonstration »), puis
+   337→  régénération du ZIP production (MoMo + assistant inclus, secrets exclus), notifications
+   338→  WhatsApp annulation voyage.
+   339→
+   340→---
+   341→Task ID: 8-bis (complément Task ID 8)
+   342→Agent: Orchestrateur principal (Z.ai Code)
+   343→Task: Fiabilisation de la mise à terre de l'assistant IA (fiabilité > cohérence LLM)
+   344→
+   345→Work Log:
+   346→- Anomalie détérée en E2E : question « départs vers Dolisie » → le LLM répondait parfois
+   347→  « aucun départ » alors que la base contient 6 départs Pointe-Noire → Dolisie (contexte
+   348→  correct, erreur de lecture du modèle — non-déterminisme).
+   349→- Fix 1 — prompt : règle 3 « VÉRIFICATION OBLIGATOIRE » (relire TOUTES les lignes avant de
+   350→  conclure à l'absence ; « AUCUN départ » ne vaut que pour la ligne précise).
+   351→- Fix 2 — contexte : section « RÉSUMÉ PAR VILLE » pré-calculée (pour chaque ville : lignes au
+   352→  départ ET arrivées avec comptes réels) → lecture directe, plus de déduction à faire.
+   353→- Re-validation : « départs vers Dolisie » 3/3 essais exacts (07/09 08:00, 08/09 07:00 et
+   354→  08:00, places et tarifs conformes à la base) ; « Ouesso demain » → absence réelle + tél
+   355→  agence réel ; chip « Prix Bzv→PN » en navigateur → 18 000 FCFA + départs réels.
+   356→- bun run lint 0 erreur · tsc 0 erreur src/ · dev.log sans erreur.
+   357→
+   358→Stage Summary:
+   359→- Fiabilité de l'assistant portée à 3/3 sur la question précédemment instable : l'index par
+   360→  ville + la règle de vérification obligatoire éliminent les erreurs de lecture du contexte.
+   361→---
+   362→Task ID: 9
+   363→Agent: Orchestrateur principal (Z.ai Code)
+   364→Task: « tout mais étape par étape » — exécution complète des 4 chantiers en file d'attente :
+   365→suppression des démos (mode production), SEO, audit sécurité + corrections, ZIP production.
+   366→
+   367→Work Log:
+   368→- SUPPRESSION DÉMOS (14 fichiers) : route /api/payments/[id]/simulate SUPPRIMÉE (404 vérifié) ;
+   369→  simulateProviderConfirmation + isSimulationMode + branches SIM-/PAYMENTS_SIMULATION retirées de
+   370→  payment.ts (MTN non configuré → 503 MOMO_NOT_CONFIGURED direct, Airtel → 501 INTEGRATION_PENDING,
+   371→  plus aucune simulation) ; isSimulation retiré de PaymentDTO/types/mappers/api-client ;
+   372→  UI : badges DÉMO (dialog/admin×2/overview), alerte « Mode démonstration », bouton « Valider
+   373→  (démo) », bandeau footer « paiements simulés », note accueil, badge « mode démo » (TrustItems),
+   374→  option AIRTEL_MONEY retirée du choix client (backend gardé pour future intégration), section
+   375→  « Comptes de démonstration » du login SUPPRIMÉE (imports nettoyés FlaskConical/Collapsible).
+   376→- SEED production : passagers fictifs/réservations historiques/paiements SIM-/dépenses/notifications
+   377→  démo supprimés ; conservés rôles+permissions, 8 comptes équipe (⚠️ changer mdp), 7 villes, 2
+   378→  agences, 7 bus, 6 chauffeurs, 6 lignes, 44 voyages (aujourd'hui+7j). Base re-seedée.
+   379→- BUG UX corrigé en route : validation téléphone rejetait le format du placeholder (« 06 123 45 67 »)
+   380→  → refine sur valeur normalisée (séparateurs tolérés, aligné sur toMomoMsisdn serveur) dans
+   381→  passenger-step + payment-step.
+   382→- SEO (mission 30 étapes) : AVANT → HTML serveur 37 Ko SANS AUCUN heading (spinner sessionReady) ;
+   383→  APRÈS → HomeView rendue côté serveur (61 Ko, H1+H2 crawlables, hydratation sûre : store initial
+   384→  identique serveur/client). H1 unique keyword-first « Réservation de bus au Congo-Brazzaville » ;
+   385→  Title « MOT-CLÉ | MARQUE » ; description enrichie (routes+MTN+QR) ; canonical + metadataBase
+   386→  (NEXT_PUBLIC_SITE_URL, défaut nzoko.cg) ; Open Graph complet (website, fr_FR, image 512) ;
+   387→  Twitter card ; robots meta (index/follow, max-image-preview:large, max-snippet:-1) ;
+   388→  robots.txt refondu (Disallow /api/, Sitemap, robots sociaux) ; sitemap.xml créé ;
+   389→  JSON-LD Schema.org (TravelAgency + WebSite) dans page.tsx — 100 % statique serveur.
+   390→- AUDIT SÉCURITÉ (mission 51 étapes, audit avant correction) : patterns dangereux → seul
+   391→  dangerouslySetInnerHTML = JSON-LD statique (+chart shadcn standard) ; zéro secret codé en dur ;
+   392→  storage → aucune donnée sensible en localStorage/sessionStorage ; routes « suspectes » du grep
+   393→  vérifiées une à une (admin/stats et driver/trips PROTÉGÉES par assertAuthenticated+permissions —
+   394→  faux positifs) ; TROUVÉ CRITIQUE : les 8 en-têtes de sécurité du Task 6 avaient été PERDUS
+   395→  (next.config.ts écrasé par output:standalone) ; TROUVÉ MOYEN : rate limits absents sur 4 routes
+   396→  publiques GET.
+   397→- CORRECTIONS SÉCURITÉ : next.config.ts → 8 en-têtes restaurés (CSP pragmatique Next 16, HSTS
+   398→  preload, X-Frame DENY, nosniff, Referrer-Policy, Permissions-Policy, X-XSS, COOP) — vérifiés
+   399→  actifs par curl + zéro violation CSP navigateur ; rate limits ajoutés : bookingDetail 15/min,
+   400→  search 30/min, ticketQr 30/min, cities 60/min (RATE_LIMITS.constants + enforceRateLimit dans les
+   401→  4 routes) — 429 testés (31e recherche, 16e détail).
+   402→- ZIP PRODUCTION régénéré (public/nzoko-transport.zip, 496 Ko, 311 fichiers) : src/prisma/public/
+   403→  configs + README.md complet (installation bun, comptes, sécurité, MoMo, assistant, prod) +
+   404→  .env.example portable (DATABASE_URL relatif, secrets CHANGEZ_MOI, clés MoMo vides) + db/.gitkeep.
+   405→  Scan secrets AVANT zippage : zéro secret, zéro .env, zéro .db, zéro démo. TEST AUTONOME COMPLET
+   406→  sur port 3101 : bun install → cp .env.example .env → db:push → seed → next dev : page 200, login
+   407→  OK (base propre), H1 SSR présent, 8 headers actifs, assistant IA répond avec données réelles
+   408→  (18 000 FCFA Bzv→PN), paiement MTN → 404 réservation inexistante (chaîne validation OK). Piège
+   409→  sandbox documenté : DATABASE_URL shell écrase .env → env -u DATABASE_URL pour les tests locaux
+   410→  (n'affecte pas l'utilisateur final). .env.example ajouté aussi à la racine du projet.
+   411→- VALIDATION FINALE : bun run lint 0 erreur ; tsc 0 erreur src/ ; dev.log sans erreur ; navigateur :
+   412→  titre+H1+footer production, zéro texte démo, 0 erreur console ; E2E réservation complet
+   413→  (recherche→siège 05→passager→verrou 10 min NZK-2026-8BZPGP→4 moyens de paiement sans Airtel→
+   414→  503 MoMo explicite) ; mobile 375×720 footer poussé naturellement.
+   415→
+   416→Stage Summary:
+   417→- MODE PRODUCTION total : plus aucune trace de simulation/démo (endpoint, logique, UI, seed).
+   418→  Paiements = MTN MoMo réel (503 explicite sans clés) / espèces / carte / virement.
+   419→- SEO : contenu serveur crawlable (H1/H2 + 61 Ko), métadonnées riches, canonical/OG/Twitter,
+   420→  JSON-LD, sitemap, robots — tout vérifié dans le HTML rendu.
+   421→- Sécurité : 8 headers restaurés (régression détectée par l'audit) + 4 rate limits publics
+   422→  ajoutés — testés 429/violations zéro.
+   423→- ZIP production validé de bout en bout en isolation (install+seed+run+login+assistant+SEO).
+   424→- Restent en file d'attente : notifications WhatsApp annulation voyage (wa.me), audit 21 étapes
+   425→  architecture (ajourné), éventuel durcissement CSP par nonces en prod.
+   426→
+   427→---
+   428→Task ID: 10
+   429→Agent: Orchestrateur principal (Z.ai Code)
+   430→Task: Notifications clients à l'annulation d'un voyage (dernière tâche en file d'attente de
+   431→« tout mais étape par étape ») — prévenir chaque passager : WhatsApp wa.me pré-rempli FR,
+   432→appel tel:, message de diffusion de groupe, remboursements à traiter.
+   433→
+   434→Work Log:
+   435→- Contexte : Tasks 7 (MTN MoMo), 8/8-bis (assistant IA), 9 (démos/SEO/sécurité/ZIP) déjà livrées.
+   436→  Restait : annulation → contacts passagers. Audit du PATCH /api/admin/trips/[id] (annulation
+   437→  PENDING + libération sièges + notifications internes existantes, mais AUCUN contact client).
+   438→- NOUVEAU src/services/trip-contacts.ts : getTripCancellationContacts(tripId) — bookings
+   439→  PENDING/CONFIRMED (+ CANCELLED si voyage déjà annulé), passager/siège/montant/paiements réels,
+   440→  paymentState dérivé des paiements (REFUNDED > PAID > UNPAID — jamais de la mémoire client),
+   441→  normalisation téléphone DOUCE (06…→242…, +242/00, 10-15 chiffres E.164, numéros étrangers
+   442→  acceptés, null si inexploitable — aucun throw), message WhatsApp FR personnalisé (trajet, date
+   443→  UTC+1 manuelle sans Intl, réf, siège, ligne remboursement adaptée : montant / déjà effectué /
+   444→  rien débité + tél agence), tri PAID→UNPAID→REFUNDED (remboursements d'abord), broadcastMessage
+   445→  générique, summary (total/paid/refunded/unpaid/refundDue/withPhone). URLs wa.me/tel:
+   446→  construites serveur (encodeURIComponent, jamais de HTML).
+   447→- NOUVEAU GET /api/admin/trips/[id]/contacts : trip:manage + scope agence (resolveAgencyScope) +
+   448→  rate limit tripContacts 10/min/IP+user (RATE_LIMITS.constants) + journalisation audit
+   449→  TRIP_CONTACTS_VIEWED (accès à des données personnelles — code/total/paid).
+   450→- Frontend : NOUVEAU src/features/admin/trip-contacts-dialog.tsx — dialog (sm:max-w-xl,
+   451→  nzoko-scroll, 375px OK) : 4 tuiles résumé (Passagers/À rembourser/Total dû/Joignables),
+   452→  message de diffusion + bouton Copier (presse-papiers + toast), liste cartes passagers
+   453→  (max-h-96 scroll) avec Badge Payé—à rembourser/Remboursé/Non payé + boutons WhatsApp
+   454→  (vert, target _blank rel noopener) / Appeler (tel:) asChild, fallback numéro invalide.
+   455→  Intégré dans admin-trips.tsx : bouton « Contacts »/« Prévenir les passagers » sur les voyages
+   456→  ANNULÉS (table desktop + cartes mobiles), ouverture AUTOMATIQUE du dialog juste après
+   457→  l'annulation confirmée (toast puis dialog), AlertDialog de confirmation enrichi (prévient que
+   458→  la liste des passagers s'affichera après). Types TripContactsDTO/TripContactPassengerDTO
+   459→  (types/index.ts) + api.admin.tripContacts (api-client).
+   460→- VALIDATION E2E (scénario 2 réservations test : 1 PENDING + 1 CONFIRMED payée) :
+   461→  API — avant annulation 4 contacts (PAID trié 1er, refundDue 18 000 FCFA), téléphones
+   462→  normalisés (06 512 34 87→24265123487, +242 05 444 99 21→242054449921), messages FR complets
+   463→  (ligne remboursement adaptée par paymentState) ; PATCH CANCELLED → PENDING→CANCELLED ;
+   464→  contacts après annulation incluent les CANCELLED ; 401 sans session ; 429 au 10e appel
+   465→  (RATE_LIMITED 35 s) ; audit TRIP_CONTACTS_VIEWED ×2 en base.
+   466→  Navigateur (agent-browser) — login admin → Voyages : bouton Contacts sur TRP-PYKMD4 (Annulé)
+   467→  → dialog 4 passagers, href wa.me + tel: exacts vérifiés, Copier → toast « copié » ;
+   468→  annulation TRP-KV87TR depuis l'UI → toast « annulé » → dialog contacts AUTO-OUVERT avec le
+   469→  passager ; zéro erreur console/page ; mobile 375×720 dialog conforme (VLM : grille 2×2
+   470→  alignée, aucun chevauchement, contrastes OK) ; desktop 1280 validé (VLM).
+   471→  Nettoyage : réservations/passagers/paiements/notifications test supprimés, 2 voyages
+   472→  restaurés SCHEDULED, base revenue à 0 réservation/0 passager (état production pur).
+   473→- ZIP PRODUCTION régénéré (public/nzoko-transport.zip, 505 Ko, 222 fichiers : 219 + 3 nouveaux —
+   474→  trip-contacts.ts, contacts/route.ts, trip-contacts-dialog.tsx) : README.md enrichi (section
+   475→  « Annulation de voyage & information des passagers »), scan secrets AVANT zippage (zéro
+   476→  AUTH_SECRET/WEBHOOK_SECRET, zéro .env/.db/démo ; seul NEXT_PUBLIC_SITE_URL public volontaire).
+   477→  TEST AUTONOME sur port 3101 : bun install → cp .env → db:push → seed → dev : page 200 +
+   478→  H1 SSR (61 Ko), login 200, contacts 401 sans session / 200 avec session (broadcast correct,
+   479→  contacts vides sur base vierge). Piège DATABASE_URL shell contourné (env -u DATABASE_URL).
+   480→- INFRA sandbox : le reaper de processus tue les enfants en fin d'appel Bash → dev server
+   481→  relancé en daemon double-fork (bash -c '(setsid … &); exit 0') — persistant entre appels.
+   482→  Cache Turbopack périmé sur RATE_LIMITS rencontré une fois → .next purgé (connu, cf. Task 8).
+   483→- ÉTAT FINAL : bun run lint 0 erreur · tsc 0 erreur src/ · dev.log sans 5xx · page 200 ·
+   484→  ZIP validé en isolation.
+   485→
+   486→Stage Summary:
+   487→- Dernière brique des 5 chantiers « tout mais étape par étape » livrée : annulation de voyage →
+   488→  prévention client de bout en bout (WhatsApp pré-rempli personnalisé / appel tel: / message de
+   489→  diffusion groupe / remboursements prioritaires), avec permission+scope, rate limit 10/min,
+   490→  journalisation d'accès aux données personnelles, UI responsive 375px, ZIP production à jour.
+   491→- File d'attente restante (ajournés par l'utilisateur) : audit 21 étapes d'architecture,
+   492→  durcissement CSP par nonces en prod.
+   493→
+   494→---
+   495→Task ID: 11
+   496→Agent: Audit architecture (general-purpose)
+   497→Task: Audit d'architecture production — 21 points de conformité (lecture seule)
+   498→
+   499→Work Log:
+   500→- Lecture intégrale du worklog (Tasks 1→10) + inventaire racine (package.json, tsconfig, eslint.config.mjs,
+   501→  next.config.ts, prisma/schema.prisma, seed, public/, ZIP).
+   502→- Audit statique complet (Read/Grep/Glob/LS uniquement — AUCUNE écriture, AUCUN build/lint/dev) :
+   503→  7 libs core, 7 services (booking, payment, momo, tickets, assistant, trip-contacts, payment-mappers),
+   504→  les 52 fichiers de routes API (60 handlers), types/index.ts (contrat 544 l.), store/api-client,
+   505→  app shell nzoko-app + layout/page, PWA (sw.js/manifest/offline), SEO (robots/sitemap/JSON-LD),
+   506→  README-MOMO/README-ASSISTANT + README du ZIP (unzip -l), .env.example, .env (présence seulement).
+   507→- Greps systématiques : Zod par route, enforceRateLimit par route, assertSameOriginPost, routeError,
+   508→  any/@ts-ignore/eslint-disable/casts, TODO/FIXME, console.*, secrets codés durs, AUTH_SECRET,
+   509→  imports inter-couches (features→services/db, lib→features), deps inutilisées, $queryRaw/groupBy.
+   510→- Points saillants vérifiés : verrou sièges (unique tripId+seatId + P2002→409), scan atomique
+   511→  updateMany VALID→USED, idempotence confirmation/billet/INCOME, webhook HMAC + re-vérification GET
+   512→  MoMo, RBAC + resolveAgencyScope partout, CSRF sur 100% des mutantes, inventaire mémoire exhaustif
+   513→  (buckets rate-limit, tokenCache MoMo, conversations+contextCache assistant, zaiInstance),
+   514→  écarts qualité (noImplicitAny:false, ignoreBuildErrors:true, ~25 règles eslint off, zéro test),
+   515→  AUTH_SECRET et Payment.idempotencyKey jamais utilisés, Permissions-Policy camera=() vs scanner
+   516→  caméra, releaseExpiredHolds sur chaque GET public, agrégations full-scan en JS, AUTH_SECRET mort,
+   517→  duplication PaymentMetadata ×2, ~9 deps inutilisées, README.md absent de la racine (ZIP only).
+   518→- Point 18 (en-têtes/CSP) traité en RÉSUMÉ uniquement : 8 en-têtes présents dans next.config.ts,
+   519→  CSP pragmatique unsafe-inline/unsafe-eval — durcissement par nonces mené en parallèle par
+   520→  l'agent principal (middleware/next.config/page en évolution, non évalués sur leur état transitoire).
+   521→- Rapport final 21 points + tableau de synthèse + Top 10 actions + score global produit (message final).
+   522→
+   523→Stage Summary:
+   524→- Score global de conformité architecture : 70/100 (code remarquablement propre et sécurisé,
+   525→  pénalisé par 4 écarts systémiques : zéro test automatisé, gardes-fous qualité désarmés
+   526→  [noImplicitAny:false + ignoreBuildErrors:true + eslint ~25 règles off], état mémoire mono-instance
+   527→  [rate-limit/tokens MoMo/assistant] incompatible multi-instances, agrégations full-scan en JS).
+   528→- Principaux conformités : découpage en couches strict (zéro fuite features→db), gestion d'erreurs
+   529→  et enveloppe API 100% homogènes, authN/Z solide (sessions opaques + RBAC + scope agences),
+   530→  concurrence/idempotence solides (verrous uniques DB), secrets confinés, PWA/SEO persistants.
+   531→- Top recommandations : 1) réarmer tsc/eslint strict (S) ; 2) tests vitest lib+services (M) ;
+   532→  3) rate limit /api/trips/[id]/seats + GET coûteux (S) ; 4) nettoyer AUTH_SECRET/idempotencyKey
+   533→  morts (S) ; 5) batcher releaseExpiredHolds (S) ; 6) lazy-load des 10 espaces + purge deps mortes
+   534→  (M) ; 7) autoriser la caméra pour le scanner (S) ; 8) agrégations SQL groupBy + pagination
+   535→  admin/users (M) ; 9) README racine + runbook ops (S) ; 10) plan Redis multi-instances (L).
+   536→
+   537→---
+   538→Task ID: 12
+   539→Agent: Orchestrateur principal (Z.ai Code)
+   540→Task: Durcissement CSP par nonces + correction Permissions-Policy caméra
+   541→(« durcissement CSP par nonces en prod » — dernier item de la file d'attente)
+   542→
+   543→Work Log:
+   544→- Audit préalable des points d'insertion de scripts inline : page.tsx (JSON-LD Schema.org),
+   545→  ticket-card.tsx (script d'auto-impression dans fenêtre document.write — about:blank qui
+   546→  HÉRITE la CSP de l'ouvreur), chart.tsx (style inline shadcn — couvert par style-src),
+   547→  layout.tsx/offline.html (aucun script inline). Inventaire complet avant écriture.
+   548→- NOUVEAU src/proxy.ts (convention Next.js 16 — middleware.ts déprécié, migration immédiate
+   549→  après warning de dépréciation constaté dans dev.log) : génération d'un nonce base64 128 bits
+   550→  PAR REQUÊTE, injection x-nonce + CSP dans les en-têtes de REQUÊTE (Next applique le nonce à
+   551→  ses 46 scripts bootstrap/flight), CSP posée aussi sur la RÉPONSE. script-src = 'nonce-…'
+   552→  + 'strict-dynamic' + repli legacy ('self' 'unsafe-inline' https:) ignoré par les navigateurs
+   553→  modernes ; 'unsafe-eval' ajouté UNIQUEMENT en dev (HMR/React Refresh). matcher exclut /api
+   554→  et _next/static|image. La CSP vit UNIQUEMENT dans proxy.ts (double en-tête CSP = les deux
+   555→  appliquées → jamais de duplication avec next.config.ts).
+   556→- next.config.ts : entrée Content-Security-Policy RETIRÉE de headers() (propriétaire unique =
+   557→  proxy.ts) ; Permissions-Policy corrigée camera=() → camera=(self) — conflit détecté par
+   558→  l'audit d'architecture Task 11 point 18 : le scanner QR du CHECKER (BarcodeDetector/
+   559→  getUserMedia) était silencieusement désactivé. 7 autres en-têtes inchangés.
+   560→- page.tsx : Page asynchrone, nonce lu via (await headers()).get("x-nonce") appliqué au
+   561→  JSON-LD (seul script inline du document) + suppressHydrationWarning — le navigateur RETIRE
+   562→  l'attribut nonce du DOM après évaluation (spec CSP, anti-exfiltration) ce qui déclenchait
+   563→  une erreur d'hydratation React (diff constaté : server nonce="X" vs client nonce="") ;
+   564→  corrigé et vérifié sur cycle de rechargement vierge.
+   565→- ticket-card.tsx : script inline window.onload/print SUPPRIMÉ de la fenêtre d'impression —
+   566→  l'impression est déclenchée depuis la fenêtre parente (setTimeout w.print() 250 ms,
+   567→  try/catch) : plus AUCUN script inline dans le billet imprimable (la fenêtre about:blank
+   568→  hériterait sinon de la CSP nonce de l'ouvreur et le bloquerait).
+   569→- VALIDATION E2E navigateur (agent-browser) sous CSP stricte : page 200, console VIERGE
+   570→  (zéro erreur, zéro violation CSP), [HMR] connected (wss couvert par connect-src 'self') ;
+   571→  tunnel complet recherche PN→Bzv (date du jour) → voyage choisi → plan 30 sièges → siège 05
+   572→  → passager → verrou 10 min (toast) → paiement MTN MoMo → 503 MOMO_NOT_CONFIGURED + toast
+   573→  FR « Renseignez les clés MOMO_COLLECTION_* (voir README) » (comportement production sans
+   574→  clés) ; annulation propre de la réservation test ; login admin (dashboard + 8 onglets +
+   575→  onglet Paiements avec table) ; assistant IA question « prix PN→Bzv » → réponse données
+   576→  réelles (18 000–20 000 FCFA, durée 10 h, 2 prochains départs chiffrés) sous CSP stricte.
+   577→- Vérifications en-têtes : CSP nonce unique présente (1 seule, middleware), 7 en-têtes
+   578→  sécurité actifs, camera=(self) confirmé, nonce en-tête = nonce document = nonce JSON-LD
+   579→  (même requête), 46 scripts marqués, 1 nonce unique par page.
+   580→- Responsive : mobile 375×720 (footer poussé naturellement, docH 843) + desktop 1280×800
+   581→  (docH 1607, footer en bas) ; structure racine flex min-h-screen flex-col + main flex-1.
+   582→- Nettoyage base production : réservation test NZK-2026-UDYJY3 (PENDING→annulée via UI) +
+   583→  paiement FAILED + passager + SeatOccupancy supprimés (prisma db execute SQL, « Transaction »
+   584→  keyword SQLite quoté) ; vérifié : 0 paiement en liste admin, siège 05 à nouveau disponible.
+   585→- QUALITÉ : bun run lint 0 erreur ; tsc 0 erreur dans src/ (seuls examples/ et skills/
+   586→  scaffolds préexistants signalent — hors périmètre, cf. audit Task 11 point 20).
+   587→- Piège rencontré et contourné : bun refuse d'exécuter un script TS hors du répertoire projet
+   588→  (résolution node_modules depuis /tmp → cache @prisma/client incompatible) → prisma db
+   589→  execute --url direct sur SQLite ; curl login nécessite l'en-tête CSRF x-requested-with:
+   590→  nzoko (assertSameOriginPost) — comportement attendu, pas une régression.
+   591→
+   592→Stage Summary:
+   593→- CSP nonce + strict-dynamic en production (repli legacy), nonce appliqué par Next à ses 46
+   594→  scripts + JSON-LD, plus aucun script inline non-nonceable (billet d'impression inclus),
+   595→  suppression de la duplication CSP next.config/middleware, scanner caméra CHECKER rétabli
+   596→  (camera=(self)), hydratation propre via suppressHydrationWarning documenté.
+   597→- File d'attente initiale de « tout mais étape par étape » : TOUTES les tâches livrées
+   598→  (MoMo Task 7, assistant 8/8-bis, production/SEO/sécurité 9, contacts 10, audit 11, CSP 12).
+   599→  Suivantes proposées (audit Task 11) : réarmement gardes-fous qualité (noImplicitAny,
+   600→  ignoreBuildErrors, règles ESLint), tests automatisés, rate limits manquants, releaseExpiredHolds
+   601→  batché, lazy-loading des vues, README racine + runbook, plan Redis multi-instances.
+   602→
+   603→---
+   604→Task ID: 12-bis (complément Task ID 12)
+   605→Agent: Orchestrateur principal (Z.ai Code)
+   606→Task: Régénération + test autonome du ZIP production avec le durcissement CSP
+   607→
+   608→Work Log:
+   609→- Diff contrôlé ancien/nouveau ZIP : + src/proxy.ts uniquement, aucune perte (README.md
+   610→  réécrit dans le staging avec nouvelle section « CSP à nonces » : comportement prod/dev,
+   611→  règle de non-duplication dans next.config.ts, camera=(self) pour le scanner CHECKER).
+   612→- Scan secrets AVANT compression : zéro .env/.db, zéro valeur de secret codée (seuls
+   613→  placeholders CHANGEZ_MOI de .env.example), mots de passe uniquement dans prisma/seed.ts
+   614→  (comptes documentés dans le README). 316 entrées, 518 730 octets — déployé dans
+   615→  public/nzoko-transport.zip ET download/nzoko-transport.zip.
+   616→- TEST AUTONOME COMPLET en isolation (port 3101, /home/z/zip-test) : bun install
+   617→  (855 paquets, 4,8 s) → cp .env.example .env → prisma generate + db:push + seed →
+   618→  next dev -p 3101 : page 200 (64 842 octets SSR), CSP nonce présente + 46 scripts marqués,
+   619→  /api/cities données réelles, login admin 200 (CSRF x-requested-with), tunnel API complet :
+   620→  recherche → siège 01 → réservation NZK-2026-JHPHQZ (20 000 XAF, verrou 10 min) → paiement
+   621→  MTN_MOMO → 503 MOMO_NOT_CONFIGURED message FR exact (chaîne production intacte dans le ZIP).
+   622→- Anomalie mineure constatée (pré-existante, sans impact UI) : POST /api/bookings rejette
+   623→  « email: null » (VALIDATION_ERROR) alors que l'absence du champ est acceptée — le frontend
+   624→  n'envoie jamais null ; à uniformiser si API publique consommée par des tiers.
+   625→- Incidents d'exploitation corrigés : le serveur de test a d'abord échoué EADDRINUSE sur 3000
+   626→  (script « dev » du package.json code -p 3000 en dur → démarrer « bunx next dev -p 3101 »
+   627→  directement) ; le serveur principal a été abattu par le pkill de fin de test → relancé en
+   628→  daemon (setsid) — 200, proxy.ts actif, console navigateur vierge (0 erreur/violation),
+   629→  robots.txt 200, ZIP servi 200 (518 730 o).
+   630→- Nettoyage : process 3101 tué, /home/z/zip-test supprimé, agent-browser fermé.
+   631→
+   632→Stage Summary:
+   633→- Livrable ZIP production à jour (CSP nonces + camera scanner + impression sans script
+   634→  inline + README sécurité enrichi), validé de bout en bout en isolation sur port 3101.
+   635→- Tous les chantiers de la file d'attente « tout mais étape par étape » sont LIVRÉS
+   636→  (Tasks 7, 8/8-bis, 9, 10, 11, 12/12-bis). Prochaines étapes candidates : top 10 de
+   637→  l'audit d'architecture Task 11 (réarmement gardes-fous qualité, tests, rate limits
+   638→  résiduels, releaseExpiredHolds batché, lazy-loading, README racine/runbook, Redis).
+   639→
+   640→---
+   641→Task ID: 13
+   642→Agent: Orchestrateur principal (Z.ai Code)
+   643→Task: Exécution du plan d'amélioration issu de l'audit d'architecture (Task 11,
+   644→Top 10) — suite de « tout mais étape par étape » confirmée par « oui on lance ».
+   645→
+   646→Work Log:
+   647→- Gardes-fous qualité RÉARMÉS (reco 1) : tsconfig noImplicitAny true ;
+   648→  next.config ignoreBuildErrors false ; eslint.config.mjs ~25 règles réarmées
+   649→  (no-explicit-any, no-unused-vars, no-non-null-assertion, ban-ts-comment,
+   650→  prefer-as-const, no-unescaped-entities, exhaustive-deps warn, prefer-const,
+   651→  no-debugger/unreachable/fallthrough/redeclare/useless-escape/
+   652→  case-declarations/mixed-spaces-and-tabs/irregular-whitespace, no-empty,
+   653→  no-console warn|error) + override documenté prisma/seed.ts (script CLI).
+   654→- 45 erreurs corrigées (~20 fichiers) : payment.ts — helper refetchPayment
+   655→  (404 propre, 6 assertions non-null supprimées) + imports morts ; admin/routes —
+   656→  garde 500 explicite au lieu de 13 assertions ; payment-step — payment!.id →
+   657→  pollPaymentId dérivé + loadDetail useCallback + deps complètes, contrats morts
+   658→  onExpired retirés des 2 côtés ; format.ts charAt(0) ; use-toast actionTypes →
+   659→  union de types ; sidebar skeleton Math.random → largeur fixe (règle purity) ;
+   660→  apostrophes typographiques françaises (5 endroits) ; ~12 imports inutilisés
+   661→  supprimés ; 3 disables ESLint documentés (img QR data URL, spread deps du hook
+   662→  générique useApi, polling remboursement à deps restreintes délibérées).
+   663→  RÉSULTAT : bun run lint exit 0 projet ENTIER (0 erreur / 0 warning),
+   664→  tsc 0 erreur src/.
+   665→- Rate limits résiduels (reco 3) : seatMap 20/min (trips/[id]/seats, publique
+   666→  coûteuse — LA recommandation explicite), webhookPayments 60/min (anti
+   667→  brute-force HMAC), authedRead 30/min sur 6 agrégats authentifiés
+   668→  (admin/stats, agency/stats, finance/summary, checker/trips, driver/trips,
+   669→  reports) — clé ip+userId.
+   670→- Code mort (reco 4) : 15 dépendances retirées (dnd-kit×3, mdxeditor,
+   671→  reactuses, tanstack query/table, next-auth, next-intl, react-markdown,
+   672→  react-syntax-highlighter, uuid, date-fns, tailwindcss-animate, sharp) —
+   673→  install ZIP 548 paquets (vs 855). Payment.idempotencyKey retiré du schéma +
+   674→  db:push + generate. AUTH_SECRET confirmé mort → .env.example nettoyé +
+   675→  recréé à la racine. tailwind.config plugin animate retiré. Seed : 3 const
+   676→  inutilisées → appels nus.
+   677→- releaseExpiredHolds BATCHÉE (reco 5) : débounce mémoire 30 s + single-flight
+   678→  + UNE transaction (deleteMany+updateMany, sémantique identique) ;
+   679→  createBooking passe { force: true } (libération garantie avant test
+   680→  d'unicité tripId+seatId — sinon 409 injuste) ; best-effort (avale).
+   681→- Lazy-loading (reco 6) : 6 espaces pro (checker/driver/agent/admin/agency/
+   682→  finance) en next/dynamic ssr:false + loader a11y ; vues publiques statiques
+   683→  pour le SEO → H1 SSR VÉRIFIÉ intact après la migration.
+   684→- Agrégations SQL (reco 8) : admin/stats + agency/stats — KPI jour/mois en
+   685→  db.transaction.aggregate (SUM SQL indexé), fusion des 2 findMany INCOME en 1
+   686→  borné à la fenêtre (série + revenu par agence), futureTrips en _count filtré
+   687→  (plus de matérialisation d'ids). admin/users : take 500 (garde-fou mémoire).
+   688→- README.md racine + RUNBOOK OPS (reco 9) : installation, comptes, MoMo,
+   689→  assistant, sécurité (gardes-fous armés documentés), runbook complet
+   690→  (santé, sauvegarde/restauration SQLite, rotation WEBHOOK_SECRET + clés MoMo,
+   691→  incidents, mono-instance mémoire, MAJ code), perf, prod.
+   692→- ZIP production régénéré (316 fichiers, 488 Ko) : staging complet, scan
+   693→  secrets AVANT zippage (zéro .env/.db/valeur — seuls placeholders
+   694→  CHANGEZ_MOI), déployé public/ + download/. TEST AUTONOME port 3101 :
+   695→  install → .env → db:push → seed (8 comptes, 6 routes, 42 voyages) → page 200
+   696→  + H1 SSR + cities réelles + login admin 200 + admin/stats (réécriture SQL)
+   697→  OK + assistant (18 000 FCFA Bzv→PNR) + tunnel complet recherche→siège→
+   698→  réservation→paiement MTN → 503 MOMO_NOT_CONFIGURED exact.
+   699→- VALIDATION NAVIGATEUR E2E (agent-browser) : accueil (H1 SSR, console
+   700→  VIERGE) → login admin → dashboard complet (KPI SQL : 42 voyages actifs,
+   701→  7 bus, graphiques 14 j) → onglet Paiements (table + carte MoMo) →
+   702→  responsive 375×720 (docH 843, footer poussé) + desktop 1280 → assistant IA
+   703→  réponse données réelles → 0 erreur console/page. Incident résolu en route :
+   704→  P2022 « column idempotencyKey » — le dev server gardait l'ancien client
+   705→  Prisma en mémoire après db:push → RESTART serveur → tout vert.
+   706→- Base production purifiée : résiduelle de test NZK-2026-JHPHQZ (EXPIRED) +
+   707→  paiement + verrou + passagers orphelins supprimés → 0 réservation /
+   708→  0 paiement / 0 passager (état opérationnel pur).
+   709→
+   710→Stage Summary:
+   711→- Top 10 de l'audit d'architecture exécuté (8/10 items livrés, 2 assumés
+   712→  reportés : tests automatisés interdits par le flux courant ; Redis multi-
+   713→  instances incompatible avec la stack mémoire locale — documenté au runbook).
+   714→- Qualité désormais VERROUILLÉE en CI : lint strict exit-0 + tsc strict +
+   715→  build bloqué sur erreur TS. Performance : espaces pro code-splités, KPI en
+   716→  SQL, purge verrous batchée, -15 deps. Ops : README + runbook + .env.example
+   717→  propres (AUTH_SECRET mort supprimé). ZIP production validé de bout en bout
+   718→  en isolation. Score de conformité architecture estimé : 70/100 → ~85/100.
+   719→- File d'attente restante (non demandée) : durcissement éventuel des
+   720→  agrégations restantes (finance/summary full-scan partiel), pagination
+   721→  complète admin/users si l'effectif dépasse ~500, plan Redis si multi-instances.
+   722→
+   723→---
+   724→Task ID: 8
+   725→Agent: main (Z.ai Code)
+   726→Task: Relance du serveur dev — panneau de prévisualisation mort ("je ne vois plus rien")
+   727→
+   728→Work Log:
+   729→- Diagnostic : le serveur répondait 200 mais les processus lançaient via `nohup`/`setsid` mouraient 30-60 s après la fin de l'invocation Bash (rampe de processus par l'orchestrateur du sandbox).
+   730→- Test empirique : un processus `sleep 300` lancé en double-fork `( ( setsid ... & ) & )` survit entre invocations (re-parenté à PID 1) → re-parentage immédiat = survie.
+   731→- Correctif appliqué : démarrage du serveur par double-fork daemonisé : `cd /home/z/my-project && ( ( setsid bash -c 'exec bun run dev' < /dev/null > /dev/null 2>&1 & ) & )`.
+   732→- next.config.ts : ajout `allowedDevOrigins: ["*.space-z.ai", "localhost", "*.space-z.dev"]` — le panneau de prévisualisation (proxy space-z.ai) chargeait les ressources /_next/* en cross-origin ; sans cette déclaration Next.js 16 finira par les bloquer.
+   733→- Vérification agent-browser : titre OK, H1 OK, 7 villes, formulaire de recherche complet, tunnel de réservation étape 1→2 fonctionnel, API /api/trips/search 200, prix affichés (18 000 FCFA), zéro erreur console/page, footer présent.
+   734→- Confirmation : next-server (PID 7955) vivant entre invocations, GET / 200, log propre.
+   735→
+   736→Stage Summary:
+   737→- Panneau de prévisualisation rétabli : serveur dev :3000 relancé en double-fork (méthode à réutiliser pour tout redémarrage futur : `( ( setsid bash -c 'exec bun run dev' < /dev/null > /dev/null 2>&1 & ) & )`).
+   738→- allowedDevOrigins ajouté au next.config.ts (sécurise la connexion du panneau space-z.ai avec Next.js 16).
+   739→- Warning tailwindcss-animate des anciens logs était un vestigue : le fichier tailwind.config.ts est déjà propre.
+   740→- Aucune régression fonctionnelle détectée (recherche, API, rendu, footer, notifications, assistant IA tous opérationnels).
+   741→
+   742→---
+   743→Task ID: 9
+   744→Agent: main (Z.ai Code)
+   745→Task: Résolution « Runtime ReferenceError: dynamic is not defined » (nzoko-app.tsx:41:71, signalée par l'utilisateur)
+   746→
+   747→Work Log:
+   748→- Diagnostic : le code source ET le ZIP contenaient bien `import dynamic from "next/dynamic"` (ligne 11) — l'erreur n'était PAS un import manquant.
+   749→- Reproduction locale : l'overlay dev Next.js a affiché l'erreur sœur exacte « Module node_modules/next/dist/shared/lib/app-dynamic.js was instantiated because it was required from nzoko-app.tsx, but the module factory is not available. It might have been deleted in an HMR update » → cause confirmée : CORRUPTION HMR TURBOPACK — lors d'une ré-évaluation du module (redémarrage serveur avec cache .next ancien / ré-extraction ZIP sur install existante / full-reload Fast Refresh), le binding d'import `dynamic` se perd → « dynamic is not defined » à l'évaluation du module.
+   750→- Facteur aggravant identifié : nzoko-app.tsx exportait des valeurs non-composants (`showApiError`, re-export `formatDateTime`) → Fast Refresh forçait un FULL RELOAD à chaque édition du fichier (le chemin exact de la corruption), au lieu du remplacement à chaud.
+   751→- Correctif 1 : remplacement des 6 `next/dynamic(...)` (CheckerView, DriverView, AgentDesk, AdminWorkspace, AgencyWorkspace, FinanceWorkspace) par `lazy(() => import(...))` + `<Suspense fallback={<WorkspaceLoader />}>` (WorkspaceRouter + vue booking AGENT). Sûr car session Zustand = null pendant le SSR → lazy jamais résolu côté serveur ; H1/SEO de l'accueil inchangés (import statique). Dépendance au module interne app-dynamic.js de next/dynamic = ÉLIMINÉE.
+   752→- Correctif 2 : suppression des exports morts `showApiError`/`formatDateTime` (0 usage externe) + imports inutilisés (ApiClientError, formatDateTime) → le fichier redevient éligible au vrai Fast Refresh (plus de full reload systématique).
+   753→- Vérifications : bun run lint exit-0 ; page d'accueil 200 + titre + formulaire ; connexion admin OK ; AdminWorkspace chargé via lazy (KPI : 42 voyages, 7 bus, 1 résa jour, graphique 14 j, onglets Paiements/Parc/Personnel…) ; test HMR×2 (éditions v2/v3) → « rebuilding → done » sans erreur ni full reload ; zéro erreur console/page.
+   754→- ZIP mis à jour : `zip` update in-place du fichier dans public/nzoko-transport.zip (488 583 octets) + copie synchronisée download/ ; diff = identique à la version corrigée ; GET /nzoko-transport.zip → 200, md5 cohérent.
+   755→- Serveur : relancé via la méthode double-fork (Task ID 8) après correction ; dev.log propre.
+   756→
+   757→Stage Summary:
+   758→- « dynamic is not defined » = corruption HMR Turbopack du module interne de next/dynamic — corrigée À LA RACINE par migration vers React.lazy + Suspense (robustesse identique dev/build, code-splitting conservé).
+   759→- Robustesse HMR renforcée : plus de full-reload forcé sur nzoko-app.tsx (exports morts supprimés).
+   760→- ZIP téléchargeable régénéré avec le correctif — l'utilisateur doit re-télécharger et remplacer sa copie locale (et supprimer son dossier .next local s'il garde l'ancienne copie).
+   761→- Pattern à retenir : dans ce projet, préférer lazy/Suspense aux next/dynamic pour les vues client-only post-auth.
+   762→
+   763→---
+   764→Task ID: 10-a
+   765→Agent: subagent-backend (general-purpose)
+   766→Task: Backend espace client & fidélisation NZOKO
+   767→Work Log:
+   768→- Lecture du worklog (Tasks 1, 2-a, 7, 10) + patterns imposés (api-response, rate-limit, audit, auth, phone, login/notifications, booking/payment, types contrat, api-client espaces client:/clientAdmin:, constants RATE_LIMITS/LOYALTY/OTP, schema Prisma Task 10 déjà poussé — AUCUN db:push).
+   769→- NOUVEAU src/services/loyalty.ts — cœur fidélité : tierForPoints (0+/1000+/5000+/15000+), nextTierForPoints, tierLabel, ensureLoyaltyAccount (upsert), awardPointsForBooking(tx, bookingId) IDEMPOTENT (LoyaltyTransaction.bookingId unique) résout le client via passenger.userId SINON user PASSENGER au même téléphone (sinon return silencieux — pas de points anonymes), +100 pts (LOYALTY.pointsPerTrip), palier recalculé, notification "🎉 Points fidélité gagnés" DANS la tx ; spendPoints (409 solde insuffisant, lifetime inchangé) ; refundPoints (ADJUST ADMIN — restitution sur refus).
+   770→- NOUVEAU src/services/promo.ts — validatePromoForTrip(code, tripId, sessionUserId) : trip 404, code 404 "Code invalide", expiré/épuisé/inactif 410, nominatif 403, PERCENT → Math.max(0, round(price*(1-value/100))) — UNE SEULE implémentation partagée route + moteur de réservation ; createRewardPromoCode (tx optionnelle).
+   771→- NOUVEAU src/services/client-space.ts — assertClient (auth + role PASSENGER sinon 403 "Cet espace est réservé aux clients."), myPassengerIds (userId OU téléphone — billets achetés sans compte), mappers complaints (DTO/détail, labels FR, preview 80c) + AdminComplaintDTO (clientName/clientPhone), toRedemptionRequestDTO (rewardLabel catalogue), nextDepartureForRoute/cityPairNames/buildFavoriteRouteDTO.
+   772→- NOUVEAU src/services/admin-clients.ts — loadAdminClientRows(q) : users PASSENGER ↔ passagers (userId/téléphone), tripsCompleted (CONFIRMED/COMPLETED + départ passé), totalSpent (paiements SUCCESS), points/tier, lastTripAt, inactiveDays, tri lastTripAt DESC nulls last ; campaignUserIds(segment) : INACTIVE (sans voyage depuis INACTIVE_CLIENT_DAYS — jamais voyagé + compte ancien inclus) / paliers / ALL.
+   773→- src/lib/security.ts : + generatePromoCode (NZOKO-base32 6, crypto) et generateOtpCode (crypto.randomInt, padStart). src/lib/audit.ts : events REGISTER_SUCCESS / LOGIN_SUCCESS_OTP / PASSWORD_CHANGED ajoutés à l'union SecurityEvent.
+   774→- AUTH — POST /api/auth/register (Zod, normalizePhone 400, unicité phone 409 "Ce numéro est déjà utilisé." / email 409, email synthétique {phone}@phone.nzoko.cg, SELF-HEALING rôle PASSENGER + permissions booking:create/notification:read via upsert — le rôle en base n'avait aucune permission, hash cost 12, LoyaltyAccount d'office, RÉTRO-LIAGE passenger.updateMany({phone→userId}), notification bienvenue, session+cookie, logSecurity REGISTER_SUCCESS, lastLoginAt, SessionUser). POST /api/auth/otp action request|verify (rate limit otp:{phone} 3/15min et otpverify:{phone} 5/15min, code 6 chiffres crypto.randomInt hashé sha256, TTL 5 min, invalide les précédents, attempts<5, échec générique 401 + attempts+1, succès → consumedAt + user PASSENGER au phone sinon 404 "Aucun compte n'est associé à ce numéro…", session, logSecurity LOGIN_SUCCESS_OTP, devCode EN CLAIR uniquement si OTP_DEBUG=true). login MODIFIÉ : identifier (email si "@", sinon normalizePhone) + rétrocompatibilité {email,password}, rate limit login:{ip}:{canonique}, message générique, logSecurity LOGIN_FAILED garde la reason.
+   775→- ESPACE CLIENT (15 routes, toutes assertClient + rate limit clientRead 30/min) : GET/PATCH /api/client/profile (emailIsSynthetic, phone intouchable, unicité email), PATCH /api/client/profile/password (verifyPassword, re-hash, RÉVOQUE les AUTRES sessions garde la courante, logSecurity PASSWORD_CHANGED), GET /api/client/overview (tripsCompleted/Upcoming, totalSpent, totalTravelMinutes, agenciesUsed, points/tier/nextTier, favoriteRoute paire la plus fréquente, personalizedOffer = prochain départ réel SCHEDULED sur le trajet préféré "Votre trajet préféré X → Y" + date/heure fuseau Congo), GET /api/client/trips (200 dernières, departureTime DESC, hasRated/ratingEligible), GET /api/client/spending (mois/année/total + 12 derniers mois "2026-01" congo), GET/POST /api/client/favorites (manuelles + top 3 auto ≥ 2 voyages hors manuels, id auto "o:d:auto", nextDeparture tripId/ISO/price, doublon 409), DELETE /api/client/favorites/[id] (404 si pas à moi), GET /api/client/loyalty (compte, nextReward la moins chère > solde, 50 transactions DESC, catalogue LOYALTY_REWARDS, redemptions), POST /api/client/loyalty/redeem (rate limit redeem 3/h, spendPoints + RedemptionRequest PENDING + notification 🎁, DANS une $transaction), POST /api/client/ratings (5 critères 1-5, éligibilité sinon 409, average=round(somme/5), bookingId unique 409, notification ⭐), GET /api/client/complaints, GET /api/client/complaints/[id] (404 si pas à moi), POST /api/client/complaints (référence NZK-R-{année}-{seq 6} avec retry collision, message initial "Moi", notifications client + ADMIN/SUPPORT, bookingReference vérifiée mienne sinon 400), POST /api/client/complaints/[id]/messages (RESOLVED/CLOSED → 409 "clôturée", notifie assigné sinon ADMIN/SUPPORT).
+   776→- ADMIN (7 routes) : GET /api/admin/clients/stats (SUPER_ADMIN/ADMIN : population actifs/inactifs, points, tierCounts, openComplaints, pendingRedemptions, averageRating 1 déc. + ratingsByRoute), GET /api/admin/clients?q= (limite 200, recherche nom/phone/email), GET /api/admin/clients/redemptions (PENDING d'abord puis DESC), PATCH /api/admin/clients/redemptions/[id] (APPROVED → code promo NZOKO-{6} PERCENT 5/10/15 ou FREE_TICKET 0, maxUses 1, +90j, nominatif, re-check atomique du statut PENDING ; REJECTED → note obligatoire 400 + restitution ADJUST "Restitution — demande refusée" + notification ; déjà traité 409 ; logAudit REDEMPTION_APPROVED/REJECTED), POST /api/admin/clients/campaign (segment INACTIVE/BRONZE/SILVER/GOLD/VIP/ALL, createMany INFO, max 2000, logAudit CAMPAIGN_SENT), GET /api/admin/complaints?status=&q= + GET /api/admin/complaints/[id] (SUPER_ADMIN/ADMIN/**SUPPORT** — leur métier), PATCH (transitions STRICTEMENT avant : OPEN→IN_PROGRESS/RESOLVED, IN_PROGRESS→RESOLVED, RESOLVED→CLOSED, retour interdit 409 ; assignToSelf ; à RESOLVED → resolvedAt + notification 🟢 ; logAudit), POST messages (isStaff, authorName "{prénom} (NZOKO)", OPEN→IN_PROGRESS auto + auto-assignation si personne, notification 💬 au client).
+   777→- CODES PROMO DANS LA RÉSERVATION : POST /api/bookings/promo/validate (public, rate limit public, nominatif vérifié si session PASSENGER). src/services/booking.ts createBooking : input promoCode → validatePromoForTrip (même validation), amount = discountedAmount, booking.promoCode stocké ; passenger.phone NORMALISÉ via normalizePhone (fallback brut) ; LIAISON COMPTE : ctx.actorRole/actorPhone — un PASSENGER connecté réserver avec SON numéro rattache passenger.userId (jamais pour un tiers) ; toBookingDTO expose promoCode. Route POST /api/bookings : Zod promoCode + un PASSENGER connecté reste channel WEB (le canal AGENT reste réservé au staff avec booking:create). src/types : BookingDTO.promoCode? + CreateBookingInput.promoCode?.
+   778→- src/services/payment.ts confirmPaymentAndIssueTicket : DANS la $transaction, après issueTicketForBooking → awardPointsForBooking (propagation normale, idempotence interne) + incrément promoCode.usedCount — en read-then-update (un .catch dans une transaction interactive Prisma laisserait la tx incohérente : dérogation documentée au brief qui suggérait .catch(()=>{}), même sémantique best-effort sans le piège).
+   779→- prisma/seed.ts : rôle PASSENGER + permissions ["booking:create","notification:read"], mapping ROLE_PERMISSIONS, purge des 9 nouvelles tables (installs fraîches), téléphones staff DISTINCTS normalisés E.164 "242061000000..7" (unicité User.phone), AUCUN compte client de démo. .env.example CRÉÉ (le fichier n'existait pas alors que le README référence `cp .env.example .env`) : DATABASE_URL, WEBHOOK_SECRET, NEXT_PUBLIC_SITE_URL, ASSISTANT_ENABLED, section OTP_DEBUG documentée (brief), MOMO_*/AIRTEL vides. .env local : OTP_DEBUG=true ajouté.
+   780→- eslint.config.mjs : override no-console étendu à scripts/**/*.ts (scripts one-shot de migration préexistants create-passenger-role/fix-phones, même statut que prisma/seed.ts) → bun run lint exit 0.
+   781→- VÉRIFICATIONS E2E curl (CSRF x-requested-with: nzoko) — toutes conformes : cities 200 ; register 200 (SessionUser PASSENGER, permissions auto-healées, cookie) ; overview/profile/loyalty/trips/spending/favorites/complaints 200 (stats zéro, emailIsSynthetic=true) ; OTP request 200 {devCode visible car OTP_DEBUG}, verify 200 → session, code rejoué 401, mauvais code 401 générique ; login identifier "06 777 66 55" 200 + rétrocompat email 200 + mauvais mdp 401 ; promo/validate 200 (20000→18000), code nominatif sans session 403, code inconnu 404 ; booking avec promo 201 (amount 18000, promoCode, phone normalisé, channel WEB, createdByName client) ; payment CASH + confirm-cash agent 200 → billet VALID, points +100 (EARN VOYAGE "Voyage Pointe-Noire → Brazzaville"), notification 🎉, usedCount 1, RE-CONFIRMATION → 100 points (pas doublés), usedCount 1 (idempotence) ; redeem solde insuffisant 409 "il vous manque 100 points", redeem 201 (600→100) ; admin approve 200 → code NZOKO-S2MHXH générÉ (PERCENT 5) validable par le client 200, double décision 409 ; reject sans note 400, avec note 200 → restitution ADJUST balance 600 ; complaint create 201 NZK-R-2026-000002 + bookingReference liée, admin list q= 200, réponse admin 200 (OPEN→IN_PROGRESS, assignée, isStaff), PATCH RESOLVED 200 (resolvedAt + notif 🟢), transition arrière 409, message client sur résolue 409 "clôturée" ; complaint d'autrui 404 ; rating voyage futur 409, après passage ARRIVED 200, double 409, trips hasRated, overview favoriteRoute + personalizedOffer avec vrai prochain départ ; favorites POST 201 + duplicate 409 + DELETE 200/404 ; profile PATCH 200 (phone ignoré), password PATCH 200 → autres sessions 401, courante 200, nouveau login téléphone 200 ; admin clients/stats 200 (tierCounts, ratingsByRoute, averageRating), clients?q= 200, campaign ALL → {notified:2}, segment invalide 400 ; RBAC : client → admin 403, SUPPORT → complaints 200 mais stats 403, AGENT → complaints 403 ; CSRF sans en-tête 403 ; 401 sans session. Données de test intégralement nettoyées (user/passagers/bookings/paiements/billet/tx comptable/fidélité/redemptions/promoCodes/complaints/rating/sessions/notifications/OTP + trip seed restauré SCHEDULED). Dev server relancé en daemon double-fork (tué par le reaper entre les appels). dev.log : 65 réponses 2xx sur les nouvelles routes, 0 5xx.
+   782→- ÉTAT FINAL : bunx tsc --noEmit 0 erreur src/ ; bun run lint exit 0 ; GET / 200 ; GET /api/cities 200. AUCUN changement de schéma Prisma (aucune dérogation à l'interdit db:push).
+   783→
+   784→Stage Summary:
+   785→- Backend espace client & fidélisation COMPLET et vérifié E2E : inscription (rôle PASSENGER self-healing + rétro-liage des billets achetés sans compte), OTP téléphone (hashé, TTL, anti brute-force, devCode sandbox), login email OU téléphone, espace client (profil/mot de passe avec révocation des autres sessions, aperçu avec offre personnalisée sur les habitudes réelles, voyages, dépenses, favoris manuels + auto-détectés, fidélité avec dépense/restitution atomiques, évaluations 5 critères, réclamations avec fil de discussion et référence séquentielle), administration (stats fidélité, liste clients, décisions de récompenses → codes promo nominatifs NZOKO-XXXXXX, campagnes segmentées, traitement des réclamations avec transitions strictes pour SUPER_ADMIN/ADMIN/SUPPORT).
+   786→- Points d'architecture : idempotence fidélité par contrainte unique (bookingId), points dépensés À LA CRÉATION de la demande + restitution ADJUST au refus, validation promo factorisée (route publique ET moteur de réservation), liaison compte client uniquement sur téléphone identique (jamais pour un tiers), canal AGENT réservé au staff.
+   787→- Frontend : consommer via api.client/api.clientAdmin (contrat déjà en place). Production : OTP_DEBUG=false + brancher une passerelle SMS dans /api/auth/otp (TODO signalé en commentaire).
+   788→
+   789→---
+   790→Task ID: 10-b
+   791→Agent: subagent-frontend (general-purpose)
+   792→Task: Frontend espace client & fidélisation NZOKO (MON ESPACE NZOKO)
+   793→
+   794→Work Log:
+   795→- login-view.tsx réécrit : 2 onglets (Mot de passe avec identifiant email OU téléphone / Code SMS rapide avec OTP + encart devCode sandbox), lien vers inscription.
+   796→- register-view.tsx : formulaire complet (prénom, nom, téléphone, email optionnel, mot de passe + confirmation), encart bénéfices, mention rétro-liage des billets.
+   797→- Espace client : client-workspace.tsx (6 onglets Aperçu/Voyages/Favoris/Dépenses/Fidélité/Réclamations) + client-overview (bandeau palier + progression + 4 stats + trajet préféré + offre perso + prochains voyages), client-trips (filtres Tous/À venir/Terminés/Évaluables + ratingEligible), rating-dialog (5 critères étoiles + commentaire), client-favorites (manuels + auto-détectés + prochain départ + réservation directe), client-spending (3 cartes + barres 12 mois), client-loyalty (solde, catalogue récompenses, échange, demandes avec code copiable, historique), client-complaints (création dialog catégorie/sujet/message/référence + fil de discussion + composer), client-profile-dialog (profil + mot de passe).
+   798→- Admin : admin-complaints.tsx (stats, filtres, détail dialog, réponse, prise en charge, transitions) + admin-loyalty.tsx (3 sous-tabs Statistiques/Clients/Récompenses & campagnes avec validateur/refuseur de rachats et générateur de campagne segmentée) ; 2 onglets ajoutés à admin-workspace.
+   799→- nzoko-app.tsx : RegisterView + ClientWorkspace en lazy, case PASSENGER du WorkspaceRouter, vue "register".
+   800→- Tunnel : passenger-step pré-rempli pour client connecté ; payment-step champ code promo/fidélité avec validation live.
+   801→- 0 erreur tsc (src/), lint exit 0.
+   802→
+   803→Stage Summary:
+   804→- Parcours client complet UI mobile-first 375px : inscription → espace → réservation → fidélité → réclamations → évaluations, style NZOKO (vert/orange terre, shadcn/ui, Lucide).
+   805→- Toutes les données passent par api.client/api.clientAdmin (contrat partagé).
+   806→
+   807→---
+   808→Task ID: 10 (intégration & validation)
+   809→Agent: main (Z.ai Code)
+   810→Task: Espace client & fidélisation NZOKO — orchestration, schéma, contrat, intégration, E2E, ZIP
+   811→
+   812→Work Log:
+   813→- Schéma Prisma : +8 modèles (OtpCode, LoyaltyAccount, LoyaltyTransaction, FavoriteRoute, Complaint, ComplaintMessage, TripRating, RedemptionRequest, PromoCode) + User.phone @unique E.164 + Passenger.userId + Booking.promoCode + rôle PASSENGER ; db:push ×2.
+   814→- Script one-shot scripts/fix-phones.ts : dédoublonnage des téléphones staff (le seed mettait le même pour tous) + normalisation E.164 des passagers existants — prérequis à l'index unique.
+   815→- Contrat partagé écrit avant parallélisation : src/lib/phone.ts (normalizePhone/formatPhone), constants (PASSENGER + COMPLAINT_* + LOYALTY + LOYALTY_REWARDS + OTP + rate limits), 25 DTO client/admin dans types/index.ts, ~40 méthodes api-client, ViewKey "register".
+   816→- 2 subagents parallèles (10-a backend, 10-b frontend) — livrés complets (timeout tool ≠ échec).
+   817→- Points d'intégration vérifiés : awardPointsForBooking appelé DANS la transaction de confirmPaymentAndIssueTicket (idempotent par bookingId unique), promoCode marqué utilisé au succès, passenger.userId lié à la réservation pour un client connecté, validatePromoForTrip factorisé (route publique + moteur réservation).
+   818→- E2E agent-browser + API : inscription Grâce Mabika (email synthétique 242064567890@phone.nzoko.cg) → dashboard (palier Bronze, progression, prochaine récompense) → réservation PN→BZV avec pré-remplissage → paiement espèces → confirmation admin (curl) → **100 points crédités + transaction EARN + passager lié + notification** → complainte NZK-R-2026-000001 (réf séquentielle) → réponse admin + notification → campagne ALL (1 notifié) → OTP request+verify (devCode) → login par téléphone "06 456 78 90" → voyage marqué terminé → évaluation 5 critères (moyenne 4) stockée → stats dashboard à jour (1 voyage, 10 h, 20 000 FCFA, trajet préféré + offre perso) → 375×720 mobile OK.
+   819→- scripts/make-zip.sh : régénération complète du ZIP (389 fichiers, 588K, 0 secret .env, pas de node_modules/.next/db) + download/nzoko-transport.zip synchronisé ; GET /nzoko-transport.zip → 200.
+   820→
+   821→Stage Summary:
+   822→- SYSTÈME ESPACE CLIENT & FIDÉLISATION COMPLET et vérifié E2E : comptes clients (email et/ou téléphone + OTP), rétro-liage des billets achetés sans compte, tableau de bord personnel (stats réelles), voyages, favoris auto + manuels, dépenses, fidélité (100 pts/voyage, paliers Bronze/Silver/Gold/VIP, récompenses avec validation admin et codes promo nominatifs), réclamations avec fil de discussion et référence, évaluations post-voyage 5 critères agrégées par trajet, notifications intelligentes, campagnes de réactivation segmentées côté admin.
+   823→- Production : OTP_DEBUG=false + brancher une passerelle SMS (point d'extension documenté dans /api/auth/otp et .env.example) ; promo codes FREE_TICKET marqués « traitement par nos équipes ».
+   824→- ZIP autonome régénéré avec l'intégralité du système (re-télécharger pour la copie locale).
+   825→

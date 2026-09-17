@@ -1,0 +1,25 @@
+{
+  "name": "NZOKO TRANSPORT",
+  "short_name": "NZOKO",
+  "description": "Réservation de billets de bus interurbain au Congo-Brazzaville. Voyagez simplement, voyagez en confiance.",
+  "id": "/",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "display_override": ["standalone", "minimal-ui"],
+  "background_color": "#0B6E4A",
+  "theme_color": "#0B6E4A",
+  "lang": "fr",
+  "dir": "ltr",
+  "orientation": "portrait-primary",
+  "categories": ["travel", "productivity", "shopping"],
+  "icons": [
+    { "src": "/icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "/icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "/icons/maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ],
+  "shortcuts": [
+    { "name": "Réserver un billet", "short_name": "Réserver", "url": "/", "description": "Rechercher un voyage et réserver" },
+    { "name": "Suivi de billet", "short_name": "Suivi", "url": "/", "description": "Suivre une réservation par référence" }
+  ]
+}
