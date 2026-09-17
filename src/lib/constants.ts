@@ -352,6 +352,9 @@ export const RATE_LIMITS = {
   // reflushés par lots de 50 → 120/min par chauffeur), et actions session.
   trackingWrite: { limit: 120, windowMs: 60 * 1000 },
   trackingSession: { limit: 30, windowMs: 60 * 1000 },
+  // Maintenance GPS (watchdog + rétention) — scheduler mini-service 5 min +
+  // cron Vercel : ~12/h en service, marge pour les reprises/manuels admin.
+  trackingMaintenance: { limit: 30, windowMs: 60 * 60 * 1000 },
 } as const;
 
 // ---------- SUIVI GPS TEMPS RÉEL (module tracking) ----------

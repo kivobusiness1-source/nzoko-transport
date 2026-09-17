@@ -15,8 +15,13 @@ import type { TrackingSessionDTO, TrackingSessionActionDTO } from "@/types";
 export const TRACKING_SECRET = process.env.TRACKING_SECRET ?? "nzoko-tracking-dev-secret-change-me";
 /** URL interne du mini-service temps réel. */
 export const TRACKING_REALTIME_URL = process.env.TRACKING_REALTIME_URL ?? "http://127.0.0.1:3004";
-/** URL FRONTALE du service temps réel (passerelle Caddy → XTransformPort). */
-export const TRACKING_SOCKET_URL = "/?XTransformPort=3003";
+/** URL FRONTALE du service temps réel, consommée par le navigateur admin.
+ *  - Sandbox (défaut) : passerelle Caddy → /?XTransformPort=3003.
+ *  - Production : soit l'URL publique du mini-service déployé
+ *    (ex. https://tracking.nzoko.cg), soit une CHAÎNE VIDE pour désactiver
+ *    le temps réel (l'admin bascule alors sur le polling 10 s, sans
+ *    tentatives socket ni erreurs console). */
+export const TRACKING_SOCKET_URL = process.env.TRACKING_PUBLIC_SOCKET_URL ?? "/?XTransformPort=3003";
 
 type SessionWithRelations = TrackingSession & {
   driver: Driver;

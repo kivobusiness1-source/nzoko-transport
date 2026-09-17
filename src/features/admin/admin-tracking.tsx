@@ -42,7 +42,10 @@ export function AdminTracking() {
 
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [trail, setTrail] = useState<{ sessionId: string; points: GpsPointDTO[] } | null>(null);
-  const [realtime, setRealtime] = useState<RealtimeState>("connecting");
+  // État du cycle de vie socket — l'affichage final est DÉRIVÉ : si le service
+  // temps réel est désactivé (TRACKING_PUBLIC_SOCKET_URL vide en production),
+  // on affiche directement « polling » sans état intermédiaire.
+  const [socketState, setSocketState] = useState<"connecting" | "live" | "polling">("connecting");
   // État live maintenu uniquement par les callbacks socket/timer (jamais dans
   // un corps d'effet) : map id → session patchée + horodatage de dernière vue.
   // seenAt sert à l'évicteur TTL (nettoie les sessions « fantômes » si un
@@ -68,6 +71,8 @@ export function AdminTracking() {
   }, [data]);
 
   // Temps réel : abonnement signé au salon flotte (repli silencieux → polling).
+  const socketEnabled = Boolean(data?.socketToken && data.socketUrl);
+  const realtime: RealtimeState = socketEnabled ? socketState : "polling";
   useEffect(() => {
     if (!data?.socketToken || !data.socketUrl) return;
     let disposed = false;
@@ -84,15 +89,15 @@ export function AdminTracking() {
         { token: data.socketToken },
         (result: { ok: boolean }) => {
           if (disposed) return;
-          setRealtime(result.ok ? "live" : "polling");
+          setSocketState(result.ok ? "live" : "polling");
         }
       );
     });
     socket.on("disconnect", () => {
-      if (!disposed) setRealtime("polling");
+      if (!disposed) setSocketState("polling");
     });
     socket.on("connect_error", () => {
-      if (!disposed) setRealtime("polling");
+      if (!disposed) setSocketState("polling");
     });
     socket.on("gps", (event: LiveGpsEvent) => {
       setLiveById((previous) => {
