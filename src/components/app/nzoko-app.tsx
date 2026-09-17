@@ -58,6 +58,7 @@ const AuthScreen = lazy(() => import("@/features/auth/auth-screen"));
 
 import { PwaRegister } from "@/components/app/pwa-register";
 import { AssistantWidget } from "@/components/app/assistant-widget";
+import { ChunkErrorBoundary } from "@/components/app/chunk-error-boundary";
 
 function Brand({ onClick }: { onClick?: () => void }) {
   return (
@@ -416,7 +417,12 @@ export default function NzokoApp() {
 
       <main className="flex-1 pb-24 md:pb-8">
         <Link href="/" className="sr-only">NZOKO TRANSPORT — Page principale</Link>
-        {content}
+        {/* Récupération ChunkLoadError (chunks Turbopack obsolètes après un
+            redémarrage du serveur dev ou de la machine) : auto-rechargement
+            unique + écran de secours « Réessayer / Recharger ». La key par vue
+            réinitialise le boundary à chaque navigation (une vue cassée ne
+            bloque pas le site). */}
+        <ChunkErrorBoundary key={view}>{content}</ChunkErrorBoundary>
       </main>
 
       <div className="mx-auto w-full max-w-6xl px-4">
