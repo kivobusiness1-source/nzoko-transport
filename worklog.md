@@ -935,3 +935,28 @@ Stage Summary:
 - Auto-correction src/lib/db.ts : une injection système d'URL SQLite périmée est neutralisée (le .env du projet prime) — protège les reboots sandbox futurs.
 - Piège documenté : prisma db push n'utilise que directUrl du .env (insensible à l'env système), seule la runtime PrismaClient lisait le DATABASE_URL hérité — d'où l'échec initial du script de migration, résolu par l'auto-correction + exports.
 - Sauvegardes : SQLite original conservé (db/custom.sqlite.bak-pre-neon). Rejouer si besoin : bun run db:push && bun run scripts/migrate-to-neon.ts --force.
+
+---
+Task ID: 19
+Agent: main (Z.ai Code)
+Task: Reboot post-migration — relance panneau de prévisualisation, restauration .env Neon (écrasé par la sandbox), reconstruction/vérification du module GPS temps réel + méthodes de durabilité poussées (watchdog + rétention).
+
+Work Log:
+- Panneau de prévisualisation relancé (serveur dev arrêté après reboot → bun run dev, HTTP 200, rendu vérifié).
+- Découverte : le reboot sandbox a ÉCRASÉ le .env (URL SQLite réinjectée) et SUPPRIMÉ le dossier db/ — les données ne vivent plus que sur Neon. Le worklog Task 18 révélait que migration + module GPS étaient DÉJÀ terminés dans la portion de contexte perdue.
+- .env restauré selon la convention Task 18 : DATABASE_URL = pooler pgbouncer=true&connection_limit=5 ; DIRECT_DATABASE_URL = hôte direct ; TRACKING_SECRET ; PAYMENTS_SIMULATION. bunx prisma db push → « already in sync » (35 tables), client Prisma v6.19.2 régénéré.
+- Services relancés : serveur dev (3000) + mini-service tracking-realtime (3003 socket.io / 3004 API interne + health). Test E2E scripts/test-gps-e2e.ts → 10/10 ✅ contre Neon (login admin, jeton HMAC, socket via gateway :81, START/location/batch/STOP chauffeur, 3/3 événements temps réel, 6/6 points persistés, nettoyage).
+- DURABILITÉ AJOUTÉE (méthodes poussées demandées par l'utilisateur) :
+  - src/lib/constants.ts : TRACKING.watchdogStaleMs (45 min), watchdogHardMs (24 h), retentionPointDays (30 j), retentionSessionDays (90 j).
+  - src/services/tracking.ts : runTrackingWatchdog() (stade 1 : sessions ACTIVE sans AUCUN point depuis 45 min → PAUSED ; stade 2 : sessions vivantes > 24 h → COMPLETED + endedAt ; chauffeurs ON_TRIP sans session vivante restante → AVAILABLE) + runRetentionCleanup() (points des sessions COMPLETED > 30 j purgés ; sessions > 90 j supprimées — points d'abord, FK Restrict ; sessions vivantes JAMAIS touchées).
+  - src/app/api/tracking/maintenance/route.ts (NOUVEAU) : POST signé HMAC-SHA256 du corps brut (x-signature, secret partagé TRACKING_SECRET) — actions watchdog|retention|all, aucune session utilisateur requise. Testé : signature valide → 200 + stats ; invalide → 401.
+  - mini-services/tracking-realtime/index.ts : scheduler autonome — toutes les 5 min (délai de grâce 30 s au boot, verrou anti-chevauchement, AbortSignal 15 s, échec best-effort retenté au tick suivant via NEXT_INTERNAL_URL, défaut http://127.0.0.1:3000). 1er tick automatique observé OK dans les logs.
+- Test watchdog réel (script temporaire supprimé) : 8/8 ✅ — orpheline ACTIVE 2h→PAUSED, PAUSED 48h→COMPLETED, points 40 j purgés, session 100 j supprimée, session témoin 2 j intacte (point conservé), chauffeur libéré seulement quand plus aucune session vivante (2 passes).
+- Validation agent-browser : accueil OK ; login admin (Clarisse) → workspace 12 onglets → onglet « Suivi GPS » rendu (« 0 car en ligne », état vide propre, actualisation 10 s, VLM-vérifié) ; login chauffeur (Jean-Félix) → panneau GPS rendu (état Inactif, sélecteur voyage, aide) ; garde-fou permission géolocalisation vérifié (headless deny → toast « La permission de localisation est requise pour le suivi GPS », aucun POST) ; mobile 375 px sans débordement (scrollWidth = viewport), VLM : lisible/tactile/professionnel ; 0 erreur console/page ; dev.log sans erreur.
+- lint exit 0. Commit b6014a0 poussé sur GitHub (c4ae46c..b6014a0). .gitignore étendu (.zscripts/shots/).
+
+Stage Summary:
+- ENVIRONNEMENT RÉPARÉ : .env Neon restauré (la sandbox réinjecte DATABASE_URL SQLite au reboot — l'auto-correction src/lib/db.ts neutralise l'env système, le .env fait foi).
+- MODULE GPS TEMPS RÉEL REVALIDÉ 10/10 SUR NEON : API (session/location/batch, auth + rate limit + Zod), file offline IndexedDB (lots signés, purge 6 h, repli mémoire), hook adaptatif (8 s/30 s selon vitesse, anti-burst 4 s, conflits 409/404), mini-service socket.io (salon fleet HMAC, pont interne signé, health), admin (vue flotte + trail 500 pts + jeton 30 min).
+- DURABILITÉ (nouveau) : watchdog 2 stades + rétention 30 j/90 j, exécutés par le scheduler autonome du mini-service toutes les 5 min via route signée HMAC — la base Neon ne croît pas indéfiniment, les sessions orphelines n'existent plus, les chauffeurs bloqués ON_TRIP sont libérés.
+- Limite environnement : la permission géolocalisation ne peut pas être accordée au Chromium headless (state « denied ») — le flux watchPosition temps réel n'est pas jouable en navigateur sandbox, couvert intégralement par le test E2E API (10/10).
