@@ -70,3 +70,4 @@ tool-results/
 
 # Le modèle de configuration DOIT être versionné (malgré le pattern .env*)
 !.env.example
+.zscripts/shots/

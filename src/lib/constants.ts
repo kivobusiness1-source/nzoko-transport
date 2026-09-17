@@ -372,6 +372,17 @@ export const TRACKING = {
   batchMaxPoints: 50,
   /** Historique trail renvoyé à l'admin pour une session (fenêtre glissante). */
   trailMaxPoints: 500,
+  /** Watchdog : session ACTIVE sans AUCUN point depuis ce délai → PAUSED
+   *  (chauffeur ayant fermé son navigateur sans STOP — il peut reprendre). */
+  watchdogStaleMs: 45 * 60 * 1000,
+  /** Watchdog : session vivante (ACTIVE/PAUSED) plus vieille que ce délai →
+   *  COMPLETED + chauffeur libéré (un car ne roule pas 24 h d'affilée). */
+  watchdogHardMs: 24 * 60 * 60 * 1000,
+  /** Rétention : points GPS des sessions terminées purgés après ce délai
+   *  (les sessions vivantes ne sont JAMAIS purgées). */
+  retentionPointDays: 30,
+  /** Rétention : sessions COMPLETED supprimées après ce délai. */
+  retentionSessionDays: 90,
 } as const;
 
 export const TRACKING_STATUS_LABELS: Record<string, string> = {

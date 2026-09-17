@@ -12,6 +12,13 @@
 //   - Abonnement client : jeton HMAC émis par /api/admin/tracking
 //     (payload « fleet:<userId>:<exp> » signé avec TRACKING_SECRET).
 //   - Pont interne : x-signature = HMAC-SHA256 du corps brut.
+//
+// Durabilité (scheduler intégré) :
+//   Toutes les 5 min, POST /api/tracking/maintenance du serveur Next
+//   (signature HMAC du corps) — watchdog des sessions orphelines
+//   (chauffeur navigateur fermé sans STOP) + rétention des données
+//   GPS (points > 30 j, sessions > 90 j). Best-effort : un échec
+//   (serveur Next en recompilation) est retenté au tick suivant.
 // ============================================================
 
 import { createServer, type IncomingMessage, type ServerResponse } from "http";
@@ -21,6 +28,10 @@ import { Server, type Socket } from "socket.io";
 const SOCKET_PORT = 3003;
 const INTERNAL_PORT = 3004;
 const TRACKING_SECRET = process.env.TRACKING_SECRET ?? "nzoko-tracking-dev-secret-change-me";
+/** URL interne du serveur Next (scheduler → /api/tracking/maintenance). */
+const NEXT_INTERNAL_URL = process.env.NEXT_INTERNAL_URL ?? "http://127.0.0.1:3000";
+const MAINTENANCE_INTERVAL_MS = 5 * 60 * 1000;
+const MAINTENANCE_GRACE_MS = 30 * 1000; // premier tick après 30 s
 
 function hmac(payload: string): string {
   return createHmac("sha256", TRACKING_SECRET).update(payload).digest("hex");
@@ -122,3 +133,43 @@ const internalServer = createServer((req: IncomingMessage, res: ServerResponse) 
 internalServer.listen(INTERNAL_PORT, "127.0.0.1", () => {
   console.log(`[nzoko-tracking-realtime] API interne signée sur 127.0.0.1:${INTERNAL_PORT}`);
 });
+
+// ============================================================
+// Scheduler de durabilité — watchdog GPS + rétention des données
+// ============================================================
+
+let maintenanceBusy = false; // pas de chevauchement de ticks
+
+async function runMaintenance(): Promise<void> {
+  if (maintenanceBusy) return;
+  maintenanceBusy = true;
+  try {
+    const body = JSON.stringify({ action: "all" });
+    const signature = hmac(body);
+    const res = await fetch(`${NEXT_INTERNAL_URL}/api/tracking/maintenance`, {
+      method: "POST",
+      headers: { "content-type": "application/json", "x-signature": signature },
+      body,
+      signal: AbortSignal.timeout(15_000),
+    });
+    if (res.ok) {
+      const json = (await res.json().catch(() => null)) as { data?: { watchdog?: unknown; retention?: unknown } } | null;
+      console.log(`[nzoko-tracking-realtime] maintenance OK → ${JSON.stringify(json?.data ?? {})}`);
+    } else {
+      console.error(`[nzoko-tracking-realtime] maintenance → HTTP ${res.status}`);
+    }
+  } catch (error) {
+    // Serveur Next absent/recompilant — silencieux, retry au prochain tick.
+    console.error(`[nzoko-tracking-realtime] maintenance indisponible : ${(error as Error).message}`);
+  } finally {
+    maintenanceBusy = false;
+  }
+}
+
+// Délai de grâce au démarrage (laisser le serveur Next compiler), puis
+// ticks périodiques — bun --hot relance ce module proprement à chaud.
+setTimeout(() => void runMaintenance(), MAINTENANCE_GRACE_MS);
+setInterval(() => void runMaintenance(), MAINTENANCE_INTERVAL_MS);
+console.log(
+  `[nzoko-tracking-realtime] scheduler maintenance actif (toutes les ${Math.round(MAINTENANCE_INTERVAL_MS / 60_000)} min → ${NEXT_INTERNAL_URL})`
+);
