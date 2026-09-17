@@ -865,3 +865,23 @@ Stage Summary:
 - Dépôt GitHub : https://github.com/kivobusiness1-source/nzoko-transport (public à la création — l'utilisateur doit le passer en PRIVÉ via Settings → Danger Zone → Change visibility, le jeton ne permettant pas la création privée).
 - Sécurité : historique local réécrit sans secrets (.env, base SQLite, PID exclus) ; token non persisté dans git config ; recommandation donnée à l'utilisateur de révoquer le jeton après bascule en privé.
 - Convention : futures pousses = git push https://<token>@github.com/kivobusiness1-source/nzoko-transport.git main (token requis à chaque fois, jamais stocké).
+
+---
+Task ID: 16
+Agent: main (Z.ai Code)
+Task: Correction du RETOUR du ChunkLoadError sur la session admin (2e signalement utilisateur) après reboot de la machine sandbox.
+
+Work Log:
+- Diagnostic complet : la machine sandbox a REDÉMARRÉ et restauré le disque à un état antérieur → le fix de la Task 14 (chunk-error-boundary.tsx + intégration nzoko-app.tsx) avait DISPARU, le mini-service tracking-realtime et src/app/api/tracking avaient aussi disparu (état = fin Task 11, pré-module GPS), et le serveur relancé automatiquement servait des chunks dont les numents ne correspondaient plus à ceux référencés par le navigateur de l'utilisateur → ChunkLoadError récurrent.
+- Vérification base : comptes admin@nzoko.cg et superadmin@nzoko.cg INTACTS (connexion OK des deux côtés).
+- RESTAURÉ src/components/app/chunk-error-boundary.tsx (réécriture identique : 9 signatures d'erreurs de chunks, auto-rechargement unique avec garde sessionStorage 30 s, écran de secours FR accessible « Réessayer / Recharger », cibles ≥ 44 px).
+- RÉINTÉGRÉ dans src/components/app/nzoko-app.tsx : import + <ChunkErrorBoundary key={view}>{content}</ChunkErrorBoundary> dans <main> (key par vue = reset du boundary à chaque navigation).
+- Audit cohérence post-restore : AUCUNE référence orpheline aux fichiers GPS perdus (admin-workspace = 11 onglets pré-GPS, driver-view sans hook GPS, api-client sans endpoints tracking, prisma/schema sans TrackingSession/GpsPoint) → le code actuel est auto-cohérent et compile.
+- Redémarrage propre : pkill next dev/next-server, purge .next, relance → Ready en 1,15 s.
+- Vérification E2E Agent Browser : accueil OK → login admin@nzoko.cg/Admin@2026! → workspace « Administration » chargé (11 onglets), onglet Réservations avec données (NZK-2026-DEMO90, NZK-2026-QTYB3E), logout → login superadmin@nzoko.cg/Nzoko@2026! → workspace OK, 0 erreur console/page.
+- Commit 56b914c + push GitHub réussi (exit 0) sur https://github.com/kivobusiness1-source/nzoko-transport (le dépôt contient maintenant le fix).
+
+Stage Summary:
+- ChunkLoadError corrigé à nouveau + pérennisé dans GitHub. L'utilisateur doit faire un RECHARGEMENT FORCÉ (Ctrl+Shift+R) ou rouvrir l'onglet pour récupérer la page neuve ; ensuite l'auto-récupération gérera les futurs redémarrages.
+- PERTE À CONNAÎTRE : le module GPS temps réel (Tasks 12-13 : API /api/tracking, file offline IndexedDB gps-queue.ts, hook use-driver-gps.ts, mini-service socket.io tracking-realtime, onglet « Suivi GPS » admin, schéma Prisma TrackingSession/GpsPoint) a été EFFACÉ par la restauration sandbox — le code poussé sur GitHub est la version pré-GPS auto-cohérente. Reconstruction possible à partir des entrées worklog Task 12/13 si l'utilisateur la demande.
+- Convention : après tout reboot sandbox, vérifier la présence de chunk-error-boundary.tsx et du module GPS avant toute autre opération.
