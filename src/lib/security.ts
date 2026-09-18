@@ -28,6 +28,15 @@ export function generateTicketToken(): string {
   return `nzk_tkt_${randomFrom(TOKEN_ALPHABET, 32)}`;
 }
 
+/**
+ * Numéro d'embarquement V3 — « NZK-8F42K9 » : court, lisible, saisissable à
+ * la main au contrôle. Aléatoire sécurisé (JAMAIS un compteur devinable) ;
+ * l'unicité est garantie par la contrainte unique en base (retry à la collision).
+ */
+export function generateBoardingNumber(): string {
+  return `NZK-${randomFrom(REF_ALPHABET, 6)}`;
+}
+
 /** Code voyage lisible */
 export function generateTripCode(): string {
   return `TRP-${randomFrom(REF_ALPHABET, 6)}`;

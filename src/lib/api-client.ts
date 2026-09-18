@@ -15,6 +15,8 @@ import type {
   FavoriteRouteDTO, FavoriteRouteInput, SpendingDTO, LoyaltyDTO, ComplaintDTO, ComplaintDetailDTO,
   ComplaintCreateInput, ComplaintReplyInput, AdminClientDTO, AdminComplaintDTO, AdminLoyaltyStatsDTO, CampaignInput,
   PromoCodeValidationDTO, RedemptionRequestDTO,
+  AgencyNearbyResultDTO, AgencyRecommendationDTO, NeighborhoodDTO, KnowledgeBaseDTO,
+  AIQuestionLogDTO, AIQuestionsStatsDTO,
 } from "@/types";
 import type { ComplaintStatus, ExpenseCategory, PaymentProvider, PermissionCode, RewardKey, RoleCode } from "@/lib/constants";
 
@@ -82,8 +84,8 @@ export const api = {
   cities: () => request<CityDTO[]>("/cities"),
 
   trips: {
-    search: (from: string, to: string, date: string) =>
-      request<TripSearchDTO[]>(`/trips/search?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}&date=${date}`),
+    search: (from: string, to: string, date: string, agencyId?: string) =>
+      request<TripSearchDTO[]>(`/trips/search?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}&date=${date}${agencyId ? `&agencyId=${agencyId}` : ""}`),
     seats: (tripId: string) => request<SeatMapDTO>(`/trips/${tripId}/seats`),
   },
 
@@ -113,6 +115,23 @@ export const api = {
 
   tickets: {
     qr: (token: string) => request<{ dataUrl: string }>(`/tickets/${encodeURIComponent(token)}/qr`),
+    // V3 — URL de téléchargement du billet PDF A4 (token = secret du billet)
+    pdfUrl: (token: string) => `/api/tickets/${encodeURIComponent(token)}/pdf`,
+  },
+
+  // ============================================================
+  // V3 — GÉOLOCALISATION CLIENT & AGENCES
+  // ============================================================
+  agencies: {
+    nearby: (lat: number, lng: number, cityId?: string) =>
+      request<AgencyNearbyResultDTO>(
+        `/agencies/nearby?lat=${lat}&lng=${lng}${cityId ? `&cityId=${cityId}` : ""}`
+      ),
+    recommend: (input: { lat: number; lng: number; fromCityId: string; toCityId: string; date: string; seats?: number }) =>
+      request<AgencyRecommendationDTO>("/agencies/recommend", {
+        method: "POST",
+        body: JSON.stringify(input),
+      }),
   },
 
   // ============================================================
@@ -129,6 +148,48 @@ export const api = {
   checker: {
     scan: (code: string) => request<ScanResultDTO>("/checker/scan", { method: "POST", body: JSON.stringify({ code }) }),
     trips: () => request<BoardingTripDTO[]>("/checker/trips"),
+  },
+
+  // ============================================================
+  // V3 — ADMIN : QUARTIERS, BASE DE CONNAISSANCES, QUESTIONS IA
+  // ============================================================
+  adminV3: {
+    neighborhoods: (cityId?: string) =>
+      request<NeighborhoodDTO[]>(`/admin/neighborhoods${cityId ? `?cityId=${cityId}` : ""}`),
+    createNeighborhood: (input: { cityId: string; name: string; latitude?: number | null; longitude?: number | null; radiusMeters?: number }) =>
+      request<NeighborhoodDTO>("/admin/neighborhoods", { method: "POST", body: JSON.stringify(input) }),
+    updateNeighborhood: (id: string, input: Partial<{ name: string; latitude: number | null; longitude: number | null; radiusMeters: number; isActive: boolean }>) =>
+      request<NeighborhoodDTO>(`/admin/neighborhoods/${id}`, { method: "PATCH", body: JSON.stringify(input) }),
+    deleteNeighborhood: (id: string) =>
+      request<{ deleted?: boolean; deactivated?: boolean; agencies?: number }>(`/admin/neighborhoods/${id}`, { method: "DELETE" }),
+
+    knowledgeBase: (params: { category?: string; cityId?: string; active?: string; q?: string } = {}) => {
+      const qs = new URLSearchParams();
+      if (params.category) qs.set("category", params.category);
+      if (params.cityId) qs.set("cityId", params.cityId);
+      if (params.active) qs.set("active", params.active);
+      if (params.q) qs.set("q", params.q);
+      const suffix = qs.toString() ? `?${qs.toString()}` : "";
+      return request<KnowledgeBaseDTO[]>(`/admin/knowledge-base${suffix}`);
+    },
+    createKnowledge: (input: { title: string; question: string; answer: string; category: string; keywords?: string; cityId?: string | null; agencyId?: string | null; priority?: number }) =>
+      request<KnowledgeBaseDTO>("/admin/knowledge-base", { method: "POST", body: JSON.stringify(input) }),
+    updateKnowledge: (id: string, input: Partial<{ title: string; question: string; answer: string; category: string; keywords: string; cityId: string | null; agencyId: string | null; priority: number; isActive: boolean }>) =>
+      request<KnowledgeBaseDTO>(`/admin/knowledge-base/${id}`, { method: "PATCH", body: JSON.stringify(input) }),
+    deleteKnowledge: (id: string) =>
+      request<{ deleted: boolean }>(`/admin/knowledge-base/${id}`, { method: "DELETE" }),
+
+    aiQuestions: (params: { resolved?: "true" | "false"; category?: string; days?: number; take?: number } = {}) => {
+      const qs = new URLSearchParams();
+      if (params.resolved) qs.set("resolved", params.resolved);
+      if (params.category) qs.set("category", params.category);
+      if (params.days) qs.set("days", String(params.days));
+      if (params.take) qs.set("take", String(params.take));
+      const suffix = qs.toString() ? `?${qs.toString()}` : "";
+      return request<AIQuestionLogDTO[]>(`/admin/ai-questions${suffix}`);
+    },
+    aiQuestionsStats: (days?: number) =>
+      request<AIQuestionsStatsDTO>(`/admin/ai-questions?stats=true${days ? `&days=${days}` : ""}`),
   },
 
   // ============================================================

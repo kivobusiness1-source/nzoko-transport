@@ -59,7 +59,12 @@ export function releaseExpiredHolds(options?: { force?: boolean }): Promise<void
 }
 
 // ---------- Recherche de voyages ----------
-export async function searchTrips(params: { from: string; to: string; date: string }): Promise<TripSearchDTO[]> {
+export async function searchTrips(params: {
+  from: string;
+  to: string;
+  date: string;
+  agencyId?: string | null;
+}): Promise<TripSearchDTO[]> {
   await releaseExpiredHolds();
   const { start, end } = dayRange(params.date);
   const now = new Date();
@@ -92,6 +97,10 @@ export async function searchTrips(params: { from: string; to: string; date: stri
       routeId: { in: validRoutes.map((r) => r.id) },
       departureTime: { gte: start, lt: end },
       status: { in: ["SCHEDULED", "BOARDING"] },
+      // V3 — filtre multi-agences : « Trouver mon agence » restreint la
+      // recherche aux départs de l'agence choisie (décision serveur, le filtre
+      // n'est qu'une préférence d'affichage JAMAIS une contrainte de sécurité).
+      ...(params.agencyId ? { agencyId: params.agencyId } : {}),
     },
     include: {
       route: { include: { originCity: true, destinationCity: true, stops: { include: { city: true }, orderBy: { position: "asc" } } } },
@@ -470,6 +479,7 @@ export function toBookingDetailDTO(b: BookingDetailWithRelations): BookingDetail
       ? {
           id: b.ticket.id,
           token: b.ticket.token,
+          boardingNumber: b.ticket.boardingNumber,
           status: b.ticket.status as "VALID" | "USED" | "CANCELLED",
           issuedAt: b.ticket.issuedAt.toISOString(),
           checkedAt: b.ticket.checkedAt?.toISOString() ?? null,

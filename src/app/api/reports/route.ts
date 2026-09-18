@@ -11,7 +11,7 @@ import { dayRange, todayStr } from "@/lib/dates";
 import { congoDayKey, congoMonthKey } from "@/lib/api-helpers";
 import { db } from "@/lib/db";
 
-const typeSchema = z.enum(["daily", "weekly", "monthly", "agency", "bus", "route"]);
+const typeSchema = z.enum(["daily", "weekly", "monthly", "agency", "bus", "route", "city", "agent"]);
 
 function frDate(iso: string): string {
   const [, m, d] = iso.split("-");
@@ -80,6 +80,7 @@ export async function GET(req: NextRequest) {
         amount: true,
         createdAt: true,
         agency: { select: { name: true } },
+        createdBy: { select: { firstName: true, lastName: true } },
         trip: {
           select: {
             bus: { select: { registrationNumber: true } },
@@ -125,6 +126,15 @@ export async function GET(req: NextRequest) {
     } else if (type === "agency") {
       for (const b of bookings) bump(b.agency?.name ?? "Sans agence", { bookings: 1, revenue: b.amount });
       for (const e of expenses) bump(e.agency?.name ?? "Sans agence", { expenses: e.amount });
+    } else if (type === "city") {
+      // V3 — par ville de DÉPART du voyage
+      for (const b of bookings) bump(b.trip.route.originCity.name, { bookings: 1, revenue: b.amount });
+    } else if (type === "agent") {
+      // V3 — par vendeur : agent guichet ou canal site web
+      for (const b of bookings) {
+        const label = b.createdBy ? `${b.createdBy.firstName} ${b.createdBy.lastName}` : "Site web";
+        bump(label, { bookings: 1, revenue: b.amount });
+      }
     } else if (type === "bus") {
       for (const b of bookings) bump(b.trip.bus.registrationNumber, { bookings: 1, revenue: b.amount });
     } else {

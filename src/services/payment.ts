@@ -382,6 +382,12 @@ export async function confirmPaymentAndIssueTicket(
     throw new ApiError(409, ERROR_CODES.PAYMENT_ERROR, "Ce paiement ne peut plus être confirmé.");
   }
 
+  // ⚠️ NOYAU ATOMIQUE COURT : pooler Neon (PgBouncer transaction-mode), la
+  // transaction interactive doit rester < quelques secondes de latence cumulée
+  // (P2028 « Transaction not found » au-delà). Anti-double-confirmation ET
+  // billet émis exactement une fois (contrainte unique bookingId) :
+  // 6 requêtes au lieu de ~13. La fidélité/promo (idempotentes par conception)
+  // sont rejouées APRÈS la transaction, en best-effort.
   await db.$transaction(async (tx) => {
     // Re-vérification atomique du statut dans la transaction
     const fresh = await tx.payment.findUnique({ where: { id: payment.id }, select: { status: true } });
@@ -399,28 +405,6 @@ export async function confirmPaymentAndIssueTicket(
     // Billet émis exactement une fois (contrainte unique bookingId)
     await issueTicketForBooking(tx, payment.bookingId, payment.booking.bookingReference);
 
-    // Points fidélité : idempotent (bookingId unique sur LoyaltyTransaction) —
-    // un paiement rejoué (webhook/poll/confirmation) ne double JAMAIS les
-    // points. Pas de points pour un passager anonyme (retour silencieux).
-    await awardPointsForBooking(tx, payment.bookingId);
-
-    // Code promo appliqué à la réservation : consommation du crédit d'usage
-    // (best-effort — read-then-update : un .catch dans une transaction
-    // interactive laisserait la tx dans un état incohérent, on vérifie
-    // donc l'existence au lieu d'avaler l'erreur).
-    if (payment.booking.promoCode) {
-      const promo = await tx.promoCode.findUnique({
-        where: { code: payment.booking.promoCode },
-        select: { id: true },
-      });
-      if (promo) {
-        await tx.promoCode.update({
-          where: { code: payment.booking.promoCode },
-          data: { usedCount: { increment: 1 } },
-        });
-      }
-    }
-
     // Écriture comptable idempotente (référence unique)
     await tx.transaction.create({
       data: {
@@ -434,6 +418,21 @@ export async function confirmPaymentAndIssueTicket(
       },
     });
   });
+
+  // ---------- Post-traitement idempotent (hors transaction) ----------
+  // Points fidélité : bookingId unique sur LoyaltyTransaction — un paiement
+  // rejoué ne double JAMAIS les points. Passager anonyme → silencieux.
+  await awardPointsForBooking(db, payment.bookingId).catch(() => {});
+
+  // Code promo appliqué : consommation du crédit d'usage (best-effort).
+  if (payment.booking.promoCode) {
+    await db.promoCode
+      .updateMany({
+        where: { code: payment.booking.promoCode },
+        data: { usedCount: { increment: 1 } },
+      })
+      .catch(() => {});
+  }
 
   await logAudit({
     userId: actorUserId,

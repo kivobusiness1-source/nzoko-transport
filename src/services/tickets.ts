@@ -6,23 +6,36 @@
 
 import QRCode from "qrcode";
 import { db } from "@/lib/db";
-import { generateTicketToken } from "@/lib/security";
+import { generateBoardingNumber, generateTicketToken } from "@/lib/security";
 import type { Prisma, Ticket } from "@prisma/client";
 
 type Tx = Prisma.TransactionClient;
 
-/** Émission du billet dans une transaction (idempotent via unique bookingId). */
+/** Numéro d'embarquement unique — collision gérée par la contrainte base (P2002). */
 export async function issueTicketForBooking(tx: Tx, bookingId: string, _bookingReference: string): Promise<Ticket> {
   const existing = await tx.ticket.findUnique({ where: { bookingId } });
   if (existing) return existing; // idempotence — un seul billet par réservation
 
-  return tx.ticket.create({
-    data: {
-      bookingId,
-      token: generateTicketToken(),
-      status: "VALID",
-    },
-  });
+  // Le numéro est généré AVANT toute requête : la contrainte unique en base
+  // rejette une collision (31^6 ≈ 887 M combinaisons — improbable) et on
+  // retente avec un nouveau numéro. Typiquement UN seul INSERT.
+  for (let attempt = 0; attempt < 5; attempt++) {
+    try {
+      return await tx.ticket.create({
+        data: {
+          bookingId,
+          token: generateTicketToken(),
+          boardingNumber: generateBoardingNumber(),
+          status: "VALID",
+        },
+      });
+    } catch (err) {
+      const code = (err as { code?: string }).code;
+      if (code === "P2002" && attempt < 4) continue; // collision → nouveau numéro
+      throw err;
+    }
+  }
+  throw new Error("Impossible d'émettre le numéro d'embarquement (collisions répétées).");
 }
 
 /** QR PNG data URL pour l'affichage/impression du billet. */
@@ -50,7 +63,8 @@ export async function scanAndBoard(rawCode: string, ctx: BoardingContext): Promi
     return { result: "INVALID", message: "Code vide.", boarded: false, ticket: null };
   }
 
-  // Le QR contient un token de billet. On accepte aussi une référence de réservation.
+  // Le QR contient un token de billet. On accepte aussi une référence de
+  // réservation (NZK-2026-…) ou un numéro d'embarquement (NZK-XXXXXX).
   const ticket = await db.ticket.findUnique({
     where: { token: code },
     include: {
@@ -69,8 +83,12 @@ export async function scanAndBoard(rawCode: string, ctx: BoardingContext): Promi
 
   let target = ticket;
   if (!target) {
+    const upper = code.toUpperCase();
+    const isBoardingNumber = /^NZK-[A-Z2-9]{6}$/.test(upper) && !upper.startsWith("NZK-202");
     const booking = await db.booking.findFirst({
-      where: { bookingReference: code.toUpperCase() },
+      where: isBoardingNumber
+        ? { ticket: { boardingNumber: upper } }
+        : { bookingReference: upper },
       include: { ticket: { include: { booking: { include: { trip: { include: { route: { include: { originCity: true, destinationCity: true } }, bus: true, agency: true } }, seat: true, passenger: true, payment: true, agency: true } }, checkedBy: true } } },
     });
     if (booking?.ticket) {
@@ -87,6 +105,7 @@ export async function scanAndBoard(rawCode: string, ctx: BoardingContext): Promi
   const info = {
     reference: b.bookingReference,
     token: target.token,
+    boardingNumber: target.boardingNumber,
     status: target.status as "VALID" | "USED" | "CANCELLED",
     passengerName: `${b.passenger.firstName} ${b.passenger.lastName}`,
     passengerPhone: b.passenger.phone,
@@ -98,7 +117,11 @@ export async function scanAndBoard(rawCode: string, ctx: BoardingContext): Promi
     departureTime: b.trip.departureTime.toISOString(),
     busRegistration: b.trip.bus.registrationNumber,
     agencyName: b.trip.agency.name,
+    agencyAddress: b.trip.agency.address,
     checkedAt: target.checkedAt?.toISOString() ?? null,
+    checkedByName: target.checkedBy
+      ? `${target.checkedBy.firstName} ${target.checkedBy.lastName}`
+      : null,
   };
 
   // Sécurité multi-agences : un checker ne contrôle que les voyages de son agence

@@ -17,6 +17,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { PaymentStep } from "@/features/booking/payment-step";
 import { PassengerStep } from "@/features/booking/passenger-step";
 import { SearchForm } from "@/features/booking/search-form";
+import { AgencyFinder } from "@/features/booking/agency-finder";
 import { SeatMap } from "@/features/booking/seat-map";
 import { TicketCard } from "@/features/booking/ticket-card";
 import { TripCard } from "@/features/booking/trip-card";
@@ -24,7 +25,7 @@ import { api, ApiClientError } from "@/lib/api-client";
 import { addDaysStr, todayStr } from "@/lib/dates";
 import { formatDayLabel, formatTime } from "@/lib/format";
 import { useApp } from "@/lib/store";
-import type { BookingDTO, BookingDetailDTO, CityDTO, PassengerInput, SeatMapDTO, TripSearchDTO } from "@/types";
+import type { BookingDTO, BookingDetailDTO, CityDTO, NearbyAgencyDTO, PassengerInput, SeatMapDTO, TripSearchDTO } from "@/types";
 import { cn } from "@/lib/utils";
 
 const STEPS = ["Trajet", "Voyage", "Siège", "Passager", "Paiement", "Billet"] as const;
@@ -53,6 +54,9 @@ export default function BookingFlow({ channel }: { channel: "WEB" | "AGENT" }) {
   const [searching, setSearching] = useState(false);
   const [searchError, setSearchError] = useState<string | null>(null);
 
+  // Agence de départ choisie via « Trouver mon agence » (filtre GPS optionnel)
+  const [agency, setAgency] = useState<NearbyAgencyDTO | null>(null);
+
   const [trip, setTrip] = useState<TripSearchDTO | null>(null);
   const [seatMap, setSeatMap] = useState<SeatMapDTO | null>(null);
   const [seatLoading, setSeatLoading] = useState(false);
@@ -78,6 +82,12 @@ export default function BookingFlow({ channel }: { channel: "WEB" | "AGENT" }) {
     };
   }, []);
 
+  // L'agence choisie doit rester cohérente avec la ville de départ :
+  // si le client change de ville de départ, on retire silencieusement le filtre.
+  useEffect(() => {
+    setAgency((prev) => (prev && search.from && prev.cityId !== search.from ? null : prev));
+  }, [search.from]);
+
   // Scroll top à chaque changement d'étape
   useEffect(() => {
     window.scrollTo({ top: 0, behavior: "smooth" });
@@ -93,26 +103,44 @@ export default function BookingFlow({ channel }: { channel: "WEB" | "AGENT" }) {
       setBooking(null);
       setDetail(null);
       setSearchError(null);
+      setAgency(null);
       if (message) toast.info(message);
     },
     []
   );
 
-  const runSearch = useCallback(async (params: { from: string; to: string; date: string }) => {
-    setSearch(params);
-    setSearching(true);
-    setSearchError(null);
-    try {
-      const results = await api.trips.search(params.from, params.to, params.date);
-      results.sort((a, b) => a.departureTime.localeCompare(b.departureTime));
-      setTrips(results);
-      setStep(2);
-    } catch (err) {
-      setSearchError(errMessage(err));
-    } finally {
-      setSearching(false);
-    }
-  }, []);
+  const runSearch = useCallback(
+    async (params: { from: string; to: string; date: string }, agencyFilter?: NearbyAgencyDTO | null) => {
+      // agencyFilter explicite (changement d'agence à chaud) sinon filtre courant
+      const filter = agencyFilter === undefined ? agency : agencyFilter;
+      setSearch(params);
+      setSearching(true);
+      setSearchError(null);
+      try {
+        const results = await api.trips.search(params.from, params.to, params.date, filter?.id);
+        results.sort((a, b) => a.departureTime.localeCompare(b.departureTime));
+        setTrips(results);
+        setStep(2);
+      } catch (err) {
+        setSearchError(errMessage(err));
+      } finally {
+        setSearching(false);
+      }
+    },
+    [agency]
+  );
+
+  // Sélection / retrait de l'agence de départ (filtre « Trouver mon agence ») :
+  // si des résultats sont déjà affichés, on relance la recherche filtrée.
+  const handleAgencyChange = useCallback(
+    (next: NearbyAgencyDTO | null) => {
+      setAgency(next);
+      if (step === 2 && search.from && search.to && search.date) {
+        void runSearch(search, next);
+      }
+    },
+    [step, search, runSearch]
+  );
 
   const loadSeatMap = useCallback(async (tripId: string) => {
     setSeatLoading(true);
@@ -315,6 +343,16 @@ export default function BookingFlow({ channel }: { channel: "WEB" | "AGENT" }) {
                   </CardContent>
                 </Card>
               )}
+
+              {/* Trouver mon agence — GPS optionnel, repliable (étape « GPS / agence ») */}
+              <AgencyFinder
+                cities={cities}
+                from={search.from}
+                to={search.to}
+                date={search.date}
+                selectedAgency={agency}
+                onAgencyChange={handleAgencyChange}
+              />
             </div>
           )}
 
@@ -330,6 +368,17 @@ export default function BookingFlow({ channel }: { channel: "WEB" | "AGENT" }) {
                   {trips && <span className="ml-1">· {trips.length} voyage{trips.length > 1 ? "s" : ""}</span>}
                 </p>
               </div>
+
+              {/* Filtre agence (GPS) — bandeau « Agence : X — Modifier » + panneau repliable */}
+              <AgencyFinder
+                compact
+                cities={cities}
+                from={search.from}
+                to={search.to}
+                date={search.date}
+                selectedAgency={agency}
+                onAgencyChange={handleAgencyChange}
+              />
 
               {searching ? (
                 <div className="space-y-3">
@@ -373,6 +422,16 @@ export default function BookingFlow({ channel }: { channel: "WEB" | "AGENT" }) {
                       <Button variant="secondary" size="sm" onClick={() => setStep(1)} className="min-h-[40px]">
                         <Search className="size-3.5" aria-hidden /> Changer le trajet
                       </Button>
+                      {agency && (
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => handleAgencyChange(null)}
+                          className="min-h-[40px]"
+                        >
+                          <XCircle className="size-3.5" aria-hidden /> Retirer le filtre d&apos;agence
+                        </Button>
+                      )}
                     </div>
                   </CardContent>
                 </Card>

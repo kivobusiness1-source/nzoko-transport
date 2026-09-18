@@ -8,10 +8,13 @@
 
 import { useState } from "react";
 import {
+  Bot,
+  BookOpenCheck,
   CreditCard,
   FileText,
   LayoutDashboard,
   MessageSquare,
+  MessageSquareQuote,
   Radar,
   ScrollText,
   ShieldCheck,
@@ -25,7 +28,7 @@ import type { LucideIcon } from "lucide-react";
 import { useApp } from "@/lib/store";
 import { hasPerm } from "@/lib/api-client";
 import type { PermissionCode } from "@/lib/constants";
-import { NzokoTabs } from "@/components/shared/nzoko-chips";
+import { NzokoTabs, NzokoSubTabs } from "@/components/shared/nzoko-chips";
 import { NzokoEmptyState } from "@/components/shared/nzoko-empty-state";
 import { NzokoWorkspaceHeader } from "@/components/shared/nzoko-workspace-header";
 import { AdminOverview } from "@/features/admin/admin-overview";
@@ -40,6 +43,8 @@ import { AdminReports } from "@/features/admin/admin-reports";
 import { AdminComplaints } from "@/features/admin/admin-complaints";
 import { AdminLoyalty } from "@/features/admin/admin-loyalty";
 import { AdminTracking } from "@/features/admin/admin-tracking";
+import { AdminKnowledge } from "@/features/admin/admin-knowledge";
+import { AdminAIQuestions } from "@/features/admin/admin-ai-questions";
 
 interface AdminTab {
   key: string;
@@ -67,6 +72,7 @@ const TABS: AdminTab[] = [
   { key: "staff", label: "Personnel", icon: Users, anyOf: ["driver:read"] },
   { key: "users", label: "Utilisateurs", icon: UserRound, anyOf: ["user:read"] },
   { key: "loyalty", label: "Clients & fidélité", icon: Star, anyOf: ["user:read"] },
+  { key: "ai", label: "Base IA", icon: Bot, anyOf: ["kb:manage"] },
   { key: "reports", label: "Rapports", icon: FileText, anyOf: ["report:read"] },
   { key: "logs", label: "Journal", icon: ScrollText, anyOf: ["audit:read", "security:read"] },
 ];
@@ -117,11 +123,36 @@ export default function AdminWorkspace() {
             {activeTab === "staff" && <AdminStaff refreshKey={refreshKey} />}
             {activeTab === "users" && <AdminUsers refreshKey={refreshKey} />}
             {activeTab === "loyalty" && <AdminLoyalty refreshKey={refreshKey} />}
+            {activeTab === "ai" && <AdminAIBase refreshKey={refreshKey} />}
             {activeTab === "reports" && <AdminReports refreshKey={refreshKey} />}
             {activeTab === "logs" && <AdminLogs refreshKey={refreshKey} />}
           </div>
         </>
       )}
     </section>
+  );
+}
+
+/** Onglet « Base IA » : FAQ officielle de l'assistant + journal qualité des questions. */
+function AdminAIBase({ refreshKey }: { refreshKey?: number }) {
+  const [sub, setSub] = useState("faq");
+
+  return (
+    <div className="space-y-4">
+      <NzokoSubTabs
+        tabs={[
+          { key: "faq", label: "FAQ", icon: BookOpenCheck },
+          { key: "questions", label: "Questions IA", icon: MessageSquareQuote },
+        ]}
+        active={sub}
+        onChange={setSub}
+        ariaLabel="Sections de la base IA"
+      />
+      {sub === "faq" ? (
+        <AdminKnowledge refreshKey={refreshKey} />
+      ) : (
+        <AdminAIQuestions refreshKey={refreshKey} />
+      )}
+    </div>
   );
 }

@@ -6,7 +6,7 @@
 
 import { motion } from "framer-motion";
 import { toast } from "sonner";
-import { Bus, Calendar, Clock, MapPin, Printer, QrCode, TicketCheck, User } from "lucide-react";
+import { Bus, Calendar, Clock, FileDown, MapPin, Printer, QrCode, TicketCheck, User } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { NzokoCopyButton } from "@/components/shared/nzoko-copy-button";
@@ -60,6 +60,7 @@ export function TicketCard({ detail, channel, onNewBooking }: TicketCardProps) {
   .qr{text-align:center;padding:10px;background:#f4f8f4;margin:10px;border-radius:8px}
   .qr img{width:150px;height:150px}
   .ref{font-family:monospace;font-size:14px;text-align:center;font-weight:bold;margin:8px 0}
+  .boarding{font-family:monospace;font-size:13px;text-align:center;font-weight:bold;color:#14532d;margin:0 0 8px}
   .foot{font-size:10px;text-align:center;color:#4b6b4b;padding:10px}
 </style></head><body>
   <div class="ticket">
@@ -73,6 +74,7 @@ export function TicketCard({ detail, channel, onNewBooking }: TicketCardProps) {
       <div class="seat">SIÈGE ${detail.seat.seatNumber}${detail.seat.type === "VIP" ? " · VIP" : ""}</div>
       ${qrDataUrl ? `<div class="qr"><img src="${qrDataUrl}" alt="QR"></div>` : ""}
       <div class="ref">${detail.bookingReference}</div>
+      ${ticket.boardingNumber ? `<div class="boarding">N° d'embarquement : ${ticket.boardingNumber}</div>` : ""}
       <div class="foot">Présentez ce QR code au contrôleur à l'embarquement.<br>Montant : ${formatMoney(detail.amount)} · ${detail.channel === "AGENT" ? "Vente guichet" : "Réservation en ligne"}</div>
     </div>
   </div>
@@ -98,6 +100,15 @@ export function TicketCard({ detail, channel, onNewBooking }: TicketCardProps) {
       // suivi manuel si storage indisponible
     }
     setView("tracking");
+  };
+
+  // Billet officiel A4 (V3) : logo, QR, n° d'embarquement — généré serveur.
+  const handleDownloadPdf = () => {
+    if (!ticket) return;
+    const win = window.open(api.tickets.pdfUrl(ticket.token), "_blank");
+    if (!win) {
+      toast.error("Autorisez les fenêtres surgissantes pour télécharger le billet PDF.");
+    }
   };
 
   if (!ticket) {
@@ -171,12 +182,28 @@ export function TicketCard({ detail, channel, onNewBooking }: TicketCardProps) {
             </div>
           </div>
 
-          {/* Référence + QR */}
+          {/* Référence + n° d'embarquement + QR */}
           <div className="flex flex-col items-center gap-3 rounded-xl bg-muted/40 p-4">
             <div className="flex items-center gap-2">
               <span className="font-mono text-sm font-bold tracking-wider">{detail.bookingReference}</span>
               <NzokoCopyButton value={detail.bookingReference} size="icon" />
             </div>
+            {ticket.boardingNumber && (
+              <div className="flex w-full flex-col items-center gap-1 rounded-lg border border-primary/25 bg-primary/5 px-3 py-2">
+                <span className="text-[10px] font-semibold uppercase tracking-[0.15em] text-muted-foreground">
+                  N° d&apos;embarquement
+                </span>
+                <span className="flex items-center gap-2">
+                  <span className="font-mono text-base font-bold tracking-[0.2em] text-primary">
+                    {ticket.boardingNumber}
+                  </span>
+                  <NzokoCopyButton value={ticket.boardingNumber} size="icon" label="le numéro d'embarquement" />
+                </span>
+                <span className="text-center text-[11px] leading-snug text-muted-foreground">
+                  À présenter au contrôleur si votre téléphone est déchargé.
+                </span>
+              </div>
+            )}
             {ticket.status === "VALID" ? (
               <NzokoQr token={ticket.token} size={168} />
             ) : (
@@ -194,11 +221,14 @@ export function TicketCard({ detail, channel, onNewBooking }: TicketCardProps) {
 
       {/* Actions */}
       <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+        <Button size="lg" onClick={handleDownloadPdf} className="h-12 sm:col-span-2">
+          <FileDown className="h-4 w-4" aria-hidden /> Télécharger le billet PDF
+        </Button>
         <Button size="lg" variant="outline" onClick={handlePrint} className="h-12">
-          <Printer className="h-4 w-4" aria-hidden /> Imprimer / Télécharger
+          <Printer className="h-4 w-4" aria-hidden /> Imprimer le reçu
         </Button>
         {channel === "AGENT" ? (
-          <Button size="lg" variant="secondary" onClick={() => setView("workspace")} className="h-12">
+          <Button size="lg" variant="outline" onClick={() => setView("workspace")} className="h-12">
             <Bus className="h-4 w-4" aria-hidden /> Retour au guichet
           </Button>
         ) : (
@@ -206,7 +236,7 @@ export function TicketCard({ detail, channel, onNewBooking }: TicketCardProps) {
             <MapPin className="h-4 w-4" aria-hidden /> Suivre ce billet
           </Button>
         )}
-        <Button size="lg" onClick={onNewBooking} className="h-12 sm:col-span-2">
+        <Button size="lg" variant="secondary" onClick={onNewBooking} className="h-12 sm:col-span-2">
           Nouvelle réservation
         </Button>
       </div>

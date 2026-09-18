@@ -232,6 +232,7 @@ export interface BookingDTO {
 export interface TicketDTO {
   id: string;
   token: string;
+  boardingNumber: string | null; // V3 — « NZK-8F42K9 » : contrôle manuel
   status: TicketStatus;
   issuedAt: string;
   checkedAt: string | null;
@@ -361,6 +362,7 @@ export interface ScanResultDTO {
   ticket: {
     reference: string;
     token: string;
+    boardingNumber: string | null;
     status: TicketStatus;
     passengerName: string;
     passengerPhone: string;
@@ -372,7 +374,9 @@ export interface ScanResultDTO {
     departureTime: string;
     busRegistration: string;
     agencyName: string;
+    agencyAddress: string | null;
     checkedAt: string | null;
+    checkedByName: string | null;
   } | null;
 }
 
@@ -558,7 +562,7 @@ export interface ExpenseInput {
 
 // ---------- RAPPORTS ----------
 export interface ReportDTO {
-  type: "daily" | "weekly" | "monthly" | "agency" | "bus" | "route";
+  type: "daily" | "weekly" | "monthly" | "agency" | "bus" | "route" | "city" | "agent";
   period: { from: string; to: string; label: string };
   totalBookings: number;
   totalRevenue: number;
@@ -620,6 +624,128 @@ export interface IdName {
 export interface AssistantReplyDTO {
   sessionId: string; // identifiant de conversation (généré serveur si absent)
   reply: string; // réponse en français, ancrée sur les données réelles
+  resolved: boolean; // V3 — la réponse s'appuie sur des données certaines
+  escalated: boolean; // V3 — escalade humaine proposée (information indisponible)
+  category: string | null; // V3 — catégorie FAQ détectée (le cas échéant)
+}
+
+// ============================================================
+// V3 — GÉOLOCALISATION CLIENT & ROUTING D'AGENCES
+// ============================================================
+
+export type NearbyAgencyStatus = "OPEN" | "CLOSED" | "FULL";
+
+export interface NearbyAgencyDTO {
+  id: string;
+  code: string;
+  name: string;
+  address: string | null;
+  phone: string | null;
+  cityId: string;
+  cityName: string;
+  neighborhoodId: string | null;
+  neighborhoodName: string | null;
+  latitude: number | null;
+  longitude: number | null;
+  distanceMeters: number | null;
+  distanceLabel: string | null; // "350 m" / "1,4 km"
+  openNow: boolean;
+  openingTime: string | null;
+  closingTime: string | null;
+  /** Intention de voyage : départs du jour sur la ligne (null = non demandé) */
+  departuresToday: number | null;
+  nextDepartureTime: string | null;
+  nextDepartureSeats: number | null;
+  nextDeparturePrice: number | null;
+  status: NearbyAgencyStatus;
+}
+
+export interface AgencyNearbyResultDTO {
+  neighborhood: { id: string; name: string; cityName: string } | null;
+  detectedCity: { id: string; name: string } | null;
+  agencies: NearbyAgencyDTO[];
+  recommended: NearbyAgencyDTO | null;
+  message: string;
+}
+
+export interface AgencyRecommendationDTO extends AgencyNearbyResultDTO {
+  alternatives: NearbyAgencyDTO[];
+  reason: string;
+  seats: number;
+}
+
+export interface NeighborhoodDTO {
+  id: string;
+  cityId: string;
+  cityName: string;
+  name: string;
+  slug: string;
+  latitude: number | null;
+  longitude: number | null;
+  radiusMeters: number;
+  isActive: boolean;
+  agencyCount: number;
+  createdAt: string;
+}
+
+export interface CityWithGeoDTO {
+  id: string;
+  name: string;
+  slug: string | null;
+  latitude: number | null;
+  longitude: number | null;
+  isActive: boolean;
+}
+
+// ============================================================
+// V3 — BASE DE CONNAISSANCES & JOURNAL IA
+// ============================================================
+
+export const KNOWLEDGE_CATEGORIES = [
+  "HORAIRES", "TARIFS", "AGENCES", "RESERVATION", "PAIEMENT", "BAGAGES",
+  "EMBARQUEMENT", "ANNULATION", "REMBOURSEMENT", "CONTACT", "SERVICES",
+  "GPS", "FIDELITE", "RECLAMATIONS",
+] as const;
+export type KnowledgeCategory = (typeof KNOWLEDGE_CATEGORIES)[number];
+
+export interface KnowledgeBaseDTO {
+  id: string;
+  title: string;
+  question: string;
+  answer: string;
+  category: string;
+  keywords: string;
+  cityId: string | null;
+  cityName: string | null;
+  agencyId: string | null;
+  agencyName: string | null;
+  isActive: boolean;
+  priority: number;
+  version: number;
+  createdByName: string | null;
+  updatedByName: string | null;
+  updatedAt: string;
+  createdAt: string;
+}
+
+export interface AIQuestionLogDTO {
+  id: string;
+  sessionId: string;
+  question: string;
+  answer: string;
+  confidence: number | null;
+  resolved: boolean;
+  category: string | null;
+  createdAt: string;
+}
+
+export interface AIQuestionsStatsDTO {
+  total: number;
+  resolved: number;
+  unresolved: number;
+  last7Days: number;
+  topQuestions: { question: string; count: number }[];
+  topCategories: { category: string | null; count: number }[];
 }
 
 // ============================================================

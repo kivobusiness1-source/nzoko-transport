@@ -40,23 +40,28 @@ model User {
   notifications  Notification[]
   auditLogs      AuditLog[]
   securityLogs   SecurityLog[]
-  bookingsMade   Booking[]       @relation("BookingCreator")
-  paymentsMade   Payment[]       @relation("PaymentCollector")
-  ticketsChecked Ticket[]        @relation("TicketChecker")
+  bookingsMade   Booking[]      @relation("BookingCreator")
+  paymentsMade   Payment[]      @relation("PaymentCollector")
+  ticketsChecked Ticket[]       @relation("TicketChecker")
   expenses       Expense[]
   transactions   Transaction[]
   driver         Driver?
 
+  // V3 — responsabilités & base de connaissances IA
+  managedAgencies  Agency[]        @relation("AgencyManager")
+  knowledgeCreated KnowledgeBase[] @relation("KBCreatedBy")
+  knowledgeUpdated KnowledgeBase[] @relation("KBUpdatedBy")
+
   // Espace client & fidélisation
-  loyaltyAccount        LoyaltyAccount?
-  favoriteRoutes        FavoriteRoute[]
-  complaintsAuthored    Complaint[]         @relation("ComplaintAuthor")
-  complaintsAssigned    Complaint[]         @relation("ComplaintAssignee")
-  complaintMessages     ComplaintMessage[]  @relation("ComplaintMessages")
-  tripRatings           TripRating[]       @relation("TripRatings")
-  redemptionRequests    RedemptionRequest[] @relation("RedemptionRequester")
-  redemptionDecisions   RedemptionRequest[] @relation("RedemptionDecider")
-  passengerProfiles     Passenger[]        @relation("PassengerAccount")
+  loyaltyAccount      LoyaltyAccount?
+  favoriteRoutes      FavoriteRoute[]
+  complaintsAuthored  Complaint[]         @relation("ComplaintAuthor")
+  complaintsAssigned  Complaint[]         @relation("ComplaintAssignee")
+  complaintMessages   ComplaintMessage[]  @relation("ComplaintMessages")
+  tripRatings         TripRating[]        @relation("TripRatings")
+  redemptionRequests  RedemptionRequest[] @relation("RedemptionRequester")
+  redemptionDecisions RedemptionRequest[] @relation("RedemptionDecider")
+  passengerProfiles   Passenger[]         @relation("PassengerAccount")
 
   @@index([roleId])
   @@index([agencyId])
@@ -114,79 +119,120 @@ model Session {
 model City {
   id        String   @id @default(cuid())
   name      String
+  slug      String?  @unique // "pointe-noire" — V3 géolocalisation/SEO
   country   String   @default("CG") // code pays ISO — extensible RDC, Gabon, Cameroun, Angola...
+  latitude  Float? // V3 — centre géographique (GPS client : détection de ville)
+  longitude Float?
   isActive  Boolean  @default(true)
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  agencies      Agency[]
-  routesOrigin  Route[]  @relation("RouteOrigin")
-  routesDest    Route[]  @relation("RouteDestination")
-  routeStops    RouteStop[]
+  agencies             Agency[]
+  neighborhoods        Neighborhood[]
+  routesOrigin         Route[]         @relation("RouteOrigin")
+  routesDest           Route[]         @relation("RouteDestination")
+  routeStops           RouteStop[]
   favoriteOrigins      FavoriteRoute[] @relation("FavoriteOrigin")
   favoriteDestinations FavoriteRoute[] @relation("FavoriteDestination")
+  knowledgeBases       KnowledgeBase[]
+  aiQuestionLogs       AIQuestionLog[]
 
   @@unique([name, country])
   @@index([isActive])
   @@index([country])
 }
 
-model Agency {
-  id        String   @id @default(cuid())
-  code      String   @unique
-  name      String
-  cityId    String
-  city      City     @relation(fields: [cityId], references: [id])
-  address   String?
-  phone     String?
-  email     String?
-  isActive  Boolean  @default(true)
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+// V3 — Quartier / zone d'une ville : "Vous êtes probablement à [quartier]".
+// Le rayon sert à la détection approximative côté serveur (Haversine point↔centre).
+model Neighborhood {
+  id           String   @id @default(cuid())
+  cityId       String
+  city         City     @relation(fields: [cityId], references: [id])
+  name         String
+  slug         String
+  latitude     Float?
+  longitude    Float?
+  radiusMeters Int      @default(2500) // rayon de rattachement approximatif
+  isActive     Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
 
-  users        User[]
-  buses        Bus[]
-  drivers      Driver[]
-  trips        Trip[]
-  bookings     Booking[]
-  transactions Transaction[]
-  expenses     Expense[]
+  agencies Agency[]
+
+  @@unique([cityId, slug])
+  @@index([cityId, isActive])
+  @@index([isActive])
+}
+
+model Agency {
+  id             String        @id @default(cuid())
+  code           String        @unique
+  name           String
+  cityId         String
+  city           City          @relation(fields: [cityId], references: [id])
+  neighborhoodId String? // V3 — quartier/zone d'implantation
+  neighborhood   Neighborhood? @relation(fields: [neighborhoodId], references: [id])
+  address        String?
+  phone          String?
+  email          String?
+  description    String? // V3 — instructions d'accès, services
+  latitude       Float? // V3 — position GPS (recommandation d'agence)
+  longitude      Float?
+  openingTime    String? // V3 — "06:30" heure locale Congo
+  closingTime    String? // V3 — "20:00"
+  managerId      String? // V3 — responsable d'agence (AGENCY_MANAGER)
+  manager        User?         @relation("AgencyManager", fields: [managerId], references: [id])
+  isActive       Boolean       @default(true)
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+
+  users            User[]
+  buses            Bus[]
+  drivers          Driver[]
+  trips            Trip[]
+  bookings         Booking[]
+  transactions     Transaction[]
+  expenses         Expense[]
   trackingSessions TrackingSession[]
+  knowledgeBases   KnowledgeBase[]
+  aiQuestionLogs   AIQuestionLog[]
 
   @@index([cityId])
+  @@index([cityId, isActive])
+  @@index([neighborhoodId])
   @@index([isActive])
 }
 
 model Route {
-  id                      String   @id @default(cuid())
-  code                    String   @unique
-  originCityId            String
-  originCity              City     @relation("RouteOrigin", fields: [originCityId], references: [id])
-  destinationCityId       String
-  destinationCity         City     @relation("RouteDestination", fields: [destinationCityId], references: [id])
-  distanceKm              Int
+  id                       String   @id @default(cuid())
+  code                     String   @unique
+  originCityId             String
+  originCity               City     @relation("RouteOrigin", fields: [originCityId], references: [id])
+  destinationCityId        String
+  destinationCity          City     @relation("RouteDestination", fields: [destinationCityId], references: [id])
+  distanceKm               Int
   estimatedDurationMinutes Int
-  basePrice               Int      // XAF
-  isActive                Boolean  @default(true)
-  createdAt               DateTime @default(now())
-  updatedAt               DateTime @updatedAt
+  basePrice                Int // XAF
+  isActive                 Boolean  @default(true)
+  createdAt                DateTime @default(now())
+  updatedAt                DateTime @updatedAt
 
-  stops   RouteStop[]
-  trips   Trip[]
+  stops RouteStop[]
+  trips Trip[]
 
   @@unique([originCityId, destinationCityId])
   @@index([isActive])
 }
 
 model RouteStop {
-  id                  String   @id @default(cuid())
-  routeId             String
-  route               Route    @relation(fields: [routeId], references: [id], onDelete: Cascade)
-  cityId              String
-  city                City     @relation(fields: [cityId], references: [id])
-  position            Int      // ordre croissant, 0 = origine
-  minutesFromStart    Int      // temps estimé depuis le départ (minutes)
-  createdAt           DateTime @default(now())
+  id               String   @id @default(cuid())
+  routeId          String
+  route            Route    @relation(fields: [routeId], references: [id], onDelete: Cascade)
+  cityId           String
+  city             City     @relation(fields: [cityId], references: [id])
+  position         Int // ordre croissant, 0 = origine
+  minutesFromStart Int // temps estimé depuis le départ (minutes)
+  createdAt        DateTime @default(now())
 
   @@unique([routeId, position])
   @@index([routeId])
@@ -200,9 +246,9 @@ model RouteStop {
 model SeatLayout {
   id          String   @id @default(cuid())
   name        String   @unique
-  rows        Int      // nombre de rangées
-  columns     Int      // nombre de sièges par rangée (hors couloir)
-  aisleAfter  Int      // position du couloir : nb de sièges à gauche (2+2 => 2 ; 1+2 => 1)
+  rows        Int // nombre de rangées
+  columns     Int // nombre de sièges par rangée (hors couloir)
+  aisleAfter  Int // position du couloir : nb de sièges à gauche (2+2 => 2 ; 1+2 => 1)
   description String?
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
@@ -212,17 +258,17 @@ model SeatLayout {
 }
 
 model Seat {
-  id            String     @id @default(cuid())
-  seatLayoutId  String
-  seatLayout    SeatLayout @relation(fields: [seatLayoutId], references: [id], onDelete: Cascade)
-  seatNumber    String     // ex: "01", "12"
-  row           Int        // 1..rows
-  column        String     // A, B, C, D...
-  type          String     @default("STANDARD") // STANDARD | VIP
-  createdAt     DateTime   @default(now())
+  id           String     @id @default(cuid())
+  seatLayoutId String
+  seatLayout   SeatLayout @relation(fields: [seatLayoutId], references: [id], onDelete: Cascade)
+  seatNumber   String // ex: "01", "12"
+  row          Int // 1..rows
+  column       String // A, B, C, D...
+  type         String     @default("STANDARD") // STANDARD | VIP
+  createdAt    DateTime   @default(now())
 
-  bookings      Booking[]
-  occupancies   SeatOccupancy[]
+  bookings    Booking[]
+  occupancies SeatOccupancy[]
 
   @@unique([seatLayoutId, seatNumber])
   @@index([seatLayoutId])
@@ -230,21 +276,21 @@ model Seat {
 }
 
 model Bus {
-  id                 String      @id @default(cuid())
-  registrationNumber String      @unique
+  id                 String     @id @default(cuid())
+  registrationNumber String     @unique
   brand              String
   model              String
   year               Int?
   capacity           Int
-  status             String      @default("ACTIVE") // ACTIVE | MAINTENANCE | INACTIVE | OUT_OF_SERVICE
+  status             String     @default("ACTIVE") // ACTIVE | MAINTENANCE | INACTIVE | OUT_OF_SERVICE
   agencyId           String
-  agency             Agency      @relation(fields: [agencyId], references: [id])
+  agency             Agency     @relation(fields: [agencyId], references: [id])
   seatLayoutId       String
-  seatLayout         SeatLayout  @relation(fields: [seatLayoutId], references: [id])
-  createdAt          DateTime    @default(now())
-  updatedAt          DateTime    @updatedAt
+  seatLayout         SeatLayout @relation(fields: [seatLayoutId], references: [id])
+  createdAt          DateTime   @default(now())
+  updatedAt          DateTime   @updatedAt
 
-  trips Trip[]
+  trips            Trip[]
   trackingSessions TrackingSession[]
 
   @@index([agencyId])
@@ -255,20 +301,20 @@ model Bus {
 // SUIVI GPS TEMPS RÉEL — une session par trajet/portion de trajet
 // ============================================================
 model TrackingSession {
-  id        String   @id @default(cuid())
+  id        String    @id @default(cuid())
   driverId  String
-  driver    Driver   @relation(fields: [driverId], references: [id])
-  tripId    String?  // voyage rattaché (null = repositionnement/entretien)
-  trip      Trip?    @relation(fields: [tripId], references: [id])
+  driver    Driver    @relation(fields: [driverId], references: [id])
+  tripId    String? // voyage rattaché (null = repositionnement/entretien)
+  trip      Trip?     @relation(fields: [tripId], references: [id])
   busId     String?
-  bus       Bus?     @relation(fields: [busId], references: [id])
+  bus       Bus?      @relation(fields: [busId], references: [id])
   agencyId  String
-  agency    Agency   @relation(fields: [agencyId], references: [id])
-  status    String   @default("ACTIVE") // ACTIVE | PAUSED | COMPLETED
-  startedAt DateTime @default(now())
+  agency    Agency    @relation(fields: [agencyId], references: [id])
+  status    String    @default("ACTIVE") // ACTIVE | PAUSED | COMPLETED
+  startedAt DateTime  @default(now())
   endedAt   DateTime?
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
 
   points GpsPoint[]
 
@@ -282,13 +328,13 @@ model GpsPoint {
   sessionId  String
   session    TrackingSession @relation(fields: [sessionId], references: [id])
   latitude   Float
-  longitude Float
+  longitude  Float
   speed      Float? // km/h (m/s × 3,6 côté client)
   heading    Float? // degrés 0–360
   accuracy   Float? // rayon de confiance en mètres
   altitude   Float? // mètres
   recordedAt DateTime // horodatage ORIGINAL du GPS — jamais réécrit
-  createdAt  DateTime @default(now()) // réception serveur (diagnostic latence)
+  createdAt  DateTime        @default(now()) // réception serveur (diagnostic latence)
 
   @@index([sessionId, recordedAt])
 }
@@ -307,7 +353,7 @@ model Driver {
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
 
-  trips Trip[]
+  trips            Trip[]
   trackingSessions TrackingSession[]
 
   @@index([agencyId])
@@ -320,28 +366,28 @@ model Driver {
 // ============================================================
 
 model Trip {
-  id                     String   @id @default(cuid())
-  code                   String   @unique
-  routeId                String
-  route                  Route    @relation(fields: [routeId], references: [id])
-  busId                  String
-  bus                    Bus      @relation(fields: [busId], references: [id])
-  driverId               String?
-  driver                 Driver?  @relation(fields: [driverId], references: [id])
-  agencyId               String
-  agency                 Agency   @relation(fields: [agencyId], references: [id])
-  departureTime          DateTime
-  estimatedArrivalTime   DateTime
-  price                  Int      // XAF — peut différer de route.basePrice (yield)
-  status                 String   @default("SCHEDULED") // SCHEDULED | BOARDING | DEPARTED | ARRIVED | CANCELLED | COMPLETED
-  notes                  String?
-  createdAt              DateTime @default(now())
-  updatedAt              DateTime @updatedAt
+  id                   String   @id @default(cuid())
+  code                 String   @unique
+  routeId              String
+  route                Route    @relation(fields: [routeId], references: [id])
+  busId                String
+  bus                  Bus      @relation(fields: [busId], references: [id])
+  driverId             String?
+  driver               Driver?  @relation(fields: [driverId], references: [id])
+  agencyId             String
+  agency               Agency   @relation(fields: [agencyId], references: [id])
+  departureTime        DateTime
+  estimatedArrivalTime DateTime
+  price                Int // XAF — peut différer de route.basePrice (yield)
+  status               String   @default("SCHEDULED") // SCHEDULED | BOARDING | DEPARTED | ARRIVED | CANCELLED | COMPLETED
+  notes                String?
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
 
-  bookings    Booking[]
-  occupancies SeatOccupancy[]
-  expenses    Expense[]
-  tripRatings TripRating[] @relation("TripRatings")
+  bookings         Booking[]
+  occupancies      SeatOccupancy[]
+  expenses         Expense[]
+  tripRatings      TripRating[]      @relation("TripRatings")
   trackingSessions TrackingSession[]
 
   @@index([routeId])
@@ -359,11 +405,11 @@ model Passenger {
   id             String   @id @default(cuid())
   firstName      String
   lastName       String
-  phone          String    // E.164 digits (ex: 242061234567) — normalisé à la saisie
+  phone          String // E.164 digits (ex: 242061234567) — normalisé à la saisie
   email          String?
   documentNumber String?
-  userId         String?   // compte client lié — remonte les billets achetés sans compte
-  user           User?     @relation("PassengerAccount", fields: [userId], references: [id])
+  userId         String? // compte client lié — remonte les billets achetés sans compte
+  user           User?    @relation("PassengerAccount", fields: [userId], references: [id])
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
 
@@ -383,24 +429,24 @@ model Booking {
   passenger        Passenger @relation(fields: [passengerId], references: [id])
   seatId           String
   seat             Seat      @relation(fields: [seatId], references: [id])
-  amount           Int       // XAF figé à la réservation
+  amount           Int // XAF figé à la réservation
   status           String    @default("PENDING") // PENDING | CONFIRMED | CANCELLED | EXPIRED | COMPLETED
   channel          String    @default("WEB") // WEB | AGENT
-  agencyId         String?   // agence vendeuse (guichet)
+  agencyId         String? // agence vendeuse (guichet)
   agency           Agency?   @relation(fields: [agencyId], references: [id])
-  createdById      String?   // agent utilisateur (si guichet)
+  createdById      String? // agent utilisateur (si guichet)
   createdBy        User?     @relation("BookingCreator", fields: [createdById], references: [id])
-  promoCode        String?   // code fidélité/campagne appliqué (remise déjà déduite du montant)
+  promoCode        String? // code fidélité/campagne appliqué (remise déjà déduite du montant)
   expiresAt        DateTime? // verrou 10 min quand PENDING
   createdAt        DateTime  @default(now())
   updatedAt        DateTime  @updatedAt
 
-  payment     Payment[]
-  ticket      Ticket?
-  occupancy   SeatOccupancy?
+  payment   Payment[]
+  ticket    Ticket?
+  occupancy SeatOccupancy?
 
   loyaltyTransactions LoyaltyTransaction[] @relation("LoyaltyBooking")
-  tripRating         TripRating?         @relation("TripRatingBooking")
+  tripRating          TripRating?          @relation("TripRatingBooking")
 
   @@index([tripId])
   @@index([status, expiresAt])
@@ -412,16 +458,16 @@ model Booking {
 // Verrou d'occupation de siège par voyage — LA disponibilité est TOUJOURS par voyage.
 // Contrainte unique (tripId, seatId) = protection anti double réservation au niveau base.
 model SeatOccupancy {
-  id        String   @id @default(cuid())
+  id        String    @id @default(cuid())
   tripId    String
-  trip      Trip     @relation(fields: [tripId], references: [id], onDelete: Cascade)
+  trip      Trip      @relation(fields: [tripId], references: [id], onDelete: Cascade)
   seatId    String
-  seat      Seat     @relation(fields: [seatId], references: [id])
-  bookingId String   @unique
-  booking   Booking  @relation(fields: [bookingId], references: [id], onDelete: Cascade)
-  status    String   @default("HELD") // HELD (verrou temporaire) | BOOKED (confirmé)
+  seat      Seat      @relation(fields: [seatId], references: [id])
+  bookingId String    @unique
+  booking   Booking   @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+  status    String    @default("HELD") // HELD (verrou temporaire) | BOOKED (confirmé)
   expiresAt DateTime? // fin du verrou quand HELD
-  createdAt DateTime @default(now())
+  createdAt DateTime  @default(now())
 
   @@unique([tripId, seatId]) // ⚠️ verrou critique anti-concurrence
   @@index([expiresAt])
@@ -433,19 +479,19 @@ model SeatOccupancy {
 // ============================================================
 
 model Payment {
-  id                    String    @id @default(cuid())
+  id                    String   @id @default(cuid())
   bookingId             String
-  booking               Booking   @relation(fields: [bookingId], references: [id])
+  booking               Booking  @relation(fields: [bookingId], references: [id])
   provider              String // MTN_MOMO | AIRTEL_MONEY | CASH | CARD | BANK_TRANSFER
-  providerTransactionId String?   @unique // idempotence fournisseur/webhook
-  amount                Int       // XAF
-  currency              String    @default("XAF")
-  status                String    @default("PENDING") // PENDING | PROCESSING | SUCCESS | FAILED | CANCELLED | REFUNDED
-  metadata              String?   // JSON sérialisé (état MoMo, remboursements…)
-  createdById           String?   // encaisseur (CASH)
-  createdBy             User?     @relation("PaymentCollector", fields: [createdById], references: [id])
-  createdAt             DateTime  @default(now())
-  updatedAt             DateTime  @updatedAt
+  providerTransactionId String?  @unique // idempotence fournisseur/webhook
+  amount                Int // XAF
+  currency              String   @default("XAF")
+  status                String   @default("PENDING") // PENDING | PROCESSING | SUCCESS | FAILED | CANCELLED | REFUNDED
+  metadata              String? // JSON sérialisé (état MoMo, remboursements…)
+  createdById           String? // encaisseur (CASH)
+  createdBy             User?    @relation("PaymentCollector", fields: [createdById], references: [id])
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
 
   transactions Transaction[]
 
@@ -461,19 +507,21 @@ model Payment {
 // ============================================================
 
 model Ticket {
-  id           String    @id @default(cuid())
-  bookingId    String    @unique
-  booking      Booking   @relation(fields: [bookingId], references: [id])
-  token        String    @unique // QR : token aléatoire — JAMAIS de données passager
-  status       String    @default("VALID") // VALID | USED | CANCELLED
-  issuedAt     DateTime  @default(now())
-  checkedAt    DateTime?
-  checkedById  String?
-  checkedBy    User?     @relation("TicketChecker", fields: [checkedById], references: [id])
-  createdAt    DateTime  @default(now())
-  updatedAt    DateTime  @updatedAt
+  id             String    @id @default(cuid())
+  bookingId      String    @unique
+  booking        Booking   @relation(fields: [bookingId], references: [id])
+  token          String    @unique // QR : token aléatoire — JAMAIS de données passager
+  boardingNumber String?   @unique // V3 — "NZK-8F42K9" : contrôle saisissable à la main (aléatoire sûr, PAS un compteur)
+  status         String    @default("VALID") // VALID | USED | CANCELLED
+  issuedAt       DateTime  @default(now())
+  checkedAt      DateTime?
+  checkedById    String?
+  checkedBy      User?     @relation("TicketChecker", fields: [checkedById], references: [id])
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
 
   @@index([token])
+  @@index([boardingNumber])
   @@index([status])
   @@index([checkedById, checkedAt])
 }
@@ -483,19 +531,19 @@ model Ticket {
 // ============================================================
 
 model Transaction {
-  id          String    @id @default(cuid())
+  id          String   @id @default(cuid())
   type        String // INCOME | EXPENSE | REFUND | ADJUSTMENT
-  amount      Int       // XAF, positif
-  currency    String    @default("XAF")
-  reference   String?   // bookingReference / expense id / provider tx
+  amount      Int // XAF, positif
+  currency    String   @default("XAF")
+  reference   String? // bookingReference / expense id / provider tx
   description String
   agencyId    String?
-  agency      Agency?   @relation(fields: [agencyId], references: [id])
+  agency      Agency?  @relation(fields: [agencyId], references: [id])
   paymentId   String?
-  payment     Payment?  @relation(fields: [paymentId], references: [id])
+  payment     Payment? @relation(fields: [paymentId], references: [id])
   createdById String?
-  createdBy   User?     @relation(fields: [createdById], references: [id])
-  createdAt   DateTime  @default(now())
+  createdBy   User?    @relation(fields: [createdById], references: [id])
+  createdAt   DateTime @default(now())
 
   @@index([type, createdAt])
   @@index([agencyId, createdAt])
@@ -505,7 +553,7 @@ model Transaction {
 model Expense {
   id          String   @id @default(cuid())
   category    String // FUEL | MAINTENANCE | SALARY | REPAIR | SUPPLIES | OTHER
-  amount      Int      // XAF
+  amount      Int // XAF
   description String
   agencyId    String?
   agency      Agency?  @relation(fields: [agencyId], references: [id])
@@ -543,10 +591,10 @@ model AuditLog {
   id        String   @id @default(cuid())
   userId    String?
   user      User?    @relation(fields: [userId], references: [id])
-  action    String   // ex: BOOKING_CREATED, PAYMENT_CONFIRMED, PRICE_CHANGED...
-  entity    String   // ex: Booking, Trip, User...
+  action    String // ex: BOOKING_CREATED, PAYMENT_CONFIRMED, PRICE_CHANGED...
+  entity    String // ex: Booking, Trip, User...
   entityId  String?
-  metadata  String?  // JSON sérialisé
+  metadata  String? // JSON sérialisé
   ipAddress String?
   createdAt DateTime @default(now())
 
@@ -560,10 +608,10 @@ model SecurityLog {
   userId    String?
   user      User?    @relation(fields: [userId], references: [id])
   email     String?
-  event     String   // LOGIN_FAILED | LOGIN_SUCCESS | RATE_LIMITED | ACCESS_DENIED | SUSPICIOUS | VALIDATION_ERROR
+  event     String // LOGIN_FAILED | LOGIN_SUCCESS | RATE_LIMITED | ACCESS_DENIED | SUSPICIOUS | VALIDATION_ERROR
   ipAddress String?
   userAgent String?
-  details   String?  // JSON sérialisé
+  details   String? // JSON sérialisé
   createdAt DateTime @default(now())
 
   @@index([event, createdAt])
@@ -580,9 +628,9 @@ model SecurityLog {
 // en mode debug uniquement (OTP_DEBUG=true) — cf. README.
 model OtpCode {
   id         String    @id @default(cuid())
-  phone      String    // E.164 digits
-  codeHash   String    // SHA-256 du code — jamais en clair
-  expiresAt  DateTime  // 5 min
+  phone      String // E.164 digits
+  codeHash   String // SHA-256 du code — jamais en clair
+  expiresAt  DateTime // 5 min
   attempts   Int       @default(0) // anti brute-force : 5 essais max
   consumedAt DateTime?
   createdAt  DateTime  @default(now())
@@ -649,11 +697,11 @@ model Complaint {
   category         String // TICKET | BUS | STAFF | PAYMENT | DELAY | SUGGESTION | COMPLAINT
   subject          String
   message          String
-  bookingReference String?   // réservation liée (optionnel)
+  bookingReference String? // réservation liée (optionnel)
   status           String    @default("OPEN") // OPEN | IN_PROGRESS | RESOLVED | CLOSED
   assignedToId     String?
   assignedTo       User?     @relation("ComplaintAssignee", fields: [assignedToId], references: [id])
-  satisfaction     Int?      // 1-5 éventuellement collecté à la clôture
+  satisfaction     Int? // 1-5 éventuellement collecté à la clôture
   resolvedAt       DateTime?
   createdAt        DateTime  @default(now())
   updatedAt        DateTime  @updatedAt
@@ -673,7 +721,7 @@ model ComplaintMessage {
   authorId    String?
   author      User?     @relation("ComplaintMessages", fields: [authorId], references: [id])
   isStaff     Boolean   @default(false)
-  authorName  String    // libellé direct : "Moi" | "Support NZOKO" | "Système"
+  authorName  String // libellé direct : "Moi" | "Support NZOKO" | "Système"
   message     String
   createdAt   DateTime  @default(now())
 
@@ -716,7 +764,7 @@ model RedemptionRequest {
   decidedById String?
   decidedBy   User?     @relation("RedemptionDecider", fields: [decidedById], references: [id])
   decidedAt   DateTime?
-  note        String?   // motif de refus / instructions
+  note        String? // motif de refus / instructions
   createdAt   DateTime  @default(now())
 
   @@index([userId, createdAt])
@@ -726,18 +774,77 @@ model RedemptionRequest {
 // Codes promo applicables à la réservation (fidélité & campagnes).
 // type PERCENT : value = % de remise ; FREE_TICKET : traité par l'équipe.
 model PromoCode {
-  id        String    @id @default(cuid())
-  code      String    @unique // ex: NZOKO-XY7K2M
+  id        String   @id @default(cuid())
+  code      String   @unique // ex: NZOKO-XY7K2M
   type      String // PERCENT | FREE_TICKET
   value     Int
   label     String
   userId    String? // réservé à un client ; null = public
-  maxUses   Int       @default(1)
-  usedCount Int       @default(0)
+  maxUses   Int      @default(1)
+  usedCount Int      @default(0)
   expiresAt DateTime
-  isActive  Boolean   @default(true)
-  createdAt DateTime  @default(now())
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
 
   @@index([userId])
   @@index([isActive, expiresAt])
+}
+
+// ============================================================
+// V3 — ASSISTANT IA : BASE DE CONNAISSANCES & JOURNAL
+// ============================================================
+
+// FAQ officielle pilotée par l'administration : le LLM répond UNIQUEMENT
+// à partir de ces entrées + des données dynamiques (horaires/tarifs/agences
+// calculés en base). Toute réponse hors base = refus + escalade humaine.
+model KnowledgeBase {
+  id          String   @id @default(cuid())
+  title       String
+  question    String
+  answer      String
+  category    String // HORAIRES | TARIFS | AGENCES | RESERVATION | PAIEMENT | BAGAGES | EMBARQUEMENT | ANNULATION | REMBOURSEMENT | CONTACT | SERVICES | GPS | FIDELITE | RECLAMATIONS
+  keywords    String   @default("") // mots-clés séparés par virgules (matching serveur, insensible aux accents)
+  cityId      String? // portée optionnelle : FAQ valable pour une ville
+  agencyId    String? // portée optionnelle : FAQ valable pour une agence
+  isActive    Boolean  @default(true)
+  priority    Int      @default(0) // FAQ prioritaires d'abord
+  version     Int      @default(1) // incrémenté à chaque modification
+  createdById String?
+  updatedById String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  city      City?   @relation(fields: [cityId], references: [id])
+  agency    Agency? @relation(fields: [agencyId], references: [id])
+  createdBy User?   @relation("KBCreatedBy", fields: [createdById], references: [id])
+  updatedBy User?   @relation("KBUpdatedBy", fields: [updatedById], references: [id])
+
+  @@index([category, isActive])
+  @@index([isActive, priority])
+  @@index([cityId])
+  @@index([agencyId])
+  @@index([updatedAt])
+}
+
+// Journal des questions posées à l'assistant — pilotage qualité :
+// questions fréquentes, non résolues, mal comprises → enrichir la FAQ.
+model AIQuestionLog {
+  id         String   @id @default(cuid())
+  sessionId  String
+  question   String
+  answer     String
+  confidence Float? // 0-1 (1 = réponse FAQ directe, LLM = heuristique)
+  resolved   Boolean  @default(false)
+  category   String?
+  cityId     String?
+  agencyId   String?
+  createdAt  DateTime @default(now())
+
+  city   City?   @relation(fields: [cityId], references: [id])
+  agency Agency? @relation(fields: [agencyId], references: [id])
+
+  @@index([resolved, createdAt])
+  @@index([createdAt])
+  @@index([category])
+  @@index([sessionId])
 }

@@ -16,6 +16,7 @@ const querySchema = z.object({
     .string()
     .trim()
     .refine((s) => isValidDateStr(s), "Date invalide (format attendu YYYY-MM-DD)."),
+  agencyId: z.string().trim().length(25).optional(), // V3 — filtre « Trouver mon agence »
 });
 
 export async function GET(req: NextRequest) {
@@ -25,6 +26,7 @@ export async function GET(req: NextRequest) {
       from: req.nextUrl.searchParams.get("from") ?? "",
       to: req.nextUrl.searchParams.get("to") ?? "",
       date: req.nextUrl.searchParams.get("date") ?? "",
+      agencyId: req.nextUrl.searchParams.get("agencyId") ?? undefined,
     });
     const trips = await searchTrips(params);
     return ok(trips);

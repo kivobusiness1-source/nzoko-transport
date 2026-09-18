@@ -7,7 +7,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { motion } from "framer-motion";
 import { toast } from "sonner";
-import { Banknote, Loader2, Search, Ticket, XCircle } from "lucide-react";
+import { Banknote, FileDown, Loader2, Search, Ticket, XCircle } from "lucide-react";
 import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription,
   AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
@@ -18,6 +18,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
 import { NzokoBookingDetail } from "@/components/shared/nzoko-booking-detail";
+import { NzokoCopyButton } from "@/components/shared/nzoko-copy-button";
 import { TRACK_REF_KEY } from "@/features/booking/ticket-card";
 import { api, ApiClientError } from "@/lib/api-client";
 import type { BookingDetailDTO } from "@/types";
@@ -92,6 +93,18 @@ export default function TrackingView() {
   };
 
   const pending = detail?.status === "PENDING";
+  // Billet actif (un billet annulé ne propose plus le PDF A4, cohérent avec le QR masqué).
+  const ticket = detail?.ticket ?? null;
+  const ticketToken = ticket && ticket.status !== "CANCELLED" ? ticket.token : null;
+
+  // Billet officiel A4 (V3) : logo, QR, n° d'embarquement — généré serveur.
+  const handleDownloadPdf = () => {
+    if (!ticketToken) return;
+    const win = window.open(api.tickets.pdfUrl(ticketToken), "_blank");
+    if (!win) {
+      toast.error("Autorisez les fenêtres surgissantes pour télécharger le billet PDF.");
+    }
+  };
 
   return (
     <section className="mx-auto w-full max-w-2xl px-4 py-6" aria-label="Suivi de billet">
@@ -177,6 +190,31 @@ export default function TrackingView() {
             <Card>
               <CardContent className="p-4 sm:p-6">
                 <NzokoBookingDetail detail={detail} onCancel={() => setConfirmCancel(true)} cancelLoading={cancelling} />
+
+                {/* N° d'embarquement + billet PDF (V3) */}
+                {ticketToken && (
+                  <div className="mt-4 flex flex-col items-center gap-3 rounded-xl border border-primary/20 bg-muted/30 p-4">
+                    {detail.ticket?.boardingNumber && (
+                      <div className="flex w-full flex-col items-center gap-1">
+                        <span className="text-[10px] font-semibold uppercase tracking-[0.15em] text-muted-foreground">
+                          N° d&apos;embarquement
+                        </span>
+                        <span className="flex items-center gap-2">
+                          <span className="font-mono text-lg font-bold tracking-[0.2em] text-primary">
+                            {detail.ticket.boardingNumber}
+                          </span>
+                          <NzokoCopyButton value={detail.ticket.boardingNumber} size="icon" label="le numéro d'embarquement" />
+                        </span>
+                        <span className="text-center text-[11px] leading-snug text-muted-foreground">
+                          Indiquez ce numéro au contrôleur si votre téléphone est déchargé.
+                        </span>
+                      </div>
+                    )}
+                    <Button size="lg" onClick={handleDownloadPdf} className="h-12 w-full gap-2">
+                      <FileDown className="h-4 w-4" aria-hidden /> Télécharger le billet PDF
+                    </Button>
+                  </div>
+                )}
 
                 {pending && (
                   <div className="mt-4 rounded-xl border border-amber-200 bg-amber-50 p-4 dark:border-amber-900 dark:bg-amber-950/40">

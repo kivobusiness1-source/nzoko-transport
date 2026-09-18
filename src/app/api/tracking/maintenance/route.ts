@@ -28,8 +28,9 @@ import {
   type WatchdogResult,
   type RetentionResult,
 } from "@/services/tracking";
+import { runDepartureReminders, type RemindersResult } from "@/services/notifications";
 
-const bodySchema = z.object({ action: z.enum(["watchdog", "retention", "all"]) });
+const bodySchema = z.object({ action: z.enum(["watchdog", "retention", "reminders", "all"]) });
 
 /** Comparaison à temps constant de deux secrets (longueur incluse). */
 function safeEqual(received: string, expected: string): boolean {
@@ -54,11 +55,17 @@ function verifyCronBearer(req: NextRequest): boolean {
   return header.startsWith("Bearer ") && safeEqual(header.slice(7), secret);
 }
 
-async function runAll(): Promise<{ ranAt: string; watchdog: WatchdogResult; retention: RetentionResult }> {
+async function runAll(): Promise<{
+  ranAt: string;
+  watchdog: WatchdogResult;
+  retention: RetentionResult;
+  reminders: RemindersResult;
+}> {
   return {
     ranAt: new Date().toISOString(),
     watchdog: await runTrackingWatchdog(),
     retention: await runRetentionCleanup(),
+    reminders: await runDepartureReminders(),
   };
 }
 
@@ -79,7 +86,10 @@ export async function POST(req: NextRequest) {
       return ok({ ranAt: new Date().toISOString(), watchdog: await runTrackingWatchdog(), retention: null });
     }
     if (body.action === "retention") {
-      return ok({ ranAt: new Date().toISOString(), watchdog: null, retention: await runRetentionCleanup() });
+      return ok({ ranAt: new Date().toISOString(), watchdog: null, retention: await runRetentionCleanup(), reminders: null });
+    }
+    if (body.action === "reminders") {
+      return ok({ ranAt: new Date().toISOString(), watchdog: null, retention: null, reminders: await runDepartureReminders() });
     }
     return ok(await runAll());
   } catch (err) {

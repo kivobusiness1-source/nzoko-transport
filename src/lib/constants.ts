@@ -59,6 +59,7 @@ export const PERMISSIONS = [
   "audit:read",
   "security:read",
   "stats:global", "stats:agency",
+  "kb:manage", // V3 — base de connaissances de l'assistant IA
 ] as const;
 export type PermissionCode = (typeof PERMISSIONS)[number];
 
@@ -74,7 +75,7 @@ export const ROLE_PERMISSIONS: Record<RoleCode, PermissionCode[]> = {
     "payment:manage", "payment:read", "payment:cash-collect", "ticket:read",
     "finance:read", "expense:manage", "expense:read", "transaction:read",
     "report:read", "notification:read", "audit:read", "security:read",
-    "stats:global", "stats:agency",
+    "stats:global", "stats:agency", "kb:manage",
   ],
   AGENCY_MANAGER: [
     "agency:read", "user:read",

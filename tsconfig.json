@@ -42,6 +42,7 @@
     "mini-services",
     "scripts",
     "tests",
-    "skills"
+    "skills",
+    "_legacy"
   ]
 }

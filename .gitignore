@@ -74,3 +74,9 @@ tool-results/
 
 # Fichiers internes de travail / collés (jamais versionnés)
 upload/
+
+# Archive locale de l'ancienne architecture (pré-reconstruction GPS) — référence uniquement, hors build
+_legacy/
+agent-ctx/
+download/
+.zshots/
