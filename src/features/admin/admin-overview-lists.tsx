@@ -30,7 +30,10 @@ export function AdminOverviewLists({ stats }: { stats: AdminStatsDTO }) {
         emptyTitle="Aucune route active"
         items={stats.topRoutes.map((r) => (
           <li key={r.route} className="flex items-center justify-between gap-2 py-2.5">
-            <p className="truncate text-sm font-medium">{r.route}</p>
+            {/* min-w-0 indispensable en flex : sans lui, un nom de route long
+                (ex. « Pointe-Noire → Brazzaville ») étire la carte au-delà
+                du viewport mobile (débordement horizontal de tout l'espace). */}
+            <p className="min-w-0 truncate text-sm font-medium">{r.route}</p>
             <div className="flex shrink-0 items-center gap-2">
               <Badge variant="secondary" className="text-[10px]">
                 {r.bookings} réserv.

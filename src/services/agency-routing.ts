@@ -13,6 +13,7 @@
 
 import { db } from "@/lib/db";
 import { dayRange } from "@/lib/dates";
+import { GEO } from "@/lib/constants";
 import {
   haversineMeters,
   humanDistance,
@@ -36,6 +37,14 @@ export interface AgencyRoutingQuery {
   toCityId?: string | null;
   date?: string | null; // YYYY-MM-DD
   seats?: number; // par défaut 1
+  /** Précision GPS en mètres fournie par le navigateur (rayon à 68 %).
+   *  Au-delà de GEO.neighborhoodClaimAccuracyM, la position est jugée
+   *  approximative : le quartier détecté n'est plus affirmé. */
+  accuracy?: number | null;
+  /** true = la position n'est PAS celle de l'utilisateur mais un point de
+   *  référence (repli manuel ville) → AUCUN quartier affirmé, message
+   *  honnête « voici les agences de la ville ». */
+  approximate?: boolean;
 }
 
 type AgencyRow = {
@@ -253,6 +262,17 @@ export async function findNearbyAgencies(query: AgencyRoutingQuery): Promise<Age
 
   const seats = Math.max(1, query.seats ?? 1);
 
+  // Honnêteté géographique : la position peut être (a) réelle et précise,
+  // (b) réelle mais imprécise (GPS/IP wifi → souvent le centre-ville), ou
+  // (c) un point de référence (repli manuel ville — PAS la position de
+  // l'utilisateur). Le quartier n'est affirmé qu'en cas (a) ; suggéré avec
+  // réserve en cas (b) ; jamais mentionné en cas (c).
+  const approximate = query.approximate === true;
+  const accuracyM = query.accuracy ?? null;
+  const lowAccuracy = accuracyM !== null && accuracyM > GEO.neighborhoodClaimAccuracyM;
+  const tooLowAccuracy = accuracyM !== null && accuracyM > GEO.neighborhoodSuggestAccuracyM;
+  const claimableNeighborhood = approximate || tooLowAccuracy ? null : neighborhood;
+
   const rows = agencies
     .map((a) => {
       const center =
@@ -277,7 +297,18 @@ export async function findNearbyAgencies(query: AgencyRoutingQuery): Promise<Age
   const recommended =
     rows.find((r) => r.status === "OPEN") ?? rows.find((r) => r.status !== "CLOSED") ?? rows[0] ?? null;
 
-  const neighborhoodLabel = neighborhood ? `Vous êtes probablement à ${neighborhood.name} (${neighborhood.cityName}).` : "";
+  // Message honnête selon la qualité de la position.
+  const accuracyKm = accuracyM !== null ? Math.max(1, Math.round(accuracyM / 1000)) : null;
+  let neighborhoodLabel = "";
+  if (approximate) {
+    neighborhoodLabel = detectedCity ? `Voici les agences NZOKO de ${detectedCity.name}.` : "Agences NZOKO de la ville choisie.";
+  } else if (neighborhood && tooLowAccuracy) {
+    neighborhoodLabel = `Position GPS trop imprécise (± ${accuracyKm} km) pour identifier votre quartier.`;
+  } else if (neighborhood && lowAccuracy) {
+    neighborhoodLabel = `Position GPS approximative (± ${accuracyKm} km) — quartier le plus probable : ${neighborhood.name} (${neighborhood.cityName}).`;
+  } else if (neighborhood) {
+    neighborhoodLabel = `Vous êtes probablement à ${neighborhood.name} (${neighborhood.cityName}).`;
+  }
   const message =
     rows.length === 0
       ? "Aucune agence NZOKO active et géolocalisée pour le moment. Vous pouvez choisir votre ville manuellement."
@@ -286,8 +317,8 @@ export async function findNearbyAgencies(query: AgencyRoutingQuery): Promise<Age
         : `${neighborhoodLabel} Aucune agence ouverte à proximité immédiate ; voici les agences les plus proches.`;
 
   return {
-    neighborhood: neighborhood
-      ? { id: neighborhood.id, name: neighborhood.name, cityName: neighborhood.cityName }
+    neighborhood: claimableNeighborhood
+      ? { id: claimableNeighborhood.id, name: claimableNeighborhood.name, cityName: claimableNeighborhood.cityName }
       : null,
     detectedCity,
     agencies: rows,

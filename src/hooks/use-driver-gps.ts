@@ -19,6 +19,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { api } from "@/lib/api-client";
 import { enqueue, flushQueue, pendingCount } from "@/lib/gps-queue";
 import { TRACKING } from "@/lib/constants";
+import { queryGeoPermission } from "@/lib/geo-permissions";
 import type { GpsPointInput } from "@/types";
 
 export type GpsStatus = "idle" | "requesting" | "active" | "denied" | "unavailable" | "stopped";
@@ -49,15 +50,31 @@ export interface UseDriverGpsOptions {
 
 /** Demande la permission via getCurrentPosition — false SEULEMENT sur refus
  *  explicite (bloque le démarrage) ; indisponible/timeout → départ autorisé
- *  (le GPS peut revenir en route). */
-export function requestGpsPermission(): Promise<boolean> {
+ *  (le GPS peut revenir en route). Réessai automatique sur timeout (premier
+ *  fix GPS, surtout en intérieur), état de permission connu à l'avance. */
+export async function requestGpsPermission(): Promise<boolean> {
+  if (typeof navigator === "undefined" || !navigator.geolocation) return false;
+  // Permission déjà refusée : le navigateur n'affichera plus de popup —
+  // inutile de tenter un fix qui échouera instantanément.
+  const permission = await queryGeoPermission();
+  if (permission === "denied") return false;
   return new Promise((resolve) => {
-    if (typeof navigator === "undefined" || !navigator.geolocation) return resolve(false);
-    navigator.geolocation.getCurrentPosition(
-      () => resolve(true),
-      (err) => resolve(err.code !== err.PERMISSION_DENIED),
-      { enableHighAccuracy: false, timeout: 15_000, maximumAge: 60_000 }
-    );
+    let retried = false;
+    const attempt = (timeout: number) => {
+      navigator.geolocation.getCurrentPosition(
+        () => resolve(true),
+        (err) => {
+          if (err.code === err.TIMEOUT && !retried) {
+            retried = true;
+            attempt(30_000);
+            return;
+          }
+          resolve(err.code !== err.PERMISSION_DENIED);
+        },
+        { enableHighAccuracy: true, timeout, maximumAge: 30_000 }
+      );
+    };
+    attempt(15_000);
   });
 }
 

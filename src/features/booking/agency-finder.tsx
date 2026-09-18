@@ -4,13 +4,14 @@
 // NZOKO — « Trouver mon agence » (GPS client, V3)
 // Panneau optionnel repliable du tunnel de réservation :
 //  1. bouton « Trouver mon agence » → géolocalisation éphémère
-//     (timeout 10 s, haute précision, JAMAIS stockée) ;
+//     (haute précision, réessai auto sur timeout, JAMAIS stockée) ;
 //  2. détection quartier/ville + agences proches : statut, distance,
-//     horaires, départs du jour si le trajet est déjà choisi ;
+//     horaires, départs du jour si le trajet est déjà choisi —
+//     le quartier n'est JAMAIS affirmé si la position est imprécise ;
 //  3. « Choisir cette agence » → le parent filtre la recherche des
 //     voyages par agencyId (bandeau « Agence — Modifier ») ;
 //  4. fallback manuel sans GPS : sélection de ville → agences de la
-//     ville (centres-villes connus du seed V3, triées par nom).
+//     ville (position de RÉFÉRENCE : aucun quartier affirmé).
 // ============================================================
 
 import { useMemo, useState } from "react";
@@ -38,6 +39,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Skeleton } from "@/components/ui/skeleton";
 import { api, ApiClientError } from "@/lib/api-client";
 import { formatMoney, formatTime } from "@/lib/format";
+import { locateOnce, queryGeoPermission, geoDeniedMessage } from "@/lib/geo-permissions";
 import type {
   AgencyNearbyResultDTO,
   AgencyRecommendationDTO,
@@ -81,6 +83,8 @@ function isRecommendation(
 
 interface FinderResult {
   source: "gps" | "manual";
+  /** Précision GPS (m) quand source = "gps" — affichée si imprécise. */
+  accuracy: number | null;
   data: AgencyNearbyResultDTO | AgencyRecommendationDTO;
 }
 
@@ -300,14 +304,16 @@ export function AgencyFinder({
 
   // Position GPS obtenue → agences proches (ou recommandation si trajet choisi).
   // Les coordonnées ne sont JAMAIS conservées : elles vivent le temps de l'appel.
-  const loadFromPosition = async (lat: number, lng: number) => {
+  // La précision est transmise au serveur : un quartier n'est affirmé que si
+  // la position est fiable (sinon message nuancé — jamais de fausse affirmation).
+  const loadFromPosition = async (lat: number, lng: number, accuracy: number | null) => {
     setLoading(true);
     setError(null);
     try {
       const data = hasTripIntent
-        ? await api.agencies.recommend({ lat, lng, fromCityId: from, toCityId: to, date })
-        : await api.agencies.nearby(lat, lng);
-      setResult({ source: "gps", data });
+        ? await api.agencies.recommend({ lat, lng, fromCityId: from, toCityId: to, date, accuracy })
+        : await api.agencies.nearby(lat, lng, undefined, { accuracy });
+      setResult({ source: "gps", accuracy, data });
       setOpen(true);
     } catch (err) {
       toast.error(errMessage(err));
@@ -318,7 +324,10 @@ export function AgencyFinder({
     }
   };
 
-  const handleLocate = () => {
+  // Demande de localisation : état de permission connu à l'avance (déjà
+  // accordée = zéro clic ; bloquée = guidance précise immédiate), puis fix
+  // GPS avec réessai automatique sur timeout (premier fix en intérieur).
+  const handleLocate = async () => {
     if (locating || loading) return;
     setError(null);
     if (typeof navigator === "undefined" || !("geolocation" in navigator)) {
@@ -326,26 +335,34 @@ export function AgencyFinder({
       setOpen(true);
       return;
     }
+    const permission = await queryGeoPermission();
+    if (permission === "denied") {
+      // Permission déjà refusée : le navigateur n'affichera PLUS de popup —
+      // on guide l'utilisateur au lieu d'échouer en silence.
+      toast.warning(geoDeniedMessage(), { duration: 9000 });
+      setOpen(true);
+      return;
+    }
     setLocating(true);
-    navigator.geolocation.getCurrentPosition(
-      (pos) => {
-        setLocating(false);
-        void loadFromPosition(pos.coords.latitude, pos.coords.longitude);
-      },
-      (err) => {
-        setLocating(false);
-        toast.info(
-          err.code === err.PERMISSION_DENIED
-            ? "Géolocalisation refusée. Choisissez votre ville ci-dessous pour trouver une agence."
-            : "Position introuvable (GPS éteint ou réseau faible). Choisissez votre ville ci-dessous."
-        );
-        setOpen(true);
-      },
-      { enableHighAccuracy: true, timeout: 10000, maximumAge: 60000 }
-    );
+    const { position, reason } = await locateOnce();
+    setLocating(false);
+    if (position) {
+      void loadFromPosition(position.latitude, position.longitude, position.accuracy);
+      return;
+    }
+    if (reason === "denied") {
+      toast.warning(geoDeniedMessage(), { duration: 9000 });
+    } else if (reason === "timeout") {
+      toast.info("Signal GPS introuvable (appareil en intérieur ?). Choisissez votre ville ci-dessous.");
+    } else {
+      toast.info("Position introuvable (GPS éteint ou réseau faible). Choisissez votre ville ci-dessous.");
+    }
+    setOpen(true);
   };
 
-  // Fallback manuel : centre-ville connu → agences de la ville
+  // Fallback manuel : centre-ville de RÉFÉRENCE → agences de la ville.
+  // IMPORTANT : cette position n'est PAS celle de l'utilisateur →
+  // approximate=true → le serveur n'affirme AUCUN quartier (honnêteté).
   const handleManualCity = async (cityId: string) => {
     setManualCityId(cityId);
     setError(null);
@@ -362,8 +379,8 @@ export function AgencyFinder({
     }
     setLoading(true);
     try {
-      const data = await api.agencies.nearby(center.lat, center.lng, cityId);
-      setResult({ source: "manual", data });
+      const data = await api.agencies.nearby(center.lat, center.lng, cityId, { approximate: true });
+      setResult({ source: "manual", accuracy: null, data });
       setOpen(true);
     } catch (err) {
       toast.error(errMessage(err));
@@ -477,8 +494,12 @@ export function AgencyFinder({
                 </Button>
               </div>
 
-              {/* Quartier détecté (badge visible — largeur fluide sur mobile) */}
-              {result?.data.neighborhood && (
+              {/* Quartier détecté — UNIQUEMENT sur position GPS fiable : le
+                  serveur renvoie neighborhood=null pour un repli ville ou
+                  une précision insuffisante (jamais de fausse affirmation). */}
+              {result?.source === "gps" &&
+                result.data.neighborhood &&
+                (result.accuracy === null || result.accuracy <= 2500) && (
                 <Badge
                   variant="outline"
                   className="w-fit max-w-full gap-1.5 break-words border-primary/40 bg-primary/10 px-3 py-1.5 text-sm font-semibold text-primary [&_span]:break-words whitespace-normal"
@@ -488,9 +509,17 @@ export function AgencyFinder({
                   {result.data.neighborhood.cityName})
                 </Badge>
               )}
+              {/* Précision GPS insuffisante → transparence au lieu d'un badge */}
+              {result?.source === "gps" && result.accuracy !== null && result.accuracy > 2500 && (
+                <p className="flex items-center gap-1.5 text-xs text-amber-700 dark:text-amber-400" role="status">
+                  <MapPin className="size-3.5 shrink-0" aria-hidden />
+                  Position approximative (± {Math.max(1, Math.round(result.accuracy / 1000))} km) —
+                  votre quartier n&apos;a pas pu être confirmé.
+                </p>
+              )}
               {result?.source === "manual" && manualCity && (
                 <p className="text-xs text-muted-foreground">
-                  Sélection manuelle — distances calculées depuis le centre de {manualCity.name}.
+                  Sélection manuelle — agences de {manualCity.name} (position de référence, pas votre position).
                 </p>
               )}
 

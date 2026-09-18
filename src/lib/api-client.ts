@@ -123,11 +123,26 @@ export const api = {
   // V3 — GÉOLOCALISATION CLIENT & AGENCES
   // ============================================================
   agencies: {
-    nearby: (lat: number, lng: number, cityId?: string) =>
+    nearby: (
+      lat: number,
+      lng: number,
+      cityId?: string,
+      opts?: { accuracy?: number | null; approximate?: boolean }
+    ) =>
       request<AgencyNearbyResultDTO>(
-        `/agencies/nearby?lat=${lat}&lng=${lng}${cityId ? `&cityId=${cityId}` : ""}`
+        `/agencies/nearby?lat=${lat}&lng=${lng}${cityId ? `&cityId=${cityId}` : ""}${
+          opts?.accuracy != null ? `&accuracy=${Math.round(opts.accuracy)}` : ""
+        }${opts?.approximate ? "&approximate=true" : ""}`
       ),
-    recommend: (input: { lat: number; lng: number; fromCityId: string; toCityId: string; date: string; seats?: number }) =>
+    recommend: (input: {
+      lat: number;
+      lng: number;
+      fromCityId: string;
+      toCityId: string;
+      date: string;
+      seats?: number;
+      accuracy?: number | null;
+    }) =>
       request<AgencyRecommendationDTO>("/agencies/recommend", {
         method: "POST",
         body: JSON.stringify(input),

@@ -389,6 +389,17 @@ export const TRACKING = {
   retentionSessionDays: 90,
 } as const;
 
+// ---------- GÉOLOCALISATION PUBLIC (agency finder V3) ----------
+export const GEO = {
+  /** Précision GPS (mètres) en dessous de laquelle le quartier détecté est
+   *  affirmé (« Vous êtes probablement à X »). Au-delà : position jugée
+   *  approximative — le quartier est seulement suggéré dans le message. */
+  neighborhoodClaimAccuracyM: 2_500,
+  /** Précision GPS (mètres) au-delà de laquelle AUCUN quartier n'est même
+   *  suggéré (position IP/wifi grossière, souvent le centre-ville). */
+  neighborhoodSuggestAccuracyM: 10_000,
+} as const;
+
 export const TRACKING_STATUS_LABELS: Record<string, string> = {
   ACTIVE: "En cours",
   PAUSED: "En pause",

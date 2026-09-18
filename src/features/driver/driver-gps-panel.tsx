@@ -17,6 +17,7 @@ import {
 } from "@/components/ui/select";
 import { api } from "@/lib/api-client";
 import { useDriverGps, requestGpsPermission } from "@/hooks/use-driver-gps";
+import { geoDeniedMessage } from "@/lib/geo-permissions";
 import { todayCongoISO } from "@/components/shared/nzoko-format";
 import { formatTime } from "@/lib/format";
 import { TRACKING_STATUS_LABELS } from "@/lib/constants";
@@ -44,6 +45,9 @@ export function DriverGpsPanel({ trips }: { trips: DriverTripDTO[] }) {
   const [loadingSession, setLoadingSession] = useState(true);
   const [tripId, setTripId] = useState<string>("none");
   const [busy, setBusy] = useState(false);
+  /** Refus persistant de la permission au démarrage (le toast est
+   *  éphémère — le bandeau guide l'utilisateur jusqu'à ce qu'il agisse). */
+  const [permissionDenied, setPermissionDenied] = useState(false);
   const sessionRef = useRef<TrackingSessionDTO | null>(null);
   sessionRef.current = session;
 
@@ -89,7 +93,13 @@ export function DriverGpsPanel({ trips }: { trips: DriverTripDTO[] }) {
     try {
       const granted = await requestGpsPermission();
       if (!granted) {
-        toast.error("La permission de localisation est requise pour le suivi GPS.");
+        setPermissionDenied(true);
+        // Guidance précise au lieu d'un échec muet : l'utilisateur sait
+        // EXACTEMENT où cliquer pour autoriser la localisation.
+        toast.error("La localisation est refusée.", {
+          description: geoDeniedMessage(),
+          duration: 10000,
+        });
         return;
       }
       const created = await api.tracking.start(tripId === "none" ? {} : { tripId });
@@ -145,6 +155,28 @@ export function DriverGpsPanel({ trips }: { trips: DriverTripDTO[] }) {
     }
   }, [gps]);
 
+  // Réessai après refus/indisponibilité : l'utilisateur vient d'autoriser
+  // la localisation dans le navigateur → on repart sans créer de doublon
+  // (session existante = simple reprise du watch, sinon démarrage complet).
+  const retryPermission = useCallback(async () => {
+    const granted = await requestGpsPermission();
+    if (!granted) {
+      setPermissionDenied(true);
+      toast.error("La localisation est toujours refusée.", {
+        description: geoDeniedMessage(),
+        duration: 10000,
+      });
+      return;
+    }
+    setPermissionDenied(false);
+    if (sessionRef.current?.status === "ACTIVE") {
+      gps.startWatching();
+      toast.success("Suivi GPS rétabli.");
+    } else {
+      await startSession();
+    }
+  }, [gps, startSession]);
+
   const activeTrip = todayTrips.find((t) => t.id === tripId);
 
   return (
@@ -194,6 +226,31 @@ export function DriverGpsPanel({ trips }: { trips: DriverTripDTO[] }) {
           <p className="mt-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800" role="status">
             {gps.message}
           </p>
+        )}
+
+        {/* Permission refusée / GPS indisponible → guidance pas-à-pas +
+            bouton Réessayer (le navigateur ne ré-affiche JAMAIS la popup
+            après un refus : il faut passer par ses réglages). */}
+        {(gps.status === "denied" || gps.status === "unavailable" || permissionDenied) && (
+          <div className="mt-3 rounded-lg border border-red-200 bg-red-50 px-3 py-3 dark:border-red-900 dark:bg-red-950/40" role="alert">
+            <p className="text-xs font-semibold text-red-800 dark:text-red-300">
+              {gps.status === "unavailable" ? "GPS indisponible" : "Localisation bloquée"}
+            </p>
+            <p className="mt-1 text-xs text-red-700 dark:text-red-300">
+              {gps.status === "unavailable"
+                ? "Vérifiez que le GPS de votre appareil est activé, puis réessayez."
+                : geoDeniedMessage()}
+            </p>
+            <Button
+              onClick={() => void retryPermission()}
+              disabled={busy}
+              variant="outline"
+              className="mt-2 min-h-[40px] h-9 w-full text-xs"
+            >
+              {busy ? <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" aria-hidden="true" /> : <Satellite className="mr-1.5 h-3.5 w-3.5" aria-hidden="true" />}
+              Réessayer la localisation
+            </Button>
+          </div>
         )}
 
         {/* Lecture en direct */}

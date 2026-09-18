@@ -20,6 +20,8 @@ const bodySchema = z.object({
   toCityId: z.string().trim().length(25),
   date: z.string().trim().refine((s) => isValidDateStr(s), "Date invalide (format attendu YYYY-MM-DD)."),
   seats: z.coerce.number().int().min(1).max(10).optional(),
+  /** Précision GPS du navigateur (m) — module l'affirmation du quartier. */
+  accuracy: z.number().min(0).max(10_000_000).nullable().optional(),
 });
 
 export async function POST(req: NextRequest) {
@@ -34,6 +36,7 @@ export async function POST(req: NextRequest) {
       toCityId: body.toCityId,
       date: body.date,
       seats: body.seats ?? 1,
+      accuracy: body.accuracy ?? null,
     });
     return ok(result);
   } catch (err) {

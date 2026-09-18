@@ -38,16 +38,28 @@ export async function POST(req: NextRequest) {
     const body = loginSchema.parse(await req.json().catch(() => null));
 
     // Identifiant de travail : nouveau champ `identifier`, sinon `email` (ancien)
-    const identifier = (body.identifier ?? body.email ?? "").trim();
+    const rawIdentifier = (body.identifier ?? body.email ?? "").trim();
 
-    // Adresse e-mail OU téléphone normalisé E.164 digits
-    const isEmail = identifier.includes("@");
-    const phone = isEmail ? null : normalizePhone(identifier);
-    const lookupEmail = isEmail ? identifier.toLowerCase() : null;
+    // Adresse e-mail, téléphone normalisé E.164, OU identifiant court interne
+    // (ex. « superadmin ») complété automatiquement en « superadmin@nzoko.cg ».
+    // La complétion ne crée rien : elle ne fait que résoudre un alias vers un
+    // compte déjà existant — aucun risque d'énumération (message générique).
+    const isEmail = rawIdentifier.includes("@");
+    const phone = isEmail ? null : normalizePhone(rawIdentifier);
+    const completedEmail = !isEmail && !phone && /^[a-z0-9._-]{3,}$/i.test(rawIdentifier)
+      ? `${rawIdentifier.toLowerCase()}@nzoko.cg`
+      : null;
+    const lookupEmail = isEmail
+      ? rawIdentifier.toLowerCase()
+      : completedEmail;
     const lookupPhone = phone;
 
     if (!lookupEmail && !lookupPhone) {
-      throw new ApiError(400, ERROR_CODES.VALIDATION_ERROR, "Numéro de téléphone invalide (format attendu : 06 123 45 67).");
+      throw new ApiError(
+        400,
+        ERROR_CODES.VALIDATION_ERROR,
+        "Identifiant non reconnu. Utilisez votre adresse e-mail (ex. superadmin@nzoko.cg), votre identifiant court (ex. superadmin) ou votre numéro de téléphone (ex. 06 123 45 67)."
+      );
     }
 
     // Rate limit anti brute-force, clé ip + identifiant canonique
