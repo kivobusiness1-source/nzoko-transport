@@ -1260,3 +1260,42 @@ Stage Summary:
 - Zéro DDL : la colonne User.supabaseId sert d'identifiant fournisseur externe (miroir), table et données Neon production intactes.
 - Pour Vercel : ajouter NEON_AUTH_BASE_URL et NEON_AUTH_COOKIE_SECRET (⚠️ même secret que la sandbox pour partager les sessions) aux variables d'environnement, puis redéployer.
 - Flux de vérification e-mail de Neon : code à 6 chiffres (10 min) → l'UI affiche « Vérifiez votre boîte mail » ; endpoint /api/auth/email-otp/verify-email utilisé (plugin email-otp du service managé).
+
+---
+Task ID: 36
+Agent: main (Z.ai Code)
+Task: Reprise après coupure de contexte — statut push Git + « comment se connecter au admin et autres comptes ? »
+
+Work Log:
+- ÉTAT GIT DÉCOUVERT : le commit d'unification 97dda57 (~2000 lignes : écran de connexion unifié
+  2 onglets Téléphone/E-mail, OTP téléphone via Neon Auth + provisioning par compte de service,
+  pont d'import bcrypt→Neon à la première connexion, emails migrés geormakoma1+<role>@gmail.com,
+  webhook /api/webhooks/neon-auth, scripts neon-create-service-account/neon-check-service,
+  migrate-emails-gmail) est LOCAL UNIQUEMENT — origin/main = 5dc64ce (Task 35). Le push de la
+  session précédente n'a jamais eu lieu (contexte épuisé juste après le commit).
+- PUSH TENTÉ ET ÉCHOUÉ : aucun identifiant GitHub dans la sandbox (remote https sans token,
+  ~/.git-credentials absent, aucun ghp_ dans .env/historiques) — le token fourni en Task 33 a
+  été perdu au reboot. → UN NOUVEAU TOKEN (scope repo) EST REQUIS pour pousser.
+- VALIDATIONS DE L'ÉTAT LOCAL : bunx tsc --noEmit EXIT 0 ; dev server :3000 actif (GET / 200) ;
+  dev.log sans erreur.
+- E2E NAVIGATEUR (agent-browser, écran unifié) : login superadmin onglet E-mail identifiant
+  court « superadmin » + Nzoko@2026! → espace Administration 13 onglets ✓ ; déconnexion ✓ ;
+  flux client OTP onglet Téléphone « 0666123456 » → code 6 chiffres affiché (OTP_DEBUG=true)
+  → espace client « Test OTP » ✓ ; 0 erreur console/page ; déconnexion ✓.
+- Vérifié la mécanique du pont d'import côté client (auth-screen l.222-261) : mode Neon —
+  identifiant e-mail → SDK signIn.email direct puis pont si « identifiants incorrects » ;
+  identifiant court/téléphone → pont d'abord → retry SDK avec l'e-mail réel → exchange NZOKO.
+- Réponse utilisateur : statut push honnête (non poussé, token requis) + tableau complet des
+  identifiants (courts + emails gmail + mots de passe) + marche à suivre production Vercel
+  (variables NEON_AUTH_* + compte de service + Make admin + webhook) avant que le pont Neon
+  ne soit actif en production.
+
+Stage Summary:
+- LE CODE EST PRÊT ET VALIDÉ mais PAS ENCORE SUR GITHUB : 1 commit d'avance en local
+  (97dda57). Action bloquante utilisateur : fournir un nouveau token GitHub (scope repo).
+- Comptes en base (emails gmail migrés, mots de passe inchangés) : superadmin/Nzoko@2026!,
+  admin/Admin@2026!, manager/Manager@2026!, agent/Agent@2026!, checker/Checker@2026!,
+  comptable/Compta@2026!, chauffeur/Chauffeur@2026!, support/Support@2026! — identifiants
+  courts acceptés (SHORT_ID_EMAILS) + emails complets + téléphone.
+- Sandbox = mode local (NEON_AUTH_MODE=local) : tout fonctionne MAINTENANT dans l'aperçu.
+  Production Vercel = toujours l'ANCIENNE version (double onglet) jusqu'au push.
