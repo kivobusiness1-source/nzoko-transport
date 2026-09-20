@@ -1,11 +1,11 @@
 // One-shot Task ID 11 : données de démonstration pour l'espace client de test
-// (test.supauth@nzoko.cg) — sert UNIQUEMENT à peupler l'interface pendant la
+// (geormakoma1+demo-client@gmail.com) — sert UNIQUEMENT à peupler l'interface pendant la
 // refonte visuelle. Nettoyage intégral via : bun run scripts/dev-seed-demo-client.ts --cleanup
 import { PrismaClient } from "@prisma/client";
 
 const db = new PrismaClient();
 
-const DEMO_EMAIL = "test.supauth@nzoko.cg";
+const DEMO_EMAIL = "geormakoma1+demo-client@gmail.com";
 const DEMO_PHONE = "242065554433";
 const TAG = "demo-client-11"; // dans Payment.metadata + références NZK-2026-DEMO*
 const D = 24 * 3600 * 1000;

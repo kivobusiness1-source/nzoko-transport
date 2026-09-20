@@ -12,6 +12,7 @@ import type {
   MomoOverviewDTO, NotificationDTO, Paginated, PaymentDTO, RefundMode, ReportDTO, RoleDTO, RouteDTO, ScanResultDTO,
   SeatLayoutDTO, SeatMapDTO, SecurityLogDTO, SessionUser, TransactionDTO, TripContactsDTO, TripSearchDTO, UserDTO,
   RegisterInput, OtpRequestDTO, OtpVerifyInput, RegisterResult, ClientProfileDTO, ClientStatsDTO, ClientTripDTO, TripRatingInput,
+  AuthProvidersDTO, MigrationBridgeDTO,
   FavoriteRouteDTO, FavoriteRouteInput, SpendingDTO, LoyaltyDTO, ComplaintDTO, ComplaintDetailDTO,
   ComplaintCreateInput, ComplaintReplyInput, AdminClientDTO, AdminComplaintDTO, AdminLoyaltyStatsDTO, CampaignInput,
   PromoCodeValidationDTO, RedemptionRequestDTO,
@@ -64,13 +65,17 @@ export const api = {
     // Le login accepte un identifiant : email OU téléphone (E.164, national, +242…)
     login: (identifier: string, password: string) =>
       request<SessionUser>("/auth/login", { method: "POST", body: JSON.stringify({ identifier, password }) }),
+    // Pont d'import (mode Neon) : bcrypt local vérifié → compte Neon créé/aligné.
+    // Le client enchaîne ensuite signIn.email (SDK) puis exchangeNeonSession.
+    loginBridge: (identifier: string, password: string) =>
+      request<MigrationBridgeDTO>("/auth/login", { method: "POST", body: JSON.stringify({ identifier, password }) }),
     // Inscription : SessionUser (session immédiate) OU demande de confirmation
     // d'e-mail (mode Supabase avec confirmation activée).
     register: (input: RegisterInput) =>
       request<RegisterResult>("/auth/register", { method: "POST", body: JSON.stringify(input) }),
-    // Modes d'authentification actifs (onglet Neon Auth, badge Supabase)
-    providers: () => request<{ supabase: boolean; neon: boolean }>("/auth/providers"),
-    // Pont Neon Auth → session NZOKO (après signIn/signUp réussis côté SDK)
+    // Modes d'authentification actifs (adaptation de l'écran de connexion)
+    providers: () => request<AuthProvidersDTO>("/auth/providers"),
+    // Pont Neon Auth → session NZOKO (après signIn/signUp/OTP réussis côté SDK)
     exchangeNeonSession: () => request<SessionUser>("/neon-auth/exchange", { method: "POST" }),
     otpRequest: (phone: string) =>
       request<OtpRequestDTO>("/auth/otp", { method: "POST", body: JSON.stringify({ phone, action: "request" }) }),

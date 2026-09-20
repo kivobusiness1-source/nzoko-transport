@@ -217,7 +217,7 @@ function AdminAgencyForm({ onClose, onCreated }: { onClose: () => void; onCreate
                 type="email"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
-                placeholder="agence@nzoko.cg"
+                placeholder="geormakoma1+agence@gmail.com"
                 className="h-11"
               />
             </div>

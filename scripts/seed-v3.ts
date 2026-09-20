@@ -90,8 +90,8 @@ async function main() {
   // ============================================================
   // 3. AGENCES — mise à jour des 2 existantes + 7 nouvelles
   // ============================================================
-  const managerPn = await db.user.findUnique({ where: { email: "manager.pn@nzoko.cg" } });
-  const managerBzv = await db.user.findUnique({ where: { email: "admin@nzoko.cg" } });
+  const managerPn = await db.user.findUnique({ where: { email: "geormakoma1+manager@gmail.com" } });
+  const managerBzv = await db.user.findUnique({ where: { email: "geormakoma1+admin@gmail.com" } });
 
   const agencySpecs = [
     {
@@ -302,7 +302,7 @@ async function main() {
   // ============================================================
   // 7. BASE DE CONNAISSANCES — FAQ officielle de l'assistant
   // ============================================================
-  const superadmin = await db.user.findUnique({ where: { email: "superadmin@nzoko.cg" } });
+  const superadmin = await db.user.findUnique({ where: { email: "geormakoma1+superadmin@gmail.com" } });
   const pnCity = cityByName.get("Pointe-Noire");
   const bzvCity = cityByName.get("Brazzaville");
 

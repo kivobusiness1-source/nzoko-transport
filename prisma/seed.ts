@@ -187,7 +187,7 @@ async function main(): Promise<void> {
       cityId: cities.get("Pointe-Noire")!,
       address: "Boulevard Charles de Gaulle, Pointe-Noire",
       phone: "+242 06 123 45 67",
-      email: "pointenoire@nzoko.cg",
+      email: "geormakoma1+agence-pointenoire@gmail.com",
     },
   });
   const agencyBZV = await db.agency.create({
@@ -197,7 +197,7 @@ async function main(): Promise<void> {
       cityId: cities.get("Brazzaville")!,
       address: "Avenue Marien Ngouabi, Brazzaville",
       phone: "+242 06 765 43 21",
-      email: "brazzaville@nzoko.cg",
+      email: "geormakoma1+agence-brazzaville@gmail.com",
     },
   });
   console.log("✓ 2 agences");
@@ -305,14 +305,14 @@ async function main(): Promise<void> {
   // Téléphones DISTINCTS et normalisés E.164 digits — User.phone est UNIQUE
   // en base (clé OTP/récupération), un numéro partagé ferait échouer le seed.
   const teamUsers = [
-    { email: "superadmin@nzoko.cg", password: "Nzoko@2026!", firstName: "Aimé", lastName: "Directeur", role: "SUPER_ADMIN", agencyId: null, phone: "242061000000" },
-    { email: "admin@nzoko.cg", password: "Admin@2026!", firstName: "Clarisse", lastName: "Opérée", role: "ADMIN", agencyId: null, phone: "242061000001" },
-    { email: "manager.pn@nzoko.cg", password: "Manager@2026!", firstName: "Hervé", lastName: "Responsable", role: "AGENCY_MANAGER", agencyId: agencyPN.id, phone: "242061000002" },
-    { email: "agent.pn@nzoko.cg", password: "Agent@2026!", firstName: "Bénédicte", lastName: "Guichet", role: "AGENT", agencyId: agencyPN.id, phone: "242061000003" },
-    { email: "checker.pn@nzoko.cg", password: "Checker@2026!", firstName: "Wilfried", lastName: "Contrôleur", role: "CHECKER", agencyId: agencyPN.id, phone: "242061000004" },
-    { email: "comptable@nzoko.cg", password: "Compta@2026!", firstName: "Flore", lastName: "Comptable", role: "ACCOUNTANT", agencyId: null, phone: "242061000005" },
-    { email: "chauffeur.jean@nzoko.cg", password: "Chauffeur@2026!", firstName: "Jean-Félix", lastName: "Mabiala", role: "DRIVER", agencyId: agencyPN.id, phone: "242061000006" },
-    { email: "support@nzoko.cg", password: "Support@2026!", firstName: "Léa", lastName: "Assistance", role: "SUPPORT", agencyId: null, phone: "242061000007" },
+    { email: "geormakoma1+superadmin@gmail.com", password: "Nzoko@2026!", firstName: "Aimé", lastName: "Directeur", role: "SUPER_ADMIN", agencyId: null, phone: "242061000000" },
+    { email: "geormakoma1+admin@gmail.com", password: "Admin@2026!", firstName: "Clarisse", lastName: "Opérée", role: "ADMIN", agencyId: null, phone: "242061000001" },
+    { email: "geormakoma1+manager@gmail.com", password: "Manager@2026!", firstName: "Hervé", lastName: "Responsable", role: "AGENCY_MANAGER", agencyId: agencyPN.id, phone: "242061000002" },
+    { email: "geormakoma1+agent@gmail.com", password: "Agent@2026!", firstName: "Bénédicte", lastName: "Guichet", role: "AGENT", agencyId: agencyPN.id, phone: "242061000003" },
+    { email: "geormakoma1+checker@gmail.com", password: "Checker@2026!", firstName: "Wilfried", lastName: "Contrôleur", role: "CHECKER", agencyId: agencyPN.id, phone: "242061000004" },
+    { email: "geormakoma1+comptable@gmail.com", password: "Compta@2026!", firstName: "Flore", lastName: "Comptable", role: "ACCOUNTANT", agencyId: null, phone: "242061000005" },
+    { email: "geormakoma1+chauffeur@gmail.com", password: "Chauffeur@2026!", firstName: "Jean-Félix", lastName: "Mabiala", role: "DRIVER", agencyId: agencyPN.id, phone: "242061000006" },
+    { email: "geormakoma1+support@gmail.com", password: "Support@2026!", firstName: "Léa", lastName: "Assistance", role: "SUPPORT", agencyId: null, phone: "242061000007" },
   ];
   // AUCUN compte client de démo : les clients s'inscrivent eux-mêmes
   // (POST /api/auth/register ou OTP) — zéro donnée fictive.
@@ -445,14 +445,14 @@ async function main(): Promise<void> {
   console.log("🌱 Seed terminé avec succès !");
   console.log("──────────────────────────────────────────────────");
   console.log("🔑 COMPTES ÉQUIPE (⚠️ changez les mots de passe après la 1re connexion) :");
-  console.log("  superadmin@nzoko.cg     / Nzoko@2026!   (SUPER_ADMIN)");
-  console.log("  admin@nzoko.cg          / Admin@2026!    (ADMIN)");
-  console.log("  manager.pn@nzoko.cg     / Manager@2026!  (AGENCY_MANAGER — Pointe-Noire)");
-  console.log("  agent.pn@nzoko.cg       / Agent@2026!    (AGENT — Pointe-Noire)");
-  console.log("  checker.pn@nzoko.cg     / Checker@2026!  (CHECKER — Pointe-Noire)");
-  console.log("  comptable@nzoko.cg      / Compta@2026!   (ACCOUNTANT)");
-  console.log("  chauffeur.jean@nzoko.cg / Chauffeur@2026! (DRIVER)");
-  console.log("  support@nzoko.cg        / Support@2026!  (SUPPORT)");
+  console.log("  geormakoma1+superadmin@gmail.com     / Nzoko@2026!   (SUPER_ADMIN)");
+  console.log("  geormakoma1+admin@gmail.com          / Admin@2026!    (ADMIN)");
+  console.log("  geormakoma1+manager@gmail.com     / Manager@2026!  (AGENCY_MANAGER — Pointe-Noire)");
+  console.log("  geormakoma1+agent@gmail.com       / Agent@2026!    (AGENT — Pointe-Noire)");
+  console.log("  geormakoma1+checker@gmail.com     / Checker@2026!  (CHECKER — Pointe-Noire)");
+  console.log("  geormakoma1+comptable@gmail.com      / Compta@2026!   (ACCOUNTANT)");
+  console.log("  geormakoma1+chauffeur@gmail.com / Chauffeur@2026! (DRIVER)");
+  console.log("  geormakoma1+support@gmail.com        / Support@2026!  (SUPPORT)");
   console.log("──────────────────────────────────────────────────");
 }
 

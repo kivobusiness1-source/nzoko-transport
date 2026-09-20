@@ -261,7 +261,7 @@ function AdminUserForm({ onClose, onCreated }: { onClose: () => void; onCreated:
               type="email"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
-              placeholder="prenom.nom@nzoko.cg"
+              placeholder="geormakoma1+agent@gmail.com"
               className="h-11"
               required
             />

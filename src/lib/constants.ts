@@ -311,6 +311,27 @@ export const OTP = {
   maxAttempts: 5,
 } as const;
 
+// ---------- IDENTIFIANTS COURTS → E-MAILS RÉELS ----------
+// Alias de saisie acceptés au login (« superadmin » au lieu de l'e-mail
+// complet). Toutes les adresses de démo utilisent le plus-addressing Gmail :
+// elles sont uniques en base mais atterrissent TOUTES dans la même boîte
+// (geormakoma1@gmail.com) — consultable pour tester les e-mails réels
+// (codes de vérification, notifications).
+export const SHORT_ID_EMAILS: Record<string, string> = {
+  superadmin: "geormakoma1+superadmin@gmail.com",
+  admin: "geormakoma1+admin@gmail.com",
+  manager: "geormakoma1+manager@gmail.com",
+  "manager.pn": "geormakoma1+manager@gmail.com",
+  agent: "geormakoma1+agent@gmail.com",
+  "agent.pn": "geormakoma1+agent@gmail.com",
+  checker: "geormakoma1+checker@gmail.com",
+  "checker.pn": "geormakoma1+checker@gmail.com",
+  comptable: "geormakoma1+comptable@gmail.com",
+  chauffeur: "geormakoma1+chauffeur@gmail.com",
+  "chauffeur.jean": "geormakoma1+chauffeur@gmail.com",
+  support: "geormakoma1+support@gmail.com",
+} as const;
+
 // Client inactif (intelligence fidélisation) — seuil en jours
 export const INACTIVE_CLIENT_DAYS = 60;
 

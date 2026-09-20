@@ -1,19 +1,22 @@
-// POST /api/neon-auth/exchange — pont Neon Auth → session applicative NZOKO.
+// POST /api/neon-auth/exchange — pont universel session Neon → NZOKO.
 //
 // Pré-requis : le navigateur s'est authentifié via le proxy /api/auth/*
 // (SDK @neondatabase/auth) → un cookie de session Neon (signé par
-// NEON_AUTH_COOKIE_SECRET) est présent.
+// NEON_AUTH_COOKIE_SECRET) est présent. Valable pour TOUS les rôles :
+// clients (téléphone + OTP ou e-mail) comme équipes NZOKO (pont
+// d'import /api/auth/login).
 //
 // La route :
 //  1. lit la session Neon (auth.getSession()),
-//  2. retrouve/provisionne le miroir User (rôle PASSENGER, colonne
-//     supabaseId = identifiant Neon),
-//  3. délivre le cookie nzoko_session opaque habituel — tout le reste
-//     de l'app (réservations, fidélité, profil) fonctionne sans
-//     modification.
-//
-// Garde-fous : comptes internes (staff) JAMAIS pontables via Neon Auth
-// (403 + journalisation), compte inactif refusé, rate limit par IP.
+//  2. REFUSE le compte de service (outil de provisioning, pas un
+//     utilisateur) et les comptes locaux inactifs,
+//  3. retrouve/provisionne le miroir User (le rôle NZOKO — relu en
+//     base, JAMAIS depuis le navigateur — est conservé : PASSENGER,
+//     AGENT, ADMIN…),
+//  4. délivre le cookie applicatif nzoko_session opaque — tout le
+//     reste de l'app (réservations, guichets, QR, GPS, rapports)
+//     fonctionne sans modification, avec vérification serveur des
+//     permissions et de l'isolation par agence.
 
 import { NextRequest } from "next/server";
 import {
@@ -24,7 +27,8 @@ import { enforceRateLimit } from "@/lib/rate-limit";
 import { logSecurity } from "@/lib/audit";
 import { RATE_LIMITS } from "@/lib/constants";
 import { isNeonAuthEnabled, neonAuth } from "@/lib/neon-auth/server";
-import { upsertNeonClientMirror } from "@/services/neon-auth-mirror";
+import { isNeonServiceAccount } from "@/lib/neon-auth/service-account";
+import { upsertNeonUserMirror } from "@/services/neon-auth-mirror";
 import { db } from "@/lib/db";
 import type { PermissionCode, RoleCode } from "@/lib/constants";
 
@@ -52,25 +56,32 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // 2. Miroir local : re-trouvé par identifiant Neon / e-mail, sinon créé
-    const mirror = await upsertNeonClientMirror({
-      neonUserId: nu.id,
-      email: nu.email,
-      name: typeof nu.name === "string" ? nu.name : null,
-    });
-
-    // 3. Garde-fous (identiques au mode Supabase historique)
-    if (mirror.roleCode !== "PASSENGER") {
+    // 2. Garde-fous : le compte de service n'est PAS un utilisateur ;
+    //    les comptes inactifs restent bloqués.
+    if (isNeonServiceAccount(nu.email)) {
       await logSecurity({
         event: "ACCESS_DENIED",
-        userId: mirror.id,
         email: nu.email,
         ipAddress: ip,
         userAgent: getUserAgent(req),
-        details: { reason: "compte interne via Neon Auth", method: "neon-auth" },
+        details: { reason: "tentative de pont avec le compte de service", method: "neon-auth" },
       });
-      throw new ApiError(403, ERROR_CODES.FORBIDDEN, "Ce compte doit utiliser la connexion interne (mot de passe NZOKO).");
+      throw new ApiError(403, ERROR_CODES.FORBIDDEN, "Ce compte est réservé au fonctionnement du service.");
     }
+
+    // 3. Miroir universel : re-lien par identifiant Neon / adoption par
+    //    e-mail (staff importé conservé avec son rôle) / création client.
+    const neonPhone =
+      typeof (nu as unknown as Record<string, unknown>).phoneNumber === "string"
+        ? ((nu as unknown as Record<string, unknown>).phoneNumber as string)
+        : null;
+    const mirror = await upsertNeonUserMirror({
+      neonUserId: nu.id,
+      email: nu.email,
+      name: typeof nu.name === "string" ? nu.name : null,
+      phoneNumber: neonPhone,
+    });
+
     if (!mirror.isActive) {
       throw new ApiError(401, ERROR_CODES.UNAUTHORIZED, "Compte indisponible.");
     }
@@ -87,6 +98,7 @@ export async function POST(req: NextRequest) {
       userAgent: getUserAgent(req),
       details: {
         method: "neon-auth",
+        role: mirror.roleCode,
         mirrorCreated: mirror.created,
         neonEmailVerified: typeof nu.emailVerified === "boolean" ? nu.emailVerified : null,
       },

@@ -1,13 +1,19 @@
 // POST /api/auth/login — { identifier, password } → SessionUser + cookie nzoko_session
 // identifier : adresse e-mail OU numéro de téléphone (E.164, national, +242…).
 //
-// Mode SUPABASE actif (SUPABASE_URL + SUPABASE_ANON_KEY) :
-//  1. tentative supabase.auth.signInWithPassword (email ou téléphone) —
-//     comptes CLIENTS gérés par Supabase ;
-//  2. si les identifiants Supabase sont invalides → repli sur le login
-//     local bcrypt (comptes internes : admin, guichets, équipes).
-// Mode LOCAL (défaut) : bcrypt, comportement inchangé.
-// Rate limit par ip+identifiant, messages génériques (aucune fuite d'information).
+// MODE NEON (production, NEON_AUTH_MODE=neon) — PONT D'IMPORT À LA VOLÉE :
+//  l'authentification elle-même vit chez Neon Auth (le client appelle
+//  signIn.email via le proxy /api/auth/sign-in/email, puis échange la
+//  session via /api/neon-auth/exchange). Cette route n'est plus qu'un
+//  PONT DE MIGRATION : quand Neon répond « identifiants inconnus » et
+//  que l'identifiant correspond à un compte interne NZOKO dont le mot
+//  passe local bcrypt est correct, le compte est importé vers Neon
+//  (même mot de passe) — migration transparente, zéro friction, zéro
+//  utilisateur perdu. Aucune session locale n'est délivrée ici.
+//
+// MODE LOCAL (sandbox/développement, NEON_AUTH_MODE=local) : bcrypt,
+// comportement historique inchangé (mode Supabase dormant conservé).
+// Rate limit par ip+identifiant, messages génériques (aucune fuite).
 
 import { NextRequest } from "next/server";
 import { z } from "zod";
@@ -15,8 +21,10 @@ import { ok, routeError, ApiError, ERROR_CODES, getClientIp, getUserAgent, asser
 import { createSession, setSessionCookie, verifyPassword, externalAuthProvider } from "@/lib/auth";
 import { enforceRateLimit } from "@/lib/rate-limit";
 import { logSecurity } from "@/lib/audit";
-import { RATE_LIMITS } from "@/lib/constants";
+import { RATE_LIMITS, SHORT_ID_EMAILS } from "@/lib/constants";
 import { normalizePhone } from "@/lib/phone";
+import { isNeonAuthEnabled, neonAuthMode } from "@/lib/neon-auth/server";
+import { importNeonAccount, isNeonServiceAccount, isNeonServiceConfigured } from "@/lib/neon-auth/service-account";
 import { isSupabaseEnabled, supabase, upsertClientMirror, mirrorDataFromSupabase } from "@/services/supabase-auth";
 import { db } from "@/lib/db";
 import type { PermissionCode, RoleCode } from "@/lib/constants";
@@ -41,13 +49,14 @@ export async function POST(req: NextRequest) {
     const rawIdentifier = (body.identifier ?? body.email ?? "").trim();
 
     // Adresse e-mail, téléphone normalisé E.164, OU identifiant court interne
-    // (ex. « superadmin ») complété automatiquement en « superadmin@nzoko.cg ».
+    // (ex. « superadmin ») complété automatiquement vers l'e-mail réel du
+    // compte (ex. geormakoma1+superadmin@gmail.com).
     // La complétion ne crée rien : elle ne fait que résoudre un alias vers un
     // compte déjà existant — aucun risque d'énumération (message générique).
     const isEmail = rawIdentifier.includes("@");
     const phone = isEmail ? null : normalizePhone(rawIdentifier);
     const completedEmail = !isEmail && !phone && /^[a-z0-9._-]{3,}$/i.test(rawIdentifier)
-      ? `${rawIdentifier.toLowerCase()}@nzoko.cg`
+      ? SHORT_ID_EMAILS[rawIdentifier.toLowerCase()] ?? null
       : null;
     const lookupEmail = isEmail
       ? rawIdentifier.toLowerCase()
@@ -58,7 +67,7 @@ export async function POST(req: NextRequest) {
       throw new ApiError(
         400,
         ERROR_CODES.VALIDATION_ERROR,
-        "Identifiant non reconnu. Utilisez votre adresse e-mail (ex. superadmin@nzoko.cg), votre identifiant court (ex. superadmin) ou votre numéro de téléphone (ex. 06 123 45 67)."
+        "Identifiant non reconnu. Utilisez votre adresse e-mail (ex. geormakoma1+superadmin@gmail.com), votre identifiant court (ex. superadmin) ou votre numéro de téléphone (ex. 06 123 45 67)."
       );
     }
 
@@ -67,7 +76,14 @@ export async function POST(req: NextRequest) {
     enforceRateLimit(rateKey, RATE_LIMITS.login.limit, RATE_LIMITS.login.windowMs);
 
     // ============================================================
-    // 1. MODE SUPABASE — comptes clients
+    // 1. MODE NEON — pont d'import (bcrypt local → compte Neon)
+    // ============================================================
+    if (neonAuthMode === "neon" && isNeonAuthEnabled) {
+      return await handleMigrationBridge({ lookupEmail, lookupPhone, password: body.password, ip, req });
+    }
+
+    // ============================================================
+    // 2. MODE SUPABASE (dormant) — comptes clients historiques
     // ============================================================
     if (isSupabaseEnabled) {
       const { data, error } = await supabase().auth.signInWithPassword(
@@ -153,7 +169,7 @@ export async function POST(req: NextRequest) {
     }
 
     // ============================================================
-    // 2. LOGIN LOCAL — bcrypt (staff + mode sans Supabase)
+    // 3. LOGIN LOCAL — bcrypt (mode sandbox/développement)
     // ============================================================
     const user = lookupEmail
       ? await db.user.findUnique({
@@ -216,4 +232,93 @@ export async function POST(req: NextRequest) {
   } catch (err) {
     return routeError(err, "POST /api/auth/login");
   }
+}
+
+// ============================================================
+// Pont d'import : compte interne existant → compte Neon Auth
+// ============================================================
+// Pré-conditions (vérifiées APRÈS validation bcrypt locale) :
+//  - le compte local existe et est actif ;
+//  - ce n'est pas le compte de service ;
+//  - le compte de service Neon est configuré.
+// Le mot de passe validé est transmis au service Neon (admin.createUser
+// ou alignement) puis OUBLIÉ — jamais journalisé, jamais stocké.
+// Aucune session n'est délivrée ici : le client enchaîne signIn.email
+// (SDK, session Neon) puis /api/neon-auth/exchange.
+
+async function handleMigrationBridge(input: {
+  lookupEmail: string | null;
+  lookupPhone: string | null;
+  password: string;
+  ip: string;
+  req: NextRequest;
+}) {
+  const { lookupEmail, lookupPhone, password, ip, req } = input;
+
+  if (!isNeonServiceConfigured) {
+    throw new ApiError(
+      503,
+      "SERVICE_UNAVAILABLE",
+      "Pont de migration indisponible : le compte de service Neon Auth n'est pas configuré (NEON_AUTH_SERVICE_EMAIL / NEON_AUTH_SERVICE_PASSWORD)."
+    );
+  }
+
+  // Compte local visé (e-mail direct, alias court résolu, ou téléphone)
+  const localUser = lookupEmail
+    ? await db.user.findUnique({ where: { email: lookupEmail } })
+    : await db.user.findFirst({ where: { phone: lookupPhone ?? undefined } });
+
+  const valid = localUser ? await verifyPassword(password, localUser.passwordHash) : false;
+
+  if (!localUser || !localUser.isActive || !valid || isNeonServiceAccount(localUser.email)) {
+    await logSecurity({
+      event: "LOGIN_FAILED",
+      email: lookupEmail ?? undefined,
+      userId: localUser?.id ?? null,
+      ipAddress: ip,
+      userAgent: getUserAgent(req),
+      details: {
+        reason: !localUser ? "compte inconnu (pont)" : localUser.isActive ? "mot de passe invalide (pont)" : "compte désactivé",
+        method: "neon-bridge",
+      },
+    });
+    // Message générique identique au refus Neon — aucune fuite d'information
+    throw new ApiError(401, ERROR_CODES.UNAUTHORIZED, "Identifiants incorrects.");
+  }
+
+  // Import (ou alignement) du compte vers Neon Auth — même mot de passe
+  const email = localUser.email.toLowerCase();
+  try {
+    await importNeonAccount({
+      email,
+      password,
+      name: `${localUser.firstName} ${localUser.lastName}`.trim(),
+      phone: localUser.phone,
+    });
+  } catch (err) {
+    await logSecurity({
+      event: "SUSPICIOUS",
+      userId: localUser.id,
+      email,
+      ipAddress: ip,
+      userAgent: getUserAgent(req),
+      details: {
+        reason: "échec de l'import vers Neon Auth",
+        error: err instanceof Error ? err.message.slice(0, 200) : String(err).slice(0, 200),
+      },
+    });
+    throw new ApiError(502, "BAD_GATEWAY", "Le service d'authentification est momentanément indisponible. Réessayez.");
+  }
+
+  await logSecurity({
+    event: "LOGIN_SUCCESS",
+    userId: localUser.id,
+    email,
+    ipAddress: ip,
+    userAgent: getUserAgent(req),
+    details: { method: "neon-bridge", reason: "compte interne importé vers Neon Auth" },
+  });
+
+  // Le client enchaîne : signIn.email (SDK) → session Neon → exchange.
+  return ok({ migrated: true, email });
 }

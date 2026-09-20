@@ -1,16 +1,23 @@
 // ============================================================
-// NZOKO TRANSPORT — Miroir local des comptes clients Neon Auth
+// NZOKO TRANSPORT — Miroir local des comptes Neon Auth (universel)
 // ============================================================
-// Neon Auth (Managed Better Auth) gère l'IDENTITÉ (e-mail + mot de
-// passe, sessions, vérification d'e-mail). Le métier NZOKO (billets,
-// fidélité, réclamations) exige une ligne User locale : ce service
-// retrouve ou provisionne le miroir, exactement comme l'intégration
-// Supabase historique — la colonne User.supabaseId sert d'identifiant
-// du fournisseur d'identité EXTERNE (désormais Neon Auth).
+// Neon Auth (Managed Better Auth) gère l'IDENTITÉ et la SESSION de
+// TOUS les comptes NZOKO (clients, guichets, agences, contrôleurs,
+// chauffeurs, comptables, support, admins, super-admins). Le métier
+// NZOKO (billets, fidélité, rôles, permissions, agences) exige une
+// ligne User locale : ce service retrouve ou provisionne le miroir,
+// la colonne User.supabaseId servant d'identifiant du fournisseur
+// d'identité externe (Neon Auth).
 //
-// Le miroir ne délivre AUCUNE session : la route appelante
-// (/api/neon-auth/exchange) applique les garde-fous (rôle PASSENGER
-// uniquement, compte actif) puis crée la session NZOKO opaque.
+// RÈGLES D'AUTORITÉ (exigence sécurité produit) :
+//  - le RÔLE et l'AGENCE vivent UNIQUEMENT ici (base NZOKO) : jamais
+//    dans le jeton du navigateur ni dans le compte Neon ;
+//  - re-lien par identifiant Neon (supabaseId) ou adoption par e-mail :
+//    le compte local EXISTANT (notamment le staff) garde son rôle,
+//    son agence et ses permissions — aucune donnée métier n'est écrasée ;
+//  - création réservée aux inconnus → rôle PASSENGER (client) ;
+//  - le téléphone fourni par Neon (vérifié) est adopté si le miroir
+//    n'en a pas (clé de liaison des billets).
 // ============================================================
 
 import { randomUUID } from "crypto";
@@ -44,6 +51,8 @@ export interface NeonMirrorInput {
   neonUserId: string;
   email: string;
   name: string | null;
+  /** Téléphone E.164 vérifié chez Neon (plugin Phone Number), le cas échéant. */
+  phoneNumber?: string | null;
 }
 
 export interface NeonMirrorResult {
@@ -55,30 +64,39 @@ export interface NeonMirrorResult {
 
 /**
  * Retrouve (par identifiant Neon, puis par e-mail) ou provisionne le
- * miroir User d'un compte client Neon Auth :
+ * miroir User d'un compte Neon Auth — CLIENT comme STAFF :
  *  - re-lien : compte déjà lié (supabaseId = identifiant Neon) ;
- *  - adoption : compte local pré-existant avec le même e-mail (le
- *    téléphone local est conservé — clé de rétro-liage des billets) ;
+ *  - adoption : compte local pré-existant avec le même e-mail (staff
+ *    importé à la volée par le pont /api/auth/login, ou client local
+ *    historique) → rôle, agence et permissions locaux CONSERVÉS ;
  *  - création : rôle PASSENGER, compte fidélité, notification de
- *    bienvenue (le téléphone sera complété dans le profil).
+ *    bienvenue.
  */
-export async function upsertNeonClientMirror(input: NeonMirrorInput): Promise<NeonMirrorResult> {
+export async function upsertNeonUserMirror(input: NeonMirrorInput): Promise<NeonMirrorResult> {
   const email = input.email.trim().toLowerCase();
   const { firstName, lastName } = splitFullName(input.name);
   const hasName = Boolean(input.name?.trim());
+  const phone = input.phoneNumber?.trim() || null;
 
   const existing =
-    (await db.user.findUnique({ where: { supabaseId: input.neonUserId }, select: MIRROR_SELECT })) ??
-    (await db.user.findUnique({ where: { email }, select: MIRROR_SELECT }));
+    (await db.user.findFirst({
+      where: { OR: [{ supabaseId: input.neonUserId }, { email }] },
+      select: { ...MIRROR_SELECT, phone: true, supabaseId: true, email: true },
+    })) ?? null;
 
   if (existing) {
-    // Re-lien / adoption : on n'écrase les noms locaux que si Neon
-    // fournit un nom explicite (pas le repli « Client NZOKO »).
+    // Re-lien / adoption — on n'écrase JAMAIS le rôle, l'agence ni les
+    // permissions locaux. Le nom Neon n'écrase le nom local que pour les
+    // comptes créés via Neon (client) : le staff garde son identité NZOKO.
+    const isAdoption = existing.supabaseId !== input.neonUserId;
+    const shouldUpdateName = hasName && (isAdoption ? existing.role.code === "PASSENGER" : true);
     const user = await db.user.update({
       where: { id: existing.id },
       data: {
         supabaseId: input.neonUserId,
-        ...(hasName ? { firstName, lastName } : {}),
+        ...(shouldUpdateName ? { firstName, lastName } : {}),
+        // Adoption du téléphone vérifié si le miroir n'en a pas
+        ...(phone && !existing.phone ? { phone } : {}),
       },
       select: MIRROR_SELECT,
     });
@@ -93,6 +111,7 @@ export async function upsertNeonClientMirror(input: NeonMirrorInput): Promise<Ne
       supabaseId: input.neonUserId,
       firstName,
       lastName,
+      ...(phone ? { phone } : {}),
       passwordHash: await unusableNeonPasswordHash(),
       roleId,
       isActive: true,
@@ -114,3 +133,9 @@ export async function upsertNeonClientMirror(input: NeonMirrorInput): Promise<Ne
 
   return { id: user.id, created: true, roleCode: user.role.code, isActive: user.isActive };
 }
+
+/**
+ * Alias historique (compatibilité) : l'ancien nom de la fonction.
+ * Le pont est désormais universel — clients ET équipes NZOKO.
+ */
+export const upsertNeonClientMirror = upsertNeonUserMirror;

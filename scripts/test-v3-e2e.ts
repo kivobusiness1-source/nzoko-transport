@@ -193,7 +193,7 @@ async function main() {
     check("B4 double réservation rejetée (409)", resDouble.status === 409);
 
     // Paiement CASH au guichet (login admin → permission cash-collect)
-    const admin = await login("admin@nzoko.cg", "Admin@2026!");
+    const admin = await login("geormakoma1+admin@gmail.com", "Admin@2026!");
     const resPay = await fetch(`${BASE}/api/payments`, {
       method: "POST",
       headers: { "content-type": "application/json", "x-requested-with": "nzoko", cookie: admin },
@@ -229,7 +229,7 @@ async function main() {
     // ==========================================================
     console.log("── D. CHECKER : embarquement + anti double validation");
     // ==========================================================
-    const checker = await login("checker.pn@nzoko.cg", "Checker@2026!");
+    const checker = await login("geormakoma1+checker@gmail.com", "Checker@2026!");
     const scan = async (code: string) => {
       const r = await fetch(`${BASE}/api/checker/scan`, {
         method: "POST",

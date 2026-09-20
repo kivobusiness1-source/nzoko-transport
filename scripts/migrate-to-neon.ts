@@ -238,7 +238,7 @@ async function main(): Promise<void> {
       {
         label: "Comptes clés (admin, superadmin, client démo, chauffeur)",
         sql: `SELECT COUNT(*)::int AS n FROM "User" WHERE email IN
-                ('admin@nzoko.cg','superadmin@nzoko.cg','test.supauth@nzoko.cg','chauffeur.jean@nzoko.cg')`,
+                ('geormakoma1+admin@gmail.com','geormakoma1+superadmin@gmail.com','geormakoma1+demo-client@gmail.com','geormakoma1+chauffeur@gmail.com')`,
         expected: (n) => n === 4,
       },
       {

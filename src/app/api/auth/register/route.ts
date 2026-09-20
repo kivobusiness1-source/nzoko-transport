@@ -16,6 +16,7 @@ import { createSession, setSessionCookie, hashPassword, externalAuthProvider } f
 import { enforceRateLimit } from "@/lib/rate-limit";
 import { logSecurity } from "@/lib/audit";
 import { RATE_LIMITS } from "@/lib/constants";
+import { isNeonAuthEnabled, neonAuthMode } from "@/lib/neon-auth/server";
 import { normalizePhone } from "@/lib/phone";
 import { ensureLoyaltyAccount } from "@/services/loyalty";
 import {
@@ -65,6 +66,19 @@ export async function POST(req: NextRequest) {
   try {
     assertSameOriginPost(req);
     const ip = getClientIp(req);
+
+    // MODE NEON : l'inscription est gérée par Neon Auth (SDK signUp.email
+    // via le proxy /api/auth/sign-up/email, code de vérification e-mail,
+    // miroir NZOKO créé par /api/neon-auth/exchange). Une seule identité :
+    // cette route locale ne doit plus créer de comptes en production.
+    if (neonAuthMode === "neon" && isNeonAuthEnabled) {
+      throw new ApiError(
+        503,
+        "SERVICE_UNAVAILABLE",
+        "L'inscription est gérée par le service d'identité centralisé : utilisez l'onglet E-mail de l'écran de connexion."
+      );
+    }
+
     const body = registerSchema.parse(await req.json().catch(() => null));
 
     // Rate limit anti-abus (créations de comptes en rafale)

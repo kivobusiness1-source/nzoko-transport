@@ -762,15 +762,36 @@ export interface RegisterInput {
 }
 
 export interface OtpRequestDTO {
-  phone: string; // E.164 digits normalisé
-  expiresInSec: number;
+  /** Mode "local" : pipeline sandbox (code local, devCode si OTP_DEBUG). */
+  mode: "local" | "neon";
+  /** E.164 (mode local : digits sans « + » ; mode Neon : avec « + »). */
+  phone: string;
+  expiresInSec?: number;
   // Uniquement si OTP_DEBUG=true (sandbox/ZIP sans passerelle SMS) :
   devCode?: string;
+  // Mode Neon uniquement : un nouveau compte a été provisionné
+  provisioned?: boolean;
 }
 
 export interface OtpVerifyInput {
   phone: string;
   code: string; // 6 chiffres
+}
+
+/** Modes d'authentification actifs (GET /api/auth/providers). */
+export interface AuthProvidersDTO {
+  supabase: boolean;
+  neon: boolean;
+  /** "neon" = identité/session centralisées Neon Auth (production) ; "local" = stub sandbox. */
+  mode: "local" | "neon";
+  /** Compte de service Neon configuré (provisioning téléphone + pont d'import). */
+  neonService: boolean;
+}
+
+/** Réponse du pont d'import (POST /api/auth/login en mode Neon). */
+export interface MigrationBridgeDTO {
+  migrated: true;
+  email: string;
 }
 
 // ---------- PROFIL ----------

@@ -32,7 +32,7 @@ const events: string[] = [];
 
 async function main() {
   // --- 1. Admin : jeton flotte ---
-  const adminCookie = await login("admin@nzoko.cg", "Admin@2026!");
+  const adminCookie = await login("geormakoma1+admin@gmail.com", "Admin@2026!");
   const fleetRes = await fetch(`${BASE}/api/admin/tracking`, {
     headers: { cookie: adminCookie, "x-requested-with": "nzoko" },
   });
@@ -61,7 +61,7 @@ async function main() {
   socket.on("gps", (e: { sessionId: string }) => events.push(`gps:${e.sessionId}`));
 
   // --- 3. Chauffeur : START ---
-  const driverCookie = await login("chauffeur.jean@nzoko.cg", "Chauffeur@2026!");
+  const driverCookie = await login("geormakoma1+chauffeur@gmail.com", "Chauffeur@2026!");
   const apiDriver = (path: string, body: unknown) =>
     fetch(`${BASE}/api/tracking${path}`, {
       method: "POST",

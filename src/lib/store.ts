@@ -57,7 +57,7 @@ interface AppState {
   logout: () => Promise<void>;
 }
 
-export const useApp = create<AppState>((set, get) => ({
+export const useApp = create<AppState>((set) => ({
   session: null,
   sessionReady: false,
   view: "home",
@@ -92,21 +92,18 @@ export const useApp = create<AppState>((set, get) => ({
     }
   },
   logout: async () => {
-    // Mémoriser le fournisseur AVANT la purge de la session : les comptes
-    // Neon Auth doivent aussi être déconnectés du service managé.
-    const wasNeon = get().session?.authProvider === "NEON_AUTH";
     try {
       await api.auth.logout();
     } catch {
       // la session locale est purgée quoi qu'il arrive
     }
-    // Session Neon Auth : déconnexion du service managé en best-effort
-    // (import dynamique : le SDK ne charge que lorsqu'il sert vraiment).
-    if (wasNeon) {
-      void import("@/lib/neon-auth/client")
-        .then(({ neonAuthClient }) => neonAuthClient.signOut())
-        .catch(() => {});
-    }
+    // Session Neon Auth : déconnexion du service managé en best-effort —
+    // systématique depuis l'unification de l'identité (sans objet si
+    // aucune session Neon n'existe : l'appel échoue silencieusement).
+    // (import dynamique : le SDK ne charge que lorsqu'il sert vraiment.)
+    void import("@/lib/neon-auth/client")
+      .then(({ neonAuthClient }) => neonAuthClient.signOut())
+      .catch(() => {});
     if (typeof window !== "undefined") {
       try {
         window.sessionStorage.removeItem(VIEW_STORAGE_KEY);
