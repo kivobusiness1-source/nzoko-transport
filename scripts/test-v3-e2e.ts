@@ -287,8 +287,8 @@ async function main() {
       check("E6 prix réel mentionné (anti-hallucination)", false);
     }
 
-    // Journal AIQuestionLog
-    const logCount = await db.aIQuestionLog.count();
+    // Journal AiQuestionLog (table @@map "AIQuestionLog")
+    const logCount = await db.aiQuestionLog.count();
     check("E7 questions journalisées (AIQuestionLog)", logCount >= 2, `${logCount} entrées`);
 
     // ==========================================================

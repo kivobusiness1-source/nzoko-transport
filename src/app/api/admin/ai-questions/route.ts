@@ -54,17 +54,17 @@ export async function GET(req: NextRequest) {
     if (q.stats === "true") {
       const weekAgo = new Date(Date.now() - 7 * 24 * 3600 * 1000);
       const [total, resolved, last7Days, topQuestions, topCategories] = await Promise.all([
-        db.aIQuestionLog.count({ where }),
-        db.aIQuestionLog.count({ where: { ...where, resolved: true } }),
-        db.aIQuestionLog.count({ where: { createdAt: { gte: weekAgo } } }),
-        db.aIQuestionLog.groupBy({
+        db.aiQuestionLog.count({ where }),
+        db.aiQuestionLog.count({ where: { ...where, resolved: true } }),
+        db.aiQuestionLog.count({ where: { createdAt: { gte: weekAgo } } }),
+        db.aiQuestionLog.groupBy({
           by: ["question"],
           where,
           _count: { question: true },
           orderBy: { _count: { question: "desc" } },
           take: 10,
         }),
-        db.aIQuestionLog.groupBy({
+        db.aiQuestionLog.groupBy({
           by: ["category"],
           where,
           _count: { category: true },
@@ -83,7 +83,7 @@ export async function GET(req: NextRequest) {
       return ok(stats);
     }
 
-    const rows = await db.aIQuestionLog.findMany({
+    const rows = await db.aiQuestionLog.findMany({
       where,
       orderBy: { createdAt: "desc" },
       take: q.take ?? 50,

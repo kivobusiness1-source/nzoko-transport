@@ -125,7 +125,7 @@ async function main(): Promise<void> {
   // dès qu'une base V3 existe déjà (bug vu en Task 30).
   await db.gpsPoint.deleteMany(); // enfant de TrackingSession
   await db.trackingSession.deleteMany(); // enfant de Driver
-  await db.aIQuestionLog.deleteMany(); // ⚠️ Prisma : model AIQuestionLog → db.aIQuestionLog
+  await db.aiQuestionLog.deleteMany(); // modèle AiQuestionLog + @@map (Task 34 — casse déterministe)
   await db.knowledgeBase.deleteMany();
   await db.neighborhood.deleteMany(); // enfant de City
   await db.complaintMessage.deleteMany();

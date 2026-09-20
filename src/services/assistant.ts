@@ -498,7 +498,7 @@ async function logQuestion(entry: {
   category: string | null;
   cityId?: string | null;
 }): Promise<void> {
-  await db.aIQuestionLog
+  await db.aiQuestionLog
     .create({
       data: {
         sessionId: entry.sessionId,

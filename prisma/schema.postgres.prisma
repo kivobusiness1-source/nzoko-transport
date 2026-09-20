@@ -1,13 +1,16 @@
-// NZOKO TRANSPORT — Schéma Prisma complet
+// NZOKO TRANSPORT — Schéma Prisma PRODUCTION (PostgreSQL / Neon)
 // ⚠️ DOUBLE SCHÉMA (2026-09-20, cf. worklog Task 34) :
-//   - CE FICHIER = SQLite, utilisé par la sandbox locale (bun run dev,
-//     db:push, seed). Le tar de boot le restaure tel quel.
-//   - prisma/schema.postgres.prisma = PostgreSQL/Neon, utilisé par le build
-//     Vercel ("prisma generate --schema prisma/schema.postgres.prisma" dans
-//     le script build de package.json) — le runtime serverless s'y connecte
-//     via DATABASE_URL (pooler Neon) définie dans les variables Vercel.
+//   - prisma/schema.prisma = SQLite, utilisé par la sandbox locale (bun run
+//     dev, db:push, seed) — ne JAMAIS générer depuis ce fichier en local.
+//   - CE FICHIER = PostgreSQL/Neon, utilisé par le build Vercel :
+//     "prisma generate --schema prisma/schema.postgres.prisma" est le
+//     PREMIER pas du script build de package.json → le client embarqué dans
+//     les fonctions serverless cible Neon via DATABASE_URL (pooler, variable
+//     Vercel) ; DIRECT_DATABASE_URL (hôte sans -pooler) sert uniquement au
+//     DDL (db push / migrate) exécuté depuis un poste ayant les identifiants.
 //   - Les DEUX fichiers doivent rester synchrones : mêmes modèles, seuls le
-//     bloc datasource et les commentaires diffèrent.
+//     bloc datasource et les commentaires diffèrent. Toute évolution du
+//     modèle DOIT être répercutée dans les deux fichiers.
 //  - les "enums" sont des champs String validés côté application (src/lib/constants.ts + Zod)
 //  - les champs JSON sont des String sérialisés (helpers parse/stringify)
 //  - les montants sont des entiers (XAF/FCFA — pas de sous-unité)
@@ -22,8 +25,9 @@ generator client {
 }
 
 datasource db {
-  provider = "sqlite"
-  url      = env("DATABASE_URL")
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")        // pooler (runtime serverless)
+  directUrl = env("DIRECT_DATABASE_URL") // DDL (db push / migrate)
 }
 
 // ============================================================
