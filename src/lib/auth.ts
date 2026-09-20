@@ -7,6 +7,7 @@
 import bcrypt from "bcryptjs";
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
+import { isNeonAuthEnabled } from "@/lib/neon-auth/server";
 import { SESSION_HOURS, SESSION_COOKIE, GLOBAL_ROLES } from "@/lib/auth-shared";
 import { generateSessionToken, sha256 } from "@/lib/security";
 import { ApiError, ERROR_CODES } from "@/lib/api-response";
@@ -67,6 +68,17 @@ export function clearSessionCookie(res: NextResponse): NextResponse {
   return res;
 }
 
+/**
+ * Fournisseur d'identité d'un compte : la colonne User.supabaseId porte
+ * l'identifiant du fournisseur EXTERNE (historiquement Supabase Auth,
+ * désormais Neon Auth). Quand Neon Auth est le fournisseur actif sur
+ * l'environnement, les comptes externes sont étiquetés NEON_AUTH.
+ */
+export function externalAuthProvider(user: { supabaseId: string | null }): "LOCAL" | "SUPABASE" | "NEON_AUTH" {
+  if (!user.supabaseId) return "LOCAL";
+  return isNeonAuthEnabled ? "NEON_AUTH" : "SUPABASE";
+}
+
 /** Charge le contexte d'authentification depuis le cookie de la requête. */
 export async function getAuth(req: NextRequest): Promise<AuthContext | null> {
   const token = req.cookies.get(SESSION_COOKIE)?.value;
@@ -103,7 +115,7 @@ export async function getAuth(req: NextRequest): Promise<AuthContext | null> {
     roleLabel: session.user.role.name,
     agencyId: session.user.agencyId,
     agencyName: session.user.agency?.name ?? null,
-    authProvider: session.user.supabaseId ? "SUPABASE" : "LOCAL",
+    authProvider: externalAuthProvider(session.user),
     permissions,
   };
 

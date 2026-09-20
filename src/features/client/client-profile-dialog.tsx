@@ -132,9 +132,11 @@ export function ClientProfileDialog({ open, onOpenChange }: { open: boolean; onO
     }
   };
 
-  // Compte client géré par Supabase Auth : le mot de passe ne se change
-  // pas ici (section masquée, encart explicatif) — le profil reste éditable.
-  const supabaseManaged = session?.authProvider === "SUPABASE";
+  // Compte client géré par un fournisseur externe (Supabase historique
+  // ou Neon Auth) : le mot de passe ne se change pas ici (section
+  // masquée, encart explicatif) — le profil reste éditable.
+  const externallyManaged =
+    session?.authProvider === "SUPABASE" || session?.authProvider === "NEON_AUTH";
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -228,11 +230,11 @@ export function ClientProfileDialog({ open, onOpenChange }: { open: boolean; onO
             <Separator />
 
             {/* --- Mot de passe --- */}
-            {supabaseManaged ? (
+            {externallyManaged ? (
               <p className="flex items-start gap-2 rounded-lg border border-primary/30 bg-primary/5 px-3 py-2.5 text-xs leading-relaxed text-muted-foreground">
                 <Info className="mt-0.5 size-4 shrink-0 text-primary" aria-hidden />
                 <span>
-                  <span className="font-semibold text-foreground">Mot de passe géré par Supabase.</span>{" "}
+                  <span className="font-semibold text-foreground">Mot de passe géré par le fournisseur d’identité externe (Neon Auth).</span>{" "}
                   Utilisez la réinitialisation depuis l&apos;écran de connexion pour le modifier — vos identifiants NZOKO restent inchangés.
                 </span>
               </p>

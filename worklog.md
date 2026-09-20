@@ -1226,3 +1226,37 @@ Stage Summary:
 - Build Vercel réparé à la racine : génération explicite du client Prisma à chaque build (plus de cache périmé possible) + modèle au nom déterministe (aiQuestionLog) + versions épinglées + client PostgreSQL/Neon généré pour le runtime serverless (double schéma sqlite/postgres documenté).
 - La table `AIQuestionLog` et toutes les données (SQLite et Neon) sont inchangées (@@map) — aucune migration nécessaire.
 - Rappel déploiement Vercel : variables requises DATABASE_URL (pooler Neon, pgbouncer=true), DIRECT_DATABASE_URL (DDL futur), TRACKING_SECRET, CRON_SECRET, PAYMENTS_SIMULATION, ASSISTANT_ENABLED, AUTH_SECRET, WEBHOOK_SECRET ; recommandé TRACKING_PUBLIC_SOCKET_URL="" (polling 10 s, le mini-service socket.io ne peut pas tourner en serverless).
+
+---
+Task ID: 35
+Agent: main (Z.ai Code)
+Task: Intégrer Neon Auth (Managed Better Auth) — l'utilisateur a fourni l'URL Auth de son projet Neon : https://ep-falling-block-b2hn1ybq.neonauth.c-6.eu-central-1.aws.neon.tech/neondb/auth (guide https://neon.com/docs/auth/quick-start/nextjs-api-only.md lu et adapté).
+
+Work Log:
+- SMOKE TEST du service : GET <auth>/ok → {"ok":true} 200. SDK @neondatabase/auth@0.5.0-beta installé (exports réels vérifiés dans les .d.ts : createNeonAuth/handler/middleware côté /next/server, createAuthClient côté /next — conformes au guide ; handlers avec params Promise<…> Next 16).
+- ENV : .env + .env.example → NEON_AUTH_BASE_URL (URL fournie) + NEON_AUTH_COOKIE_SECRET (openssl rand -base64 32). Absentes → isNeonAuthEnabled=false, app 100 % locale, routes Neon en 503.
+- ARCHITECTURE (pattern « fournisseur externe + miroir local » déjà éprouvé par l'intégration Supabase dormante) :
+  - src/lib/neon-auth/server.ts : instance createNeonAuth gardée (lazy, jamais instanciée si non configurée) + isNeonAuthEnabled + neonAuthHandler().
+  - src/app/api/auth/[...path]/route.ts : proxy catch-all du SDK (GET/POST, params asynchrones Next 16, 503 clair si non configuré). Les routes STATIQUES existantes (login/register/logout/me/otp/providers) gardent la priorité — zéro collision avec les endpoints Better Auth.
+  - src/services/neon-auth-mirror.ts : upsertNeonClientMirror (re-lien par supabaseId=ID Neon / adoption par e-mail en conservant le téléphone local / création PASSENGER + fidélité + notification ; splitFullName ; hash inutilisable) — colonne User.supabaseId réutilisée comme identifiant fournisseur externe ⇒ ZÉRO DDL (la base Neon de production n'a pas besoin de migration).
+  - src/app/api/neon-auth/exchange/route.ts : PONT POST — lit la session Neon (auth.getSession()), miroir, garde-fous (staff JAMAIS pontable : 403 + logSecurity ACCESS_DENIED ; compte inactif refusé), createSession + cookie nzoko_session + LOGIN_SUCCESS method=neon-auth.
+  - src/lib/neon-auth/client.ts : createAuthClient() + neonAuthErrorMessage (traduction FR : identifiants, compte existant, mot de passe faible, e-mail non vérifié, indisponibilité réseau).
+- TYPES/UI : authProvider étendu "LOCAL"|"SUPABASE"|"NEON_AUTH" ; helper externalAuthProvider(user) dans lib/auth (env-aware) repris par login/register/otp/getAuth ; providers route + api-client → { supabase, neon } + exchangeNeonSession() ; auth-screen : 3e onglet « Neon Auth » (icône Fingerprint, affiché SI configuré) avec bascule Se connecter/Créer un compte, badge pédagogique, écran de confirmation d'e-mail réutilisé (signup sans session = code de vérification exigé) ; profil : « mot de passe géré par le fournisseur externe » pour NEON_AUTH ; store.logout : déconnexion Neon best-effort (import dynamique du SDK) quand authProvider === NEON_AUTH.
+- MIDDLEWARE : auth.middleware() volontairement NON intégré à proxy.ts — l'app est une SPA monopage (aucune page serveur à protéger), la protection reste au niveau des routes API (pattern existant), et le proxy.ts CSP (nonce + strict-dynamic) doit rester l'unique propriétaire des en-têtes.
+- VALIDATIONS OUTILS : tsc --noEmit EXIT 0, lint EXIT 0, dev server redémarré (env), accueil 200.
+- E2E COMPLET CONTRE LE VRAI SERVICE NEON (eu-central-1) :
+  - Onglet « Neon Auth » rendu (providers → neon:true).
+  - Inscription navigateur → POST /api/auth/sign-up/email 200 → compte créé chez Neon + écran « Vérifiez votre boîte mail » (token null : la config Neon exige la vérification).
+  - Compte test #2 (hkphwwux@guerrillamailblock.com via Guerrilla Mail) : e-mail « Nzoko-Transport » reçu (code 6 chiffres via SendGrid, expire 10 min) → vérifié par POST /api/auth/email-otp/verify-email {email, otp} → {"status":true,"emailVerified":true}.
+  - Sign-in curl → 200 + cookies __Secure-neon-auth.session_token/session_data ; échange POST /api/neon-auth/exchange (X-Requested-With: nzoko exigé — CSRF maison) → 200 : miroir User PASSENGER « Grace Guerrilla », supabaseId=6a321a82-…, fidélité BRONZE, notification bienvenue, authProvider NEON_AUTH, cookie nzoko_session ; GET /api/auth/me → Grace Guerrilla/NEON_AUTH.
+  - NAVIGATEUR (session fraîche) : onglet Neon → Se connecter → sign-in/email 200 → exchange 200 → me 200 → ESPACE CLIENT « Bonjour Grace 👋 », menu « GG Grace Guerrilla — Client NZOKO ». DÉCONNEXION : POST /api/auth/logout 200 + POST /api/auth/sign-out 200 (SDK importé dynamiquement) → retour accueil.
+  - Chemins d'erreur : e-mail non vérifié → 403 EMAIL_NOT_VERIFIED (traduit FR) ; mauvais mot de passe → 401 INVALID_EMAIL_OR_PASSWORD → « Identifiants incorrects. »
+  - NB harnais : le fill Playwright sur ce formulaire ne déclenche pas l'onChange React (valeur revertée) — contourné par setter natif + événement input ; les formulaires Inscription/Connexion classiques remplis par fill fonctionnent (même pattern de composants, real-user OK).
+  - Comptes de test créés chez Neon Auth (supprimables depuis la console Neon) : test.neon@nzoko.cg (non vérifié) et hkphwwux@guerrillamailblock.com (vérifié, miroir local actif).
+- dev.log propre (aucune erreur hors réponses métier volontaires).
+
+Stage Summary:
+- NEON AUTH INTÉGRÉ ET VALIDÉ DE BOUT EN BOUT contre le service managé réel : inscription → code e-mail → vérification → connexion → pont miroir NZOKO (rôle Client, fidélité) → espace client → déconnexion double (NZOKO + Neon). Auth locale staff/comptes de test strictement inchangée (routes statiques prioritaires sur le catch-all).
+- Zéro DDL : la colonne User.supabaseId sert d'identifiant fournisseur externe (miroir), table et données Neon production intactes.
+- Pour Vercel : ajouter NEON_AUTH_BASE_URL et NEON_AUTH_COOKIE_SECRET (⚠️ même secret que la sandbox pour partager les sessions) aux variables d'environnement, puis redéployer.
+- Flux de vérification e-mail de Neon : code à 6 chiffres (10 min) → l'UI affiche « Vérifiez votre boîte mail » ; endpoint /api/auth/email-otp/verify-email utilisé (plugin email-otp du service managé).

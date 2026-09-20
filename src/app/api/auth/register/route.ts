@@ -12,7 +12,7 @@
 import { NextRequest } from "next/server";
 import { z } from "zod";
 import { ok, routeError, ApiError, ERROR_CODES, getClientIp, getUserAgent, assertSameOriginPost } from "@/lib/api-response";
-import { createSession, setSessionCookie, hashPassword } from "@/lib/auth";
+import { createSession, setSessionCookie, hashPassword, externalAuthProvider } from "@/lib/auth";
 import { enforceRateLimit } from "@/lib/rate-limit";
 import { logSecurity } from "@/lib/audit";
 import { RATE_LIMITS } from "@/lib/constants";
@@ -56,7 +56,7 @@ function sessionUserOf(u: {
     roleLabel: u.role.name,
     agencyId: u.agencyId,
     agencyName: u.agency?.name ?? null,
-    authProvider: u.supabaseId ? ("SUPABASE" as const) : ("LOCAL" as const),
+    authProvider: externalAuthProvider(u),
     permissions: perms,
   };
 }

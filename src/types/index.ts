@@ -22,8 +22,8 @@ export interface SessionUser {
   roleLabel: string;
   agencyId: string | null;
   agencyName: string | null;
-  /** LOCAL = mot de passe NZOKO (bcrypt) · SUPABASE = compte client géré par Supabase Auth. */
-  authProvider: "LOCAL" | "SUPABASE";
+  /** LOCAL = mot de passe NZOKO (bcrypt) · SUPABASE = miroir client Supabase Auth (historique) · NEON_AUTH = compte client géré par Neon Auth (Managed Better Auth). */
+  authProvider: "LOCAL" | "SUPABASE" | "NEON_AUTH";
   permissions: PermissionCode[];
 }
 

@@ -68,8 +68,10 @@ export const api = {
     // d'e-mail (mode Supabase avec confirmation activée).
     register: (input: RegisterInput) =>
       request<RegisterResult>("/auth/register", { method: "POST", body: JSON.stringify(input) }),
-    // Modes d'authentification actifs (badge Supabase, champs requis)
-    providers: () => request<{ supabase: boolean }>("/auth/providers"),
+    // Modes d'authentification actifs (onglet Neon Auth, badge Supabase)
+    providers: () => request<{ supabase: boolean; neon: boolean }>("/auth/providers"),
+    // Pont Neon Auth → session NZOKO (après signIn/signUp réussis côté SDK)
+    exchangeNeonSession: () => request<SessionUser>("/neon-auth/exchange", { method: "POST" }),
     otpRequest: (phone: string) =>
       request<OtpRequestDTO>("/auth/otp", { method: "POST", body: JSON.stringify({ phone, action: "request" }) }),
     otpVerify: (input: OtpVerifyInput) =>

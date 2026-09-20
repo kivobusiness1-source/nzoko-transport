@@ -2,12 +2,15 @@
 
 // ============================================================
 // NZOKO — Écran d'authentification (clients & équipes)
-// DEUX accès, rien de plus :
+// TROIS accès, rien de plus :
 //  • Connexion   → le client A DÉJÀ un compte (email ou téléphone
 //                  + mot de passe ; comptes clients gérés par
 //                  Supabase lorsqu'il est configuré).
 //  • Inscription → le client N'A PAS de compte (prénom, nom,
 //                  téléphone, email, mot de passe).
+//  • Neon Auth   → comptes clients gérés par le service managé
+//                  Neon Auth (onglet affiché uniquement si configuré) :
+//                  e-mail + mot de passe, session pontée vers NZOKO.
 // ============================================================
 
 import { useEffect, useState } from "react";
@@ -17,7 +20,7 @@ import { z } from "zod";
 import { toast } from "sonner";
 import { motion } from "framer-motion";
 import {
-  ArrowLeft, ArrowRight, Bell, Bus, CheckCircle2, Eye, EyeOff, Loader2, Lock, LogIn, Mail,
+  ArrowLeft, ArrowRight, Bell, Bus, CheckCircle2, Eye, EyeOff, Fingerprint, Loader2, Lock, LogIn, Mail,
   Phone, ShieldCheck, Star, Ticket, UserPlus, UserRound,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -26,6 +29,7 @@ import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "
 import { Input } from "@/components/ui/input";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { api, ApiClientError } from "@/lib/api-client";
+import { neonAuthClient, neonAuthErrorMessage } from "@/lib/neon-auth/client";
 import { useApp } from "@/lib/store";
 import type { RegisterResult, SessionUser } from "@/types";
 
@@ -60,6 +64,20 @@ const registerSchema = z
   });
 type RegisterValues = z.infer<typeof registerSchema>;
 
+// Neon Auth (Managed Better Auth) — e-mail + mot de passe gérés par Neon.
+const neonLoginSchema = z.object({
+  email: z.email("Adresse e-mail invalide (ex : vous@exemple.cg)."),
+  password: z.string().min(8, "Mot de passe : 8 caractères minimum."),
+});
+type NeonLoginValues = z.infer<typeof neonLoginSchema>;
+
+const neonRegisterSchema = z.object({
+  name: z.string().trim().min(2, "Nom complet requis (2 caractères minimum).").max(80, "Nom trop long (80 caractères max)."),
+  email: z.email("Adresse e-mail invalide (ex : vous@exemple.cg)."),
+  password: z.string().min(8, "Mot de passe : 8 caractères minimum."),
+});
+type NeonRegisterValues = z.infer<typeof neonRegisterSchema>;
+
 // ---------- Avantages (panneau de marque) ----------
 
 const BENEFITS = [
@@ -72,23 +90,31 @@ const BENEFITS = [
 export default function AuthScreen({ defaultTab = "login" }: { defaultTab?: "login" | "register" }) {
   const setSession = useApp((s) => s.setSession);
   const setView = useApp((s) => s.setView);
-  const [tab, setTab] = useState<"login" | "register">(defaultTab);
+  const [tab, setTab] = useState<"login" | "register" | "neon">(defaultTab);
   const [error, setError] = useState<string | null>(null);
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirm, setShowConfirm] = useState(false);
   const [supabase, setSupabase] = useState<boolean | null>(null);
+  const [neon, setNeon] = useState(false);
+  const [neonMode, setNeonMode] = useState<"signin" | "signup">("signin");
   const [confirmation, setConfirmation] = useState<{ email: string } | null>(null);
 
   useEffect(() => {
     setTab(defaultTab);
   }, [defaultTab]);
 
-  // Modes d'authentification actifs (badge Supabase)
+  // Modes d'authentification actifs (badge Supabase, onglet Neon Auth)
   useEffect(() => {
     api.auth
       .providers()
-      .then((p) => setSupabase(p.supabase))
-      .catch(() => setSupabase(false));
+      .then((p) => {
+        setSupabase(p.supabase);
+        setNeon(p.neon);
+      })
+      .catch(() => {
+        setSupabase(false);
+        setNeon(false);
+      });
   }, []);
 
   const loginForm = useForm<LoginValues>({
@@ -98,6 +124,14 @@ export default function AuthScreen({ defaultTab = "login" }: { defaultTab?: "log
   const registerForm = useForm<RegisterValues>({
     resolver: zodResolver(registerSchema),
     defaultValues: { firstName: "", lastName: "", phone: "", email: "", password: "", confirmPassword: "" },
+  });
+  const neonLoginForm = useForm<NeonLoginValues>({
+    resolver: zodResolver(neonLoginSchema),
+    defaultValues: { email: "", password: "" },
+  });
+  const neonRegisterForm = useForm<NeonRegisterValues>({
+    resolver: zodResolver(neonRegisterSchema),
+    defaultValues: { name: "", email: "", password: "" },
   });
 
   const onSession = (user: SessionUser) => {
@@ -137,6 +171,60 @@ export default function AuthScreen({ defaultTab = "login" }: { defaultTab?: "log
       onSession(result);
     } catch (err) {
       const message = err instanceof ApiClientError ? err.message : "Inscription impossible. Vérifiez votre réseau.";
+      setError(message);
+      toast.error(message);
+    }
+  };
+
+  // ---------- Neon Auth : connexion (compte managé) ----------
+  const onNeonLogin = async (values: NeonLoginValues) => {
+    setError(null);
+    try {
+      // 1. Authentification par le service managé (proxy /api/auth/sign-in/email)
+      const { data, error } = await neonAuthClient.signIn.email({
+        email: values.email.trim(),
+        password: values.password,
+      });
+      if (error) {
+        throw new Error(neonAuthErrorMessage(error));
+      }
+      if (!data?.user) {
+        throw new Error("Session Neon non établie. Réessayez dans un instant.");
+      }
+      // 2. Pont vers la session applicative NZOKO (cookie nzoko_session)
+      onSession(await api.auth.exchangeNeonSession());
+    } catch (err) {
+      const message = err instanceof ApiClientError || err instanceof Error
+        ? err.message
+        : "Connexion Neon impossible. Vérifiez votre réseau.";
+      setError(message);
+      toast.error(message);
+    }
+  };
+
+  // ---------- Neon Auth : inscription (compte managé) ----------
+  const onNeonRegister = async (values: NeonRegisterValues) => {
+    setError(null);
+    try {
+      const { data, error } = await neonAuthClient.signUp.email({
+        name: values.name.trim(),
+        email: values.email.trim(),
+        password: values.password,
+      });
+      if (error) {
+        throw new Error(neonAuthErrorMessage(error));
+      }
+      if (!data?.token) {
+        // token null = vérification d'e-mail exigée par la configuration
+        // Neon Auth : aucune session tant que le lien n'a pas été confirmé.
+        setConfirmation({ email: values.email.trim() });
+        return;
+      }
+      onSession(await api.auth.exchangeNeonSession());
+    } catch (err) {
+      const message = err instanceof ApiClientError || err instanceof Error
+        ? err.message
+        : "Inscription Neon impossible. Vérifiez votre réseau.";
       setError(message);
       toast.error(message);
     }
@@ -220,12 +308,14 @@ export default function AuthScreen({ defaultTab = "login" }: { defaultTab?: "log
                 <Bus className="size-6" aria-hidden />
               </span>
               <h2 className="mt-3 text-xl font-bold lg:mt-0">
-                {tab === "login" ? "Content de vous revoir" : "Créer mon compte"}
+                {tab === "login" ? "Content de vous revoir" : tab === "neon" ? "Accès Neon Auth" : "Créer mon compte"}
               </h2>
               <p className="mt-1 text-sm text-muted-foreground">
                 {tab === "login"
                   ? "Connectez-vous pour accéder à vos billets et points fidélité."
-                  : "Quelques informations et vos billets achetés avec ce numéro remontent automatiquement."}
+                  : tab === "neon"
+                    ? "Compte client sécurisé par le service d’authentification managé Neon."
+                    : "Quelques informations et vos billets achetés avec ce numéro remontent automatiquement."}
               </p>
             </div>
 
@@ -256,14 +346,19 @@ export default function AuthScreen({ defaultTab = "login" }: { defaultTab?: "log
                 </Button>
               </motion.div>
             ) : (
-              <Tabs value={tab} onValueChange={(v) => { setTab(v as "login" | "register"); setError(null); }}>
-                <TabsList className="grid h-12 w-full grid-cols-2">
+              <Tabs value={tab} onValueChange={(v) => { setTab(v as "login" | "register" | "neon"); setError(null); }}>
+                <TabsList className={`grid h-12 w-full ${neon ? "grid-cols-3" : "grid-cols-2"}`}>
                   <TabsTrigger value="login" className="gap-1.5 text-sm">
                     <LogIn className="size-4" aria-hidden /> Connexion
                   </TabsTrigger>
                   <TabsTrigger value="register" className="gap-1.5 text-sm">
                     <UserPlus className="size-4" aria-hidden /> Inscription
                   </TabsTrigger>
+                  {neon && (
+                    <TabsTrigger value="neon" className="gap-1.5 text-sm">
+                      <Fingerprint className="size-4" aria-hidden /> Neon Auth
+                    </TabsTrigger>
+                  )}
                 </TabsList>
 
                 {/* ================= CONNEXION ================= */}
@@ -468,6 +563,168 @@ export default function AuthScreen({ defaultTab = "login" }: { defaultTab?: "log
                     </button>
                   </p>
                 </TabsContent>
+
+                {/* ================= NEON AUTH (comptes clients managés) ================= */}
+                {neon && (
+                  <TabsContent value="neon" className="mt-5 space-y-4">
+                  {error && errBox(error)}
+                  <p className="flex items-start gap-2 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs text-emerald-800 dark:border-emerald-900 dark:bg-emerald-950/40 dark:text-emerald-300" role="status">
+                    <ShieldCheck className="mt-0.5 size-4 shrink-0" aria-hidden />
+                    <span>
+                      Vos identifiants (e-mail + mot de passe) sont gérés par <strong>Neon Auth</strong>, le service
+                      d’authentification managé de votre base Neon. Le mot de passe ne transite jamais par NZOKO.
+                    </span>
+                  </p>
+
+                  {/* Bascule connexion / inscription (compte managé) */}
+                  <div className="grid grid-cols-2 gap-1 rounded-lg bg-muted p-1" role="group" aria-label="Mode Neon Auth">
+                    <Button
+                      type="button"
+                      variant={neonMode === "signin" ? "default" : "ghost"}
+                      size="sm"
+                      className="h-9"
+                      onClick={() => { setNeonMode("signin"); setError(null); }}
+                    >
+                      Se connecter
+                    </Button>
+                    <Button
+                      type="button"
+                      variant={neonMode === "signup" ? "default" : "ghost"}
+                      size="sm"
+                      className="h-9"
+                      onClick={() => { setNeonMode("signup"); setError(null); }}
+                    >
+                      Créer un compte
+                    </Button>
+                  </div>
+
+                  {neonMode === "signin" ? (
+                    <Form {...neonLoginForm}>
+                      <form onSubmit={neonLoginForm.handleSubmit(onNeonLogin)} noValidate className="space-y-4">
+                        <FormField
+                          control={neonLoginForm.control}
+                          name="email"
+                          render={({ field }) => (
+                            <FormItem>
+                              <FormLabel>Adresse e-mail</FormLabel>
+                              <FormControl>
+                                <div className="relative">
+                                  <Mail className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" aria-hidden />
+                                  <Input {...field} type="email" inputMode="email" autoComplete="email" className="h-11 pl-9" placeholder="vous@exemple.cg" />
+                                </div>
+                              </FormControl>
+                              <FormMessage />
+                            </FormItem>
+                          )}
+                        />
+                        <FormField
+                          control={neonLoginForm.control}
+                          name="password"
+                          render={({ field }) => (
+                            <FormItem>
+                              <FormLabel>Mot de passe</FormLabel>
+                              <FormControl>
+                                <div className="relative">
+                                  <Lock className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" aria-hidden />
+                                  <Input
+                                    {...field}
+                                    type={showPassword ? "text" : "password"}
+                                    autoComplete="current-password"
+                                    className="h-11 pl-9 pr-11"
+                                    placeholder="••••••••"
+                                  />
+                                  {passwordAdornment(showPassword, () => setShowPassword((v) => !v), "le mot de passe")}
+                                </div>
+                              </FormControl>
+                              <FormMessage />
+                            </FormItem>
+                          )}
+                        />
+                        <Button type="submit" size="lg" disabled={neonLoginForm.formState.isSubmitting} className="h-12 w-full">
+                          {neonLoginForm.formState.isSubmitting ? (
+                            <Loader2 className="size-5 animate-spin" aria-hidden />
+                          ) : (
+                            <Fingerprint className="size-5" aria-hidden />
+                          )}
+                          {neonLoginForm.formState.isSubmitting ? "Connexion…" : "Se connecter via Neon"}
+                        </Button>
+                      </form>
+                    </Form>
+                  ) : (
+                    <Form {...neonRegisterForm}>
+                      <form onSubmit={neonRegisterForm.handleSubmit(onNeonRegister)} noValidate className="space-y-4">
+                        <FormField
+                          control={neonRegisterForm.control}
+                          name="name"
+                          render={({ field }) => (
+                            <FormItem>
+                              <FormLabel>Nom complet</FormLabel>
+                              <FormControl>
+                                <div className="relative">
+                                  <UserRound className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" aria-hidden />
+                                  <Input {...field} autoComplete="name" className="h-11 pl-9" placeholder="Grâce Mabika" />
+                                </div>
+                              </FormControl>
+                              <FormMessage />
+                            </FormItem>
+                          )}
+                        />
+                        <FormField
+                          control={neonRegisterForm.control}
+                          name="email"
+                          render={({ field }) => (
+                            <FormItem>
+                              <FormLabel>Adresse e-mail</FormLabel>
+                              <FormControl>
+                                <div className="relative">
+                                  <Mail className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" aria-hidden />
+                                  <Input {...field} type="email" inputMode="email" autoComplete="email" className="h-11 pl-9" placeholder="vous@exemple.cg" />
+                                </div>
+                              </FormControl>
+                              <FormMessage />
+                            </FormItem>
+                          )}
+                        />
+                        <FormField
+                          control={neonRegisterForm.control}
+                          name="password"
+                          render={({ field }) => (
+                            <FormItem>
+                              <FormLabel>Mot de passe</FormLabel>
+                              <FormControl>
+                                <div className="relative">
+                                  <Lock className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" aria-hidden />
+                                  <Input
+                                    {...field}
+                                    type={showPassword ? "text" : "password"}
+                                    autoComplete="new-password"
+                                    className="h-11 pl-9 pr-11"
+                                    placeholder="8 caractères min."
+                                  />
+                                  {passwordAdornment(showPassword, () => setShowPassword((v) => !v), "le mot de passe")}
+                                </div>
+                              </FormControl>
+                              <FormMessage />
+                            </FormItem>
+                          )}
+                        />
+                        <Button type="submit" size="lg" disabled={neonRegisterForm.formState.isSubmitting} className="h-12 w-full">
+                          {neonRegisterForm.formState.isSubmitting ? (
+                            <Loader2 className="size-5 animate-spin" aria-hidden />
+                          ) : (
+                            <CheckCircle2 className="size-5" aria-hidden />
+                          )}
+                          {neonRegisterForm.formState.isSubmitting ? "Création…" : "Créer mon compte Neon"}
+                        </Button>
+                      </form>
+                    </Form>
+                  )}
+
+                  <p className="text-center text-xs text-muted-foreground">
+                    Après connexion, complétez votre téléphone dans « Mon profil » pour retrouver vos billets.
+                  </p>
+                  </TabsContent>
+                )}
               </Tabs>
             )}
 

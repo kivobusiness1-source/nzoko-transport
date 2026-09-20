@@ -7,7 +7,7 @@
 import { NextRequest } from "next/server";
 import { z } from "zod";
 import { ok, routeError, ApiError, ERROR_CODES, getClientIp, getUserAgent, assertSameOriginPost } from "@/lib/api-response";
-import { createSession, setSessionCookie } from "@/lib/auth";
+import { createSession, setSessionCookie, externalAuthProvider } from "@/lib/auth";
 import { enforceRateLimit } from "@/lib/rate-limit";
 import { logSecurity } from "@/lib/audit";
 import { RATE_LIMITS, OTP } from "@/lib/constants";
@@ -144,7 +144,7 @@ async function handleVerify(phone: string, code: string, ip: string, req: NextRe
     roleLabel: user.role.name,
     agencyId: user.agencyId,
     agencyName: user.agency?.name ?? null,
-    authProvider: user.supabaseId ? ("SUPABASE" as const) : ("LOCAL" as const),
+    authProvider: externalAuthProvider(user),
     permissions: user.role.permissions
       .map((rp) => rp.permission.code)
       .filter((c): c is PermissionCode => Boolean(c)),
