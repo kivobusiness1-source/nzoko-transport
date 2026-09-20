@@ -21,11 +21,44 @@ export function PwaRegister() {
   const [dismissed, setDismissed] = useState(true);
 
   useEffect(() => {
-    // 1. Enregistrement du service worker
+    // 1. Service worker : PRODUCTION UNIQUEMENT.
+    //    ⚠️ Incident 2026-09-19 « ChunkLoadError admin » : en dev,
+    //    Turbopack réécrit le CONTENU des chunks sous des URL stables
+    //    à chaque recompilation/restart — un SW cache-first servait
+    //    des modules périmés même après F5 (graphe de modules cassé →
+    //    ChunkLoadError persistant sur l'espace admin). En dev, on
+    //    purge au contraire tout SW résiduel + caches NZOKO (guérit
+    //    un navigateur intoxiqué par une ancienne version du SW).
     if ("serviceWorker" in navigator) {
-      navigator.serviceWorker.register("/sw.js").catch(() => {
-        // échec silencieux : l'app reste utilisable sans PWA
-      });
+      if (process.env.NODE_ENV === "production") {
+        navigator.serviceWorker.register("/sw.js").catch(() => {
+          // échec silencieux : l'app reste utilisable sans PWA
+        });
+      } else {
+        // DEV : nettoyage préventif (enregistrements + caches).
+        navigator.serviceWorker
+          .getRegistrations()
+          .then((registrations) => {
+            registrations.forEach((registration) => {
+              void registration.unregister().catch(() => {});
+            });
+          })
+          .catch(() => {
+            // API indisponible : on ignore (aucun SW, rien à purger).
+          });
+        if ("caches" in window) {
+          caches
+            .keys()
+            .then((keys) => {
+              keys
+                .filter((key) => key.startsWith("nzoko-"))
+                .forEach((key) => {
+                  void caches.delete(key);
+                });
+            })
+            .catch(() => {});
+        }
+      }
     }
 
     // 2. Détection plateforme + dismissal — différés hors du corps synchrone

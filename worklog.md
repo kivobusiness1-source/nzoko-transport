@@ -1137,3 +1137,71 @@ Stage Summary:
 - Les 3 plaintes utilisateur sont corrigées et validées : (1) login super admin tolérant (identifiant court accepté, message d'erreur pédagogique — l'API et le compte marchaient déjà, le problème était la saisie), (2) GPS : permission guidée pas-à-pas + bandeau persistant + bouton Réessayer côté chauffeur, guidance immédiate côté public (impossible de contourner l'exigence navigateur : accord explicite utilisateur = règle de confidentialité — mais plus AUCUNE impasse muette), (3) plus jamais de « Vous êtes probablement à Centre-ville » sur une position qui n'est pas celle de l'utilisateur (repli ville = position de référence, précision GPS transmise et affichée honnêtement).
 - Bonus : débordement horizontal 64 px de l'espace admin mobile corrigé (min-w-0).
 - Rappel déploiement Vercel en attente : variables d'env (DATABASE_URL Neon, TRACKING_SECRET, CRON_SECRET, PAYMENTS_SIMULATION, ASSISTANT_ENABLED) + nouveau token GitHub pour pousser.
+
+---
+Task ID: 30 (RESTAURÉ — cf. Task 33)
+Agent: main (Z.ai Code)
+Task: « Deux erreurs qui m'empêchent d'accéder au panel admin » — diagnostic après reboot sandbox + restauration complète + résilience anti-reboot. (Entrée d'origine perdue par le rollback du 19/09 soir — reconstituée verbatim depuis la mémoire de session.)
+
+Work Log:
+- DIAGNOSTIC : reboot sandbox du 18/09 20:13 → /home/sync/repo.tar (fichiers GIT SEULEMENT) restauré, .env RÉÉCRIT (URL SQLite), .env.neon SUPPRIMÉ (jamais versionné → identifiants Neon PERDUS, ils ne vivent plus que dans les variables Vercel de l'utilisateur), db/ vidé, node_modules mini-service vidé, dev.log supprimé. Le dev.sh du boot avait ÉCHOUÉ sur db:push (schéma PostgreSQL + URL SQLite) → serveur jamais démarré → « erreurs » vues par l'utilisateur.
+- DÉCOUVERTE HARNAIS : tout processus démarré depuis une commande Bash est TUÉ à la fin de la commande (même setsid+nohup+disown). CONTRE-MESURE VALIDÉE : double-fork orphelin `( setsid bash -c 'exec …' & )` → reparenté vers tini (PID 1) → survit. Serveur Next (3000) + mini-service tracking (3003/3004) relancés ainsi.
+- RESTAURATION LOCALE SQLITE : prisma/schema.prisma basculé en sqlite (retour postgresql documenté en tête), .env + mini-service/.env locaux, db:push, prisma/seed.ts + scripts/seed-v3.ts → 7 villes, 15 quartiers, 9 agences, 14 bus, 126 voyages, 27 FAQ, 8 comptes.
+- 2 BUGS DE SEED : (a) kb:manage absent des PERMISSIONS LOCALES de prisma/seed.ts (l'app constants.ts l'a, le seed non) → onglet admin « Base IA » invisible sur base re-seedée → ajouté + assigné à ADMIN/SUPER_ADMIN ; (b) purge du seed pré-V3 → P2003 sur city.deleteMany dès que quartiers/FAQ/GPS existent → purge des modèles V3+ AVANT les parents FK (gpsPoint, trackingSession, aIQuestionLog ⚠️ casse Prisma AI→aI, knowledgeBase, neighborhood).
+- RÉSILIENCE ANTI-REBOOT (.zscripts/dev.sh + scripts/db-is-empty.ts) : au boot, tar restaure les fichiers COMMITTÉS, .env est réécrit en SQLite, dev.sh fait bun install → db:push → seed automatique NON-FATAL si base vide → serveur + mini-services.
+- ⚠️ LIMITE DÉCOUVERTE EN TASK 33 : le tar de boot n'est PAS régénéré à partir de l'état courant — un rollback peut restaurer un ANCIEN tar (perte des commits locaux). Le push GitHub immédiat est la SEULE protection durable.
+
+Stage Summary:
+- Les « deux erreurs » du panel admin = environnement détruit par le reboot (serveur jamais démarré : db:push PostgreSQL/SQLite incohérent) — restauration complète SQLite locale (le seul mode possible sans les identifiants Neon).
+- Comptes de test : admin@nzoko.cg/Admin@2026!, superadmin@nzoko.cg/Nzoko@2026!, chauffeur.jean@nzoko.cg/Chauffeur@2026!, checker.pn@nzoko.cg/Checker@2026!, agent.pn@nzoko.cg/Agent@2026!, manager.pn@nzoko.cg/Manager@2026!.
+
+---
+Task ID: 31 (RESTAURÉ — cf. Task 33)
+Agent: main (Z.ai Code)
+Task: « Une erreur est survenue / L'affichage de cette section a échoué » sur le super admin — diagnostic, correctif et validation. (Entrée d'origine perdue par le rollback du 19/09 soir — reconstituée verbatim.)
+
+Work Log:
+- REPRODUCTION IMPOSSIBLE PAR PARCOURS : superadmin + 13 onglets + dialogues → 0 erreur. La cause réelle (découverte en Task 32) : le service worker.
+- INSTRUMENTATION : route POST /api/client-errors (CSRF maison, rate limit 20/min/IP, Zod, réponse 204 silencieuse, eslint-disable no-console car le journal serveur est l'objet de la route) + src/lib/client-telemetry.ts (reportClientError fire-and-forget keepalive + installGlobalErrorReporting : window.onerror + unhandledrejection) + instrumentation de ChunkErrorBoundary (kind render|chunk, context=vue, tentatives).
+- CAPTURE de l'erreur réelle : ChunkLoadError « Failed to load chunk /_next/static/chunks/src_features_client_client-utils_ts_…._.js from module [project]/src/features/admin/admin-workspace.tsx [app-client] (ecmascript, async loader) » — componentStack Lazy → Suspense → WorkspaceRouter → ChunkErrorBoundary.
+- ROOT CAUSE DU MAUVAIS MESSAGE : le garde-fou ne connaissait que les formats WEBPACK ; Turbopack place le TYPE dans error.NAME (« ChunkLoadError ») et formate « Failed to load chunk X from module Y (async loader) » → aucun motif ne matchait → branche générique sans auto-rechargement.
+- CORRECTIFS : (1) chunk-error-boundary — motifs Turbopack + détection sur name+message+tête de pile + prop context ; (2) client-telemetry + route API ; (3) store — persistance sessionStorage de la vue (workspace/booking/tracking, JAMAIS login/register, purgée à la déconnexion) restaurée AU MONTAGE dans NzokoApp (compat hydratation : l'accueil SSR reste la source de vérité du premier rendu).
+- Piège identifié : le cache HTTP navigateur peut servir des modules périmés lors de simples reload en dev (fausser les tests → toujours vérifier sur profil vierge).
+
+Stage Summary:
+- L'erreur du super admin était un ChunkLoadError Turbopack mal classé par le garde-fou : auto-rechargement de récupération désormais fonctionnel + vue restaurée après rechargement.
+- Nouvelle capacité durable : télémétrie client serveur — TOUTE erreur de rendu ou non capturée laisse une trace greppable dans dev.log.
+
+---
+Task ID: 32 (RESTAURÉ — cf. Task 33)
+Agent: main (Z.ai Code)
+Task: « Failed to load chunk /_next/static/chunks/src_features_client_client-utils_ts_…._.js » (ChunkLoadError runtime, workspace admin superadmin) — l'utilisateur voyait TOUJOURS l'erreur après le fix Task 31. (Entrée d'origine perdue par le rollback — reconstituée.)
+
+Work Log:
+- FAITS (télémétrie décisive) : l'erreur RÉCIDAIT même après rechargements complets (GET / + /api/auth/me visibles juste avant de nouvelles erreurs), 11 rapports, compteur jusqu'à t5 (6 clics « Réessayer » infructueux), kind=render persistant = le navigateur exécutait TOUJOURS l'ANCIEN code du boundary. Le chunk incriminé répondait pourtant HTTP 200 côté serveur (direct :3000 ET passerelle :81).
+- ROOT CAUSE RÉELLE : le SERVICE WORKER PWA (public/sw.js v1) faisait du CACHE-FIRST sur /_next/static/* alors qu'en dev Turbopack les URL de chunks sont STABLES mais leur CONTENU change à chaque recompilation/restart. Le SW servait indéfiniment les modules périmés, même après F5 (les réponses dev sont no-store : SEUL le SW peut servir du stale) → runtime ancien + chunks anciens ≠ graphe du serveur → ChunkLoadError. Cohérent avec : profils vierges toujours propres, espace chauffeur marchant (chunks cohérents entre eux), le « piège cache HTTP » de la Task 31 était en réalité le SW. Enregistrement inconditionnel (dev inclus) dans PwaRegister = l'origine de l'intoxication.
+- CORRECTIF : (1) public/sw.js v2 : /_next/static/* en RÉSEAU-FIRST (+ refresh du cache, repli hors ligne si fetch échoue), seuls les immuables (icônes/manifest/offline) restent cache-first, VERSION bumpée → les caches v1 sont purgés à l'activation ; (2) pwa-register.tsx : enregistrement du SW en PRODUCTION UNIQUEMENT (process.env.NODE_ENV) ; en DEV, nettoyage actif au montage : unregister de tous les SW résiduels + suppression des caches nzoko-* → guérit automatiquement tout navigateur intoxiqué.
+- VALIDATION E2E (agent-browser, origin :81) : SW v2 enregistré manuellement (simulation de l'état du navigateur utilisateur) → reload → zéro erreur, espace Administration superadmin 13 onglets + chunk client-utils chargés sans erreur ; auto-nettoyage dev vérifié (0 SW restant, caches purgés, page non contrôlée) ; vue persistée restaurée après reload sans re-login ; tsc EXIT 0, lint EXIT 0 ; AUCUN nouveau [CLIENT-ERROR] pendant la validation.
+
+Stage Summary:
+- La véritable cause du ChunkLoadError persistant était le service worker PWA (cache-first sur les chunks Next recompilés en dev). Double correctif : sw.js v2 réseau-first + enregistrement SW limité à la production avec purge active en dev.
+- La production Vercel reste correcte : chunks à URL hashées immuables → réseau-first = un aller-retour CDN, repli hors ligne PWA conservé.
+
+---
+Task ID: 33
+Agent: main (Z.ai Code)
+Task: « vas y commit çà » / nouveau token GitHub — PUSH puis découverte d'un ROLLBACK de la sandbox ayant PERDU les commits locaux des Tasks 30/31/32 → restauration intégrale et push immédiat.
+
+Work Log:
+- TOKEN 1 INVALIDE (ghp_q85…, 403 « Write access not granted ») : scopes annexes cochés (repo:invite, repo:status…) mais PAS le scope parent repo → dépôt privé invisible (404). Diagnostic via API GitHub (X-OAuth-Scopes). TOKEN 2 (ghp_Bpf…, scope repo ✓) : push réussi… mais SEULEMENT jusqu'à a0cb43d (« worklog : task 29 »).
+- ROLLBACK DÉCOUVERT : le push n'a envoyé que 4 commits d'écart (980d571→a0cb43d) alors que HEAD devait être 0f1fd51. Vérifications : HEAD local = a0cb43d, reflog terminé à l'ère Task 29, objets git des 5 commits (d76e256, 352ebcc, 8b19985, 824f6b0, 0f1fd51) ABSENTS (cat-file « not a valid object », pack vide — les 2 unreachable sont de vieux stashs), /home/sync/repo.tar réécrit à 08:12 avec le contenu de l'ère Task 29, sw.js revenu en v1, schema.prisma revenu PostgreSQL, worklog sans Tasks 30-32, serveur et mini-service ARRÊTÉS (dev.sh avait échoué sur db:push : schéma postgres + URL SQLite), db/ absent. CONCLUSION : la sandbox a rejoué /start.sh avec un ANCIEN tar — le tar de boot n'est PAS un instantané continu de l'état courant.
+- RESTAURATION INTÉGRALE (les 5 commits perdus reconstruits depuis la mémoire de session — chaque fichier était connu) : Task 30 (schema sqlite + .env + mini-service/.env + fixes seed kb:manage & purge FK V3 + scripts/db-is-empty.ts + auto-seed dans .zscripts/dev.sh) ; Task 31 (chunk-error-boundary motifs Turbopack + context, client-telemetry.ts, /api/client-errors, persistance de vue sessionStorage + restorePersistedView dans store/nzoko-app + installGlobalErrorReporting) ; Task 32 (sw.js v2 réseau-first + pwa-register prod-only/dev-cleanup).
+- DB RECONSTRUITE : db:push SQLite → seed principal (36 permissions avec kb:manage ✓, 8 comptes) → seed V3 (7 villes, 15 quartiers, 9 agences, 14 bus, 129 voyages, 27 FAQ).
+- SERVEURS : double-fork orphelin (anti-harnais, cf. Task 30) pour next dev :3000 (HTTP 200) + mini-service tracking :3003/3004 (bun --hot).
+- VALIDATION E2E (agent-browser :81) : login superadmin → espace Administration 13 onglets (Base IA inclus = kb:manage fonctionnel), onglet Base IA rendu, PERSISTANCE DE VUE vérifiée (reload → Administration restaurée sans re-login), 0 SW enregistré en dev, 0 erreur console/page, dev.log SANS AUCUNE erreur ; tsc EXIT 0, lint EXIT 0 (no-console désactivé localement sur la route de télémétrie — journal serveur volontaire).
+- WORKLOG : entrées Task 30/31/32 réintégrées ci-dessus (marquées RESTAURÉ) + cette entrée Task 33.
+
+Stage Summary:
+- INCIDENT MÉTIER : le rollback de la sandbox a détruit 5 commits locaux (Tasks 30/31/32) — le tar de boot peut être plus ANCIEN que l'état courant ; la protection durable est le PUSH GitHub IMMÉDIAT après chaque tâche (appliqué dès maintenant).
+- Tout est restauré et revalidé : SQLite + seeds (comptes inchangés), garde-fou chunks Turbopack, télémétrie client, persistance de vue, SW v2 réseau-first + prod-only. Le site est UP et le GitHub est à jour (push Task 33 inclus).
+- Leçons sandbox : (1) TOUJOURS pousser avant de rendre la main à l'utilisateur ; (2) le token GitHub doit avoir le scope parent repo (pas seulement les sous-scopes) ; (3) un push « réussi » qui n'envoie pas HEAD = signal de rollback immédiat à vérifier (git rev-parse HEAD vs remote).

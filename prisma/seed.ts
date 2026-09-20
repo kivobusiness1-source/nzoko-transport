@@ -61,6 +61,9 @@ const PERMISSIONS: { code: string; name: string }[] = [
   { code: "security:read", name: "Consulter le journal de sécurité" },
   { code: "stats:global", name: "Statistiques globales" },
   { code: "stats:agency", name: "Statistiques d'agence" },
+  // V3 — base de connaissances de l'assistant IA (sans cette permission en
+  // base, l'onglet admin « Base IA » est invisible — bug vu en Task 30)
+  { code: "kb:manage", name: "Gérer la base de connaissances IA" },
 ];
 
 const ROLE_PERMISSIONS: Record<string, string[]> = {
@@ -74,7 +77,7 @@ const ROLE_PERMISSIONS: Record<string, string[]> = {
     "payment:manage", "payment:read", "payment:cash-collect", "ticket:read",
     "finance:read", "expense:manage", "expense:read", "transaction:read",
     "report:read", "notification:read", "audit:read", "security:read",
-    "stats:global", "stats:agency",
+    "stats:global", "stats:agency", "kb:manage",
   ],
   AGENCY_MANAGER: [
     "agency:read", "user:read", "city:read", "route:read", "bus:read",
@@ -117,6 +120,14 @@ async function main(): Promise<void> {
 
   // ---------- Purge ----------
   // Espace client & fidélité (Task ID 10) : purge complète pour installs fraîches
+  // Modèles V3+ AVANT les parents FK, sinon P2003 sur city.deleteMany
+  // (neighborhood→city) et driver.deleteMany (trackingSession→driver)
+  // dès qu'une base V3 existe déjà (bug vu en Task 30).
+  await db.gpsPoint.deleteMany(); // enfant de TrackingSession
+  await db.trackingSession.deleteMany(); // enfant de Driver
+  await db.aIQuestionLog.deleteMany(); // ⚠️ Prisma : model AIQuestionLog → db.aIQuestionLog
+  await db.knowledgeBase.deleteMany();
+  await db.neighborhood.deleteMany(); // enfant de City
   await db.complaintMessage.deleteMany();
   await db.complaint.deleteMany();
   await db.tripRating.deleteMany();

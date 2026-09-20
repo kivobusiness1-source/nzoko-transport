@@ -1,18 +1,24 @@
 // NZOKO TRANSPORT — Schéma Prisma complet
-// Base : PostgreSQL (Neon) — migrée depuis SQLite le 2026-09-17 :
+// ⚠️ SANDBOX LOCALE = SQLite (2026-09-19, cf. worklog Tasks 30 & 33) :
+// les identifiants Neon ne vivent plus que dans les variables Vercel de
+// l'utilisateur. Le tar de boot de la sandbox restaure ce fichier tel quel.
+// RETOUR POSTGRESQL/NEON (production) :
+//   datasource db {
+//     provider  = "postgresql"
+//     url       = env("DATABASE_URL")        // pooler (runtime)
+//     directUrl = env("DIRECT_DATABASE_URL") // DDL (db push / migrate)
+//   }
 //  - les "enums" sont des champs String validés côté application (src/lib/constants.ts + Zod)
 //  - les champs JSON sont des String sérialisés (helpers parse/stringify)
 //  - les montants sont des entiers (XAF/FCFA — pas de sous-unité)
-//  - DATABASE_URL = pooler (runtime) ; DIRECT_DATABASE_URL = DDL (db push / migrate)
 
 generator client {
   provider = "prisma-client-js"
 }
 
 datasource db {
-  provider  = "postgresql"
-  url       = env("DATABASE_URL")
-  directUrl = env("DIRECT_DATABASE_URL")
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
 }
 
 // ============================================================

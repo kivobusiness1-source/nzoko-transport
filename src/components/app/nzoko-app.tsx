@@ -19,8 +19,9 @@ import {
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Toaster } from "@/components/ui/sonner";
 import { toast } from "sonner";
-import { useApp } from "@/lib/store";
+import { useApp, restorePersistedView } from "@/lib/store";
 import { api } from "@/lib/api-client";
+import { installGlobalErrorReporting } from "@/lib/client-telemetry";
 import { APP_NAME, APP_SLOGAN } from "@/lib/constants";
 import { initials, relativeTime } from "@/lib/format";
 import type { NotificationDTO } from "@/types";
@@ -330,9 +331,20 @@ function WorkspaceRouter() {
 export default function NzokoApp() {
   const { session, sessionReady, view, setView, setBookingSearch, refreshSession } = useApp();
 
+  // Au montage UNIQUEMENT (client) : restauration de la dernière vue
+  // persistée + rafraîchissement de session. La restauration se fait au
+  // montage — et non à l'évaluation du module — pour rester compatible
+  // avec le premier rendu serveur (l'accueil SSR reste la source de
+  // vérité de l'hydratation, la vue persistée s'applique juste après).
   useEffect(() => {
-    refreshSession();
-  }, [refreshSession]);
+    restorePersistedView();
+    void refreshSession();
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- montage unique
+  }, []);
+
+  // Télémétrie globale : erreurs non capturées + promesses rejetées
+  // (posées une seule fois, nettoyées au démontage HMR).
+  useEffect(() => installGlobalErrorReporting(), []);
 
   const handleSearch = useCallback(
     (params: { from: string; to: string; date: string }) => {
@@ -421,8 +433,8 @@ export default function NzokoApp() {
             redémarrage du serveur dev ou de la machine) : auto-rechargement
             unique + écran de secours « Réessayer / Recharger ». La key par vue
             réinitialise le boundary à chaque navigation (une vue cassée ne
-            bloque pas le site). */}
-        <ChunkErrorBoundary key={view}>{content}</ChunkErrorBoundary>
+            bloque pas le site) et le context alimente la télémétrie serveur. */}
+        <ChunkErrorBoundary key={view} context={view}>{content}</ChunkErrorBoundary>
       </main>
 
       <div className="mx-auto w-full max-w-6xl px-4">

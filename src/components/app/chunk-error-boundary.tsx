@@ -24,11 +24,20 @@
 import { Component, type ErrorInfo, type ReactNode } from "react";
 import { AlertTriangle, RefreshCw, RotateCcw } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { reportClientError } from "@/lib/client-telemetry";
 
-/** Signatures des erreurs de chargement de modules/chunks (navigateurs + bundlers). */
+/** Signatures des erreurs de chargement de modules/chunks.
+ *  ⚠️ Turbopack ≠ webpack : le TYPE est dans error.name
+ *  ("ChunkLoadError") et le message est « Failed to load chunk X from
+ *  module Y (ecmascript, async loader) » — aucun des motifs historiques
+ *  (format webpack) ne matchait → l'erreur était classée « rendu » et
+ *  affichait l'écran générique au lieu de l'auto-rechargement
+ *  (incident panel admin du 2026-09-19, cf. /api/client-errors). */
 const CHUNK_ERROR_PATTERNS: readonly string[] = [
-  "ChunkLoadError",
-  "Failed to fetch dynamically imported module",
+  "ChunkLoadError", // nom d'erreur (Turbopack) + message historique
+  "Failed to load chunk", // Turbopack (async loader)
+  "Failed to load module", // Turbopack (variante module)
+  "Failed to fetch dynamically imported module", // webpack/Vite
   "Importing a module script failed",
   "error loading dynamically imported module",
   "Loading chunk",
@@ -49,6 +58,8 @@ function isChunkLoadError(message: string): boolean {
 
 interface ChunkErrorBoundaryProps {
   children: ReactNode;
+  /** Vue/section concernée (télémétrie : « workspace », « booking »…). */
+  context?: string;
 }
 
 interface ChunkErrorBoundaryState {
@@ -64,12 +75,27 @@ export class ChunkErrorBoundary extends Component<ChunkErrorBoundaryProps, Chunk
   }
 
   componentDidCatch(error: Error, info: ErrorInfo): void {
-    const chunkRelated = isChunkLoadError(error.message);
+    // Turbopack met le type dans error.NAME ("ChunkLoadError") — il faut
+    // tester nom + message + tête de pile, pas le message seul.
+    const haystack = `${error.name}: ${error.message} ${error.stack?.slice(0, 400) ?? ""}`;
+    const chunkRelated = isChunkLoadError(haystack);
     console.error(
       `[NZOKO] ${chunkRelated ? "Chunk/module introuvable (serveur redémarré ?)" : "Erreur d'affichage de la vue"} :`,
       error.message,
       info.componentStack ?? ""
     );
+
+    // Télémétrie serveur (dev.log / stdout Vercel) — sans elle, un
+    // plantage d'affichage ne laisse AUCUNE trace côté serveur alors
+    // que toutes les API répondent 200 (incident panel admin 2026-09-19).
+    reportClientError({
+      kind: chunkRelated ? "chunk" : "render",
+      context: this.props.context ?? "unknown",
+      message: error.message,
+      stack: error.stack,
+      componentStack: info.componentStack ?? undefined,
+      attempts: this.state.attempts,
+    });
 
     if (chunkRelated && typeof window !== "undefined") {
       try {
@@ -111,7 +137,8 @@ export class ChunkErrorBoundary extends Component<ChunkErrorBoundaryProps, Chunk
     const { error, attempts } = this.state;
     if (!error) return this.props.children;
 
-    const chunkRelated = isChunkLoadError(error.message);
+    const haystack = `${error.name}: ${error.message} ${error.stack?.slice(0, 400) ?? ""}`;
+    const chunkRelated = isChunkLoadError(haystack);
 
     return (
       <div className="flex min-h-[60vh] items-center justify-center p-4" role="alert" aria-live="assertive">
