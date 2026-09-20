@@ -29,6 +29,10 @@ if (!BASE.startsWith("https://")) {
 }
 
 const SERVICE_EMAIL = process.env.NEON_AUTH_SERVICE_EMAIL ?? "geormakoma1+service@gmail.com";
+
+// Neon Auth exige un en-tête Origin même en appel serveur-à-serveur.
+const ORIGIN = process.env.NEON_SERVICE_ORIGIN ?? "https://nzoko-transport-eight.vercel.app";
+const HEADERS = { "Content-Type": "application/json", Origin: ORIGIN };
 const verifyCode = process.argv.includes("--verify")
   ? process.argv[process.argv.indexOf("--verify") + 1]
   : null;
@@ -38,7 +42,7 @@ async function main() {
     // Étape 2 : vérification de l'adresse e-mail avec le code reçu
     const res = await fetch(`${BASE}/email-otp/verify-email`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: HEADERS,
       body: JSON.stringify({ email: SERVICE_EMAIL, otp: verifyCode }),
     });
     const body = (await res.json().catch(() => ({}))) as Record<string, unknown>;
@@ -55,7 +59,7 @@ async function main() {
   const password = `Nzoko!Svc-${randomBytes(9).toString("base64url")}`;
   const res = await fetch(`${BASE}/sign-up/email`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: HEADERS,
     body: JSON.stringify({
       email: SERVICE_EMAIL,
       password,
