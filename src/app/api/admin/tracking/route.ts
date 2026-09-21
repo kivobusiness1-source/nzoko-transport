@@ -9,6 +9,7 @@ import { ok, routeError, getClientIp, ApiError, ERROR_CODES } from "@/lib/api-re
 import { getAuth, assertAuthenticated } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { toTrackingSessionDTO, issueSocketToken, TRACKING_SOCKET_URL } from "@/services/tracking";
+import type { FleetKpi } from "@/types";
 
 const sessionInclude = {
   driver: true,
@@ -38,7 +39,7 @@ export async function GET(req: NextRequest) {
           where: { sessionId },
           orderBy: { recordedAt: "asc" },
           take: TRACKING.trailMaxPoints,
-          select: { latitude: true, longitude: true, speed: true, heading: true, accuracy: true, recordedAt: true },
+          select: { latitude: true, longitude: true, speed: true, heading: true, accuracy: true, batteryLevel: true, recordedAt: true },
         }),
         db.gpsPoint.count({ where: { sessionId } }),
       ]);
@@ -64,8 +65,19 @@ export async function GET(req: NextRequest) {
       })
     );
 
+    // V4 GPS — compteurs d'états de la flotte (sessions vivantes uniquement).
+    const kpi: FleetKpi = {
+      total: dtos.length,
+      moving: dtos.filter((d) => d.busStatus === "MOVING").length,
+      stopped: dtos.filter((d) => d.busStatus === "STOPPED").length,
+      offline: dtos.filter((d) => d.busStatus === "OFFLINE").length,
+      arrived: dtos.filter((d) => d.busStatus === "ARRIVED").length,
+      paused: sessions.filter((s) => s.status === "PAUSED").length,
+    };
+
     return ok({
       sessions: dtos,
+      kpi,
       generatedAt: new Date().toISOString(),
       socketUrl: TRACKING_SOCKET_URL,
       socketToken: issueSocketToken(auth.userId),

@@ -9,6 +9,7 @@ import type {
   AgencyDTO, AgencyStatsDTO, AdminStatsDTO, AssistantReplyDTO, AuditLogDTO, BoardingTripDTO, BookingDTO,
   BookingDetailDTO, BusDTO, CityDTO, DriverDTO, DriverTripDTO, ExpenseDTO, FinanceSummaryDTO,
   GpsPointInput, TrackingSessionDTO, TrackingSessionActionDTO, TrackingFleetDTO, TrackingBatchResultDTO,
+  TrackingConfigDTO, MapPublicDTO,
   MomoOverviewDTO, NotificationDTO, Paginated, PaymentDTO, RefundMode, ReportDTO, RoleDTO, RouteDTO, ScanResultDTO,
   SeatLayoutDTO, SeatMapDTO, SecurityLogDTO, SessionUser, TransactionDTO, TripContactsDTO, TripSearchDTO, UserDTO,
   RegisterInput, OtpRequestDTO, OtpVerifyInput, RegisterResult, ClientProfileDTO, ClientStatsDTO, ClientTripDTO, TripRatingInput,
@@ -86,9 +87,12 @@ export const api = {
   },
 
   // ============================================================
-  // PUBLIC — villes, recherche, sièges
+  // PUBLIC — villes, recherche, sièges, carte ouverte
   // ============================================================
   cities: () => request<CityDTO[]>("/cities"),
+
+  /** V4 GPS — données de la carte publique (villes, agences, lignes + tracés, bus si activés). */
+  mapPublic: () => request<MapPublicDTO>("/map/public"),
 
   trips: {
     search: (from: string, to: string, date: string, agencyId?: string) =>
@@ -225,6 +229,9 @@ export const api = {
   // SUIVI GPS TEMPS RÉEL — session du chauffeur connecté
   // ============================================================
   tracking: {
+    /** V4 GPS — configuration EFFECTIVE serveur (intervalles, seuils, tuiles de carte).
+     *  Source unique du hook chauffeur et des cartes — aucune donnée sensible. */
+    config: () => request<TrackingConfigDTO>("/tracking/config"),
     /** Session courante (ACTIVE/PAUSED) — réconciliation après rechargement. */
     session: () => request<TrackingSessionDTO | null>("/tracking/session"),
     start: (input: { tripId?: string | null } = {}) =>

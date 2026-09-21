@@ -1299,3 +1299,82 @@ Stage Summary:
   courts acceptés (SHORT_ID_EMAILS) + emails complets + téléphone.
 - Sandbox = mode local (NEON_AUTH_MODE=local) : tout fonctionne MAINTENANT dans l'aperçu.
   Production Vercel = toujours l'ANCIENNE version (double onglet) jusqu'au push.
+---
+Task ID: 38-a
+Agent: sous-agent 38-a (Z.ai Code)
+Task: FONDATIONS SERVEUR DU SYSTÈME GPS ÉTENDU V4 — configuration centralisée (carte ouverte sans Google + seuils GPS), lib géographique pure (états bus), enrichissement du flux GPS (batterie, détection d'arrivée, KPI flotte), géométrie des itinéraires (OSRM), carte publique — contrat propre pour les agents frontend suivants.
+
+Work Log:
+- ÉTAT DE DÉPART DÉCOUVERT ET RÉPARÉ : le schéma Prisma unique était resté PostgreSQL (Neon, héritage Task 21-29) alors que la sandbox est repassée SQLite (.env = file:…/db/custom.db) — le serveur dev était planté au démarrage (db:push → « DIRECT_DATABASE_URL not found »), dossier db/ inexistant, base vide. Mise en place du DOUBLE SCHÉMA exigé : prisma/schema.prisma (sqlite sandbox) + prisma/schema.postgres.prisma (postgres Neon prod), miroirs À LA LETTRE (diff des modèles = vide, seuls datasource/urls diffèrent, en-têtes documentant la règle de synchro). mkdir db/, `bun run db:push` OK (base créée, client Prisma régénéré), seeds relancés pour peupler la sandbox vierge : `bun prisma/seed.ts` (7 villes, 9 rôles/35 permissions, 8 comptes, 6 lignes, 44 voyages) puis `bun scripts/seed-v3.ts` (15 quartiers, 9 agences, 14 bus, 128 voyages, 27 FAQ). AUCUNE donnée antérieure supprimée (la base était vide).
+- src/lib/gps-config.ts (NOUVEAU, isomorphe, zéro secret) : GPS_MAP as const (provider openstreetmap, tileUrl template {z}/{x}/{y} — SEULE URL de tuile du projet, attribution OSM, centre par défaut -4.27/15.28) + GPS_INTERVALS as const (GPS_ACTIVE_INTERVAL=8000, GPS_IDLE_INTERVAL=15000, GPS_STOPPED_INTERVAL=30000 ms) + GPS_SERVER as const (GPS_OFFLINE_THRESHOLD=120 s → 120 000 ms, GPS_ARRIVAL_RADIUS=2000 m, TRACKING_GPS_STOPPED_SPEED (défaut TRACKING.stoppedSpeedKmh=5), OSRM_BASE_URL (défaut "" = désactivé), PUBLIC_BUS_POSITIONS (défaut false)) ; helpers tileUrl(), mapDefaults(), offlineThresholdMs(), arrivalRadiusM(), stoppedSpeedKmh(), osrmBaseUrl(), publicBusPositionsEnabled(), gpsIntervals() + trackingConfigSnapshot() (contrat exact de la route config). Les NEXT_PUBLIC_MAP_* sont lisibles navigateur ; les GPS_* sont lues CÔTÉ SERVEUR uniquement (décision : le client les reçoit via l'endpoint config, source d'autorité — noms de variables SANS préfixe conformes au cahier des charges).
+- .env.example : sections documentées « V4 — CARTOGRAPHIE OUVERTE (sans Google) » et « V4 — GPS ÉTENDU » (toutes les variables + défauts, commentaires). .env sandbox : OSRM_BASE_URL=https://router.project-osrm.org + PUBLIC_BUS_POSITIONS=true décommentés (rien d'autre touché).
+- src/lib/geo.ts (enrichi, fonctions PURES) : type GpsBusStatus = "MOVING"|"STOPPED"|"OFFLINE"|"ARRIVED"|"GPS_ERROR" + ALIAS BusStatus (voir décision ci-dessous) ; BUS_STATUS_LABELS FR (En mouvement / Arrêté / Hors ligne / Arrivé / Signal GPS défaillant) ; bearingDegrees(from,to) cap initial 0-360 ; deriveBusStatus(input) avec règles strictes ordonnées ARRIVED > GPS_ERROR (aucun point) > OFFLINE (lastPointAt > offlineThresholdMs) > STOPPED (speed ≤ seuil ; null = présumé arrêté, documenté) > MOVING ; arrivalDistance({trip,lastPoint}) distance Haversine à la destination OFFICIELLE (null si ville sans coordonnées). haversineMeters existant conservé tel quel (signature GeoPoint {latitude,longitude} — aucun consommateur cassé).
+- DÉCISION D'ARCHITECTURE (collision de noms) : un type `BusStatus` existait DÉJÀ dans src/lib/constants.ts (statut du VÉHICULE : ACTIVE/MAINTENANCE/INACTIVE/OUT_OF_SERVICE, utilisé par BusDTO + 2 composants admin). Le nouveau type GPS vit dans src/lib/geo.ts sous le nom principal GpsBusStatus avec alias d'export `BusStatus` exigé par le contrat V4 ; src/types/index.ts importe désormais BusStatus depuis @/lib/geo et renomme l'import constants en VehicleBusStatus (aucun consommateur externe impacté — personne n'importait BusStatus depuis @/types).
+- prisma (LES DEUX fichiers, synchro stricte) : GpsPoint.batteryLevel Float? (pourcentage 0-100 téléphone chauffeur) ; Route.geometryJson String? (LineString GeoJSON SÉRALISÉE, convention [longitude, latitude] documentée en commentaire). Champs nullable → db:push sans perte. Index existants conservés, aucun doublon.
+- src/types/index.ts : GpsPointDTO + batteryLevel?: number|null ; GpsPointInput + batteryLevel?: number|null ; TrackingSessionDTO + busStatus?: BusStatus et distanceToDestinationM?: number|null ; TrackingFleetDTO + kpi?: FleetKpi (UNIQUEMENT vue flotte, pas le trail) ; NOUVEAUX : FleetKpi {total,moving,stopped,offline,arrived,paused}, TrackingConfigDTO + MapConfigDTO (contrat /api/tracking/config), MapPublicDTO + MapCityDTO/MapAgencyDTO/MapStopDTO/MapRouteDTO/MapBusDTO/MapLineStringDTO (contrat /api/map/public).
+- src/lib/api-client.ts : api.tracking.config() (GET /tracking/config) + api.mapPublic() (GET /map/public). Aucun contrat existant modifié.
+- GET /api/tracking/config (NOUVELLE route publique, sans auth, rate limit public 60/min/IP) : renvoie {success,data:{activeIntervalMs:8000,idleIntervalMs:15000,stoppedIntervalMs:30000,stoppedSpeedKmh:5,offlineThresholdMs:120000,arrivalRadiusM:2000,map:{provider:"openstreetmap",tileUrl:"https://tile.openstreetmap.org/{z}/{x}/{y}.png",attribution:"&copy; <a href=…>OpenStreetMap</a>",defaultLat:-4.27,defaultLng:15.28}}} — valeurs EFFECTIVES serveur, aucune donnée sensible.
+- POST /api/tracking/location + /api/tracking/batch : acceptent batteryLevel optionnel (Zod nombre 0-100 nullable, NON requis — contrat rétro-compatible) et le stockent ; select de session élargi à tripId. DÉTECTION D'ARRIVÉE (exigence 18) après écriture du point (dernier point du lot pour le batch) : nouveau service maybeMarkArrival() dans src/services/tracking.ts — charge le trip avec route+destinationCity, ignore si ARRIVED/COMPLETED/CANCELLED ou ville sans coordonnées, Haversine vs arrivalRadiusM() ; updateMany CONDITIONNEL anti-concurrence (notIn statuts finaux) → trip ARRIVED une seule fois ; émission socket « bus-arrived » {sessionId,tripId,routeLabel,at} via emitRealtime (même mécanisme HMAC que « gps », room fleet) + logAudit TRIP_ARRIVED {sessionId,routeLabel,distanceM,detectedFrom:"gps"} ; TOUT en try/catch best-effort : une erreur d'arrivée ne fait JAMAIS échouer l'enregistrement du point.
+- GET /api/admin/tracking : CHAQUE TrackingSessionDTO (flotte ET trail) enrichi via toTrackingSessionDTO (busStatus dérivé de lastPoint.speed/recordedAt + trip.status==="ARRIVED" + seuils serveur ; distanceToDestinationM arrondi ; lastPoint.batteryLevel) ; kpi:{total,moving,stopped,offline,arrived,paused} ajouté UNIQUEMENT à la vue flotte (absent du trail, vérifié en live) ; select du trail élargi à batteryLevel. Champs existants inchangés (rétro-compatible).
+- GET /api/map/public (NOUVELLE route publique, rate limit public 60/min/IP) : cities (actives avec coordonnées), agencies (actives avec coordonnées — adresse/téléphone publics, AUCUNE donnée chauffeur), routes actives avec stops triés par position (villes sans coordonnées ignorées) + geometry LineString parsée et VALIDÉE (null si corrompue), buses = sessions ACTIVE avec dernier point SI PUBLIC_BUS_POSITIONS=true (sessionId, routeLabel, position, speedKmh, heading, busStatus dérivé, recordedAt — SANS nom chauffeur, SANS immatriculation, SANS agencyId ; sessions sans point exclues ; label « Repositionnement » si session sans voyage) sinon [].
+- scripts/generate-route-geometry.ts (NOUVEAU, bun) : pour chaque Route active (défaut : uniquement sans geometryJson — idempotent vérifié ; --force pour tout régénérer) construit [origine, …arrêts triés, destination] (villes sans coordonnées ignorées + warning), tente OSRM GET {OSRM_BASE_URL}/route/v1/driving/{lng},{lat};…?overview=full&geometries=geojson (timeout 15 s, User-Agent NZOKO-Transport/1.0, validation stricte de la géométrie), fallback lignes droites, stocke JSON.stringify(geometry) arrondi 6 décimales, résumé par route (source osrm/fallback + sommets). EXÉCUTÉ : 6/6 lignes peuplées via OSRM RÉEL (BR-GA-FC4 3366 sommets, BR-OU-EZJ 5274, BR-PO-QDZ 7156, DO-BR-8AG 3479, PO-BR-NYV 7163, PO-DO-F4C 3676), 0 fallback, 0 ignorée ; relance → « Aucune ligne à traiter ».
+- SERVEURS : dev.sh système relancé en arrière-plan (le script avait échoué au db:push avant la réparation du schéma) — Next.js 16 dev OK port 3000 + mini-service tracking-realtime démarré par dev.sh (socket.io 3003 + API interne HMAC 3004 + scheduler maintenance 5 min OK).
+- TESTS LIVE (curl, cookies de session réels, X-Requested-With: nzoko sur les POST) : GET /api/tracking/config → 200 contrat exact ✓ ; GET /api/map/public → 200 (7 villes, 9 agences, 6 lignes géométries 3366-7163 sommets, buses [] sans session) ✓ ; login admin (« admin »/Admin@2026!) → GET /api/admin/tracking → 200 kpi complet ✓ ; E2E DÉTECTION D'ARRIVÉE COMPLET : login chauffeur.jean → START session sur trip TRP-F6S7FT (Pointe-Noire→Brazzaville) → POST point à 834 m de la destination avec batteryLevel 87 → 201, trip SCHEDULED→ARRIVED automatique, audit TRIP_ARRIVED {routeLabel:"Pointe-Noire → Brazzaville",distanceM:834}, admin/tracking affiche busStatus ARRIVED + distanceToDestinationM 834 + lastPoint.batteryLevel 87, kpi.arrived=1 ✓ ; auditeur socket.io branché au salon fleet (jeton HMAC) : événements « gps » ET « bus-arrived » {sessionId,tripId,routeLabel,at} reçus en direct ✓ ; idempotence vérifiée (2e point après ARRIVED → pas de re-marquage) ✓ ; batch : 2 points batteryLevel 92/91 acceptés et stockés, garde Zod batteryLevel 150 → 400 VALIDATION_ERROR ✓ ; STOP session → COMPLETED ; trail ?sessionId → 4 points avec batteryLevel, kpi ABSENT ✓ ; NETTOYAGE INTÉGRAL du test (4 points + session + 2 audits supprimés, trip restauré SCHEDULED, chauffeur AVAILABLE, 0 session restante, fichiers /tmp effacés) — base sandbox propre.
+- VALIDATIONS : `bunx tsc --noEmit` EXIT 0 ; `bun run lint` EXIT 0 ; dev.log sans erreur (toutes les routes 200/201) ; diff des deux schémas Prisma = vide ; prisma db push → « already in sync ».
+- TERRITOIRES RESPECTÉS : src/features/**, mini-services/**, src/lib/auth*, src/lib/constants.ts, src/services/** hors tracking.ts : INTACTS.
+
+Stage Summary:
+- Fondations serveur GPS V4 livrées et validées de bout en bout : configuration centralisée sans Google (tuiles OSM/Leaflet via gps-config.ts + endpoint config), lib géo pure (BusStatus GPS + labels FR + cap + distance d'arrivée), flux GPS enrichi (batteryLevel 0-100, détection d'arrivée automatique trip→ARRIVED avec event temps réel « bus-arrived » + audit, best-effort jamais bloquant), flotte admin enrichie (busStatus, distanceToDestinationM, batteryLevel, kpi par état), géométries d'itinéraires OSRM réelles (6/6 lignes peuplées), carte publique complète (villes/agences/lignes/tracés + positions bus minimales si activées).
+- CONTRAT POUR LES AGENTS FRONTEND SUIVANTS : api.tracking.config() → TrackingConfigDTO (intervalles du hook chauffeur + tuiles carte) ; api.mapPublic() → MapPublicDTO ; TrackingSessionDTO.busStatus (type BusStatus de @/lib/geo, labels via BUS_STATUS_LABELS) + distanceToDestinationM ; TrackingFleetDTO.kpi (flotte uniquement) ; GpsPointDTO/GpsPointInput.batteryLevel ; événement socket « bus-arrived » {sessionId,tripId,routeLabel,at} sur le salon fleet (aux côtés de « gps »).
+- Infrastructure réparée au passage : double schéma Prisma sqlite/postgres conforme à la règle projet, base sandbox SQLite reconstituée + seeds, serveur dev + mini-service temps réel opérationnels.
+
+---
+Task ID: 38-a-RESCUE
+Agent: main (Z.ai Code)
+Task: Récupération après NOUVEAU ROLLBACK de la sandbox survenu PENDANT l'exécution du sous-agent 38-a (incident identique à la Task 33).
+
+Work Log:
+- INCIDENT : pendant la tâche du sous-agent 38-a (timeout « context deadline exceeded » du
+  Task tool), la sandbox a rejoué /start.sh avec un ANCIEN tar → filesystem ET git local
+  restaurés à l'ère Task 29 (a0cb43d) : HEAD sans les Tasks 30-36, schema.prisma redevenu
+  PostgreSQL, db/ supprimé, .env réécrit (SQLite seul, toutes les autres variables perdues),
+  node_modules ancien (sans @neondatabase/auth ni nodemailer), commits 97dda57/815c9e7/d8ffd0a
+  absents des objets git locaux.
+- PROTECTION QUI A SAUVÉ LE PROJET : le push GitHub immédiat (Task 36) — origin/main = d8ffd0a
+  intact, tout le travail Tasks 30-36 récupérable.
+- SAUVETAGE : (1) sauvegarde .env/db puis `git stash push -u` du travail non commité du
+  sous-agent 38-a ; (2) `git reset --hard origin/main` → dépôt moderne restauré (schémas
+  doubles, auth-screen unifié, seed gmail, scripts neon, AiQuestionLog déterministe) ;
+  (3) `git stash pop` → 4 conflits résolus : schema.prisma (en-tête HEAD + champs
+  batteryLevel/geometryJson fusionnés), schema.postgres.prisma (reconstruit proprement depuis
+  HEAD + les 2 champs GPS — le merge AA avait laissé des blocs dupliqués), .env.example
+  (sections Neon Auth ET V4 GPS conservées), worklog.md (Tasks 30-36 + entrée 38-a du
+  sous-agent réapposée) ; (4) types/api-client/routes fusionnés automatiquement — vérifiés
+  (Neon ET GPS présents, zéro marqueur résiduel).
+- ENV RECONSTITUÉ : .env complet réécrit (DATABASE_URL sqlite + AUTH_SECRET/WEBHOOK_SECRET/
+  TRACKING_SECRET régénérés + PAYMENTS_SIMULATION + NEON_AUTH_* restaurés de mémoire —
+  BASE_URL/COOKIE_SECRET/MODE=local/SERVICE_EMAIL/PASSWORD du compte de service créé en
+  Task 36 + OTP_DEBUG + OSRM + PUBLIC_BUS_POSITIONS) ; mini-services/tracking-realtime/.env
+  avec le MÊME TRACKING_SECRET (le 401 maintenance constaté venait du décalage d'anciens
+  process).
+- DÉPENDANCES + BASE : bun install (@neondatabase/auth + nodemailer restaurés) ; db:push
+  (champs GPS sans perte) ; re-seed complet depuis les seeds MODERNES → emails
+  geormakoma1+<role>@gmail.com rétablis (le sous-agent avait seedé depuis le seed de l'ère 29
+  avec les anciens @nzoko.cg) ; seed-v3 (15 quartiers, 9 agences, 14 bus, 128 voyages, 27 FAQ) ;
+  scripts/generate-route-geometry.ts relancé → 6/6 lignes avec géométrie OSRM réelle.
+- SERVEURS : pkill anciens process + relance .zscripts/dev.sh (double-fork orphelin) →
+  Next :3000 OK + mini-service :3003/3004 OK.
+- VALIDATIONS : bunx tsc --noEmit EXIT 0 ; bun run lint EXIT 0 ; diff des deux schémas Prisma
+  = vide (synchres à la lettre) ; curl : GET /api/tracking/config 200 (contrat complet),
+  GET /api/map/public 200 (7 villes, 9 agences, 6 lignes, 6/6 géométries), login admin 200
+  (identifiant court + email gmail), GET /api/admin/tracking 200 avec kpi.
+- COMMIT + PUSH immédiat de tout l'état (Tasks 30-36 déjà poussées + travail 38-a récupéré +
+  présent sauvetage) — leçon Task 33 ré-appliquée.
+
+Stage Summary:
+- INCIDENT MÉTIER RÉSOLU SANS PERTE : le rollback a failli détruire les Tasks 30-36 ET le
+  travail GPS 38-a en même temps ; GitHub (poussé à temps en Task 36) + stash ont tout sauvé.
+- Le travail 38-a est INTÉGRÉ sur la base moderne : configuration GPS V4, lib géo, champs
+  batteryLevel/geometryJson (2 schémas syncs), routes config/map-public, détection d'arrivée,
+  KPI flotte, géométries OSRM 6/6, seeds gmail intacts.
+- RÈGLE RENFORCÉE : push GitHub immédiat après CHAQUE étape (même en cours de tâche GPS).

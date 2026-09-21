@@ -11,7 +11,7 @@ import { RATE_LIMITS, TRACKING } from "@/lib/constants";
 import { ok, routeError, getClientIp, ApiError, ERROR_CODES } from "@/lib/api-response";
 import { getAuth, assertAuthenticated } from "@/lib/auth";
 import { db } from "@/lib/db";
-import { emitRealtime, isStalePoint } from "@/services/tracking";
+import { emitRealtime, isStalePoint, maybeMarkArrival } from "@/services/tracking";
 
 const pointSchema = z.object({
   latitude: z.number().min(-90).max(90),
@@ -20,6 +20,8 @@ const pointSchema = z.object({
   heading: z.number().min(0).max(360).nullable().optional(),
   accuracy: z.number().min(0).max(10_000).nullable().optional(),
   altitude: z.number().min(-1_000).max(10_000).nullable().optional(),
+  // V4 GPS — pourcentage de batterie du téléphone chauffeur (0–100).
+  batteryLevel: z.number().min(0).max(100).nullable().optional(),
   recordedAt: z.string().datetime({ offset: true }).min(10),
 });
 
@@ -41,7 +43,7 @@ export async function POST(req: NextRequest) {
     if (!driver) {
       throw new ApiError(404, ERROR_CODES.NOT_FOUND, "Aucun profil chauffeur n'est lié à votre compte.");
     }
-    const session = await db.trackingSession.findUnique({ where: { id: body.sessionId }, select: { id: true, status: true, agencyId: true, driverId: true } });
+    const session = await db.trackingSession.findUnique({ where: { id: body.sessionId }, select: { id: true, status: true, agencyId: true, driverId: true, tripId: true } });
     if (!session || session.driverId !== driver.id) {
       throw new ApiError(404, ERROR_CODES.NOT_FOUND, "Session de suivi introuvable.");
     }
@@ -70,6 +72,7 @@ export async function POST(req: NextRequest) {
           heading: p.heading ?? null,
           accuracy: p.accuracy ?? null,
           altitude: p.altitude ?? null,
+          batteryLevel: p.batteryLevel ?? null,
           recordedAt: new Date(p.recordedAt),
         })),
       });
@@ -90,6 +93,15 @@ export async function POST(req: NextRequest) {
           heading: last.heading ?? null,
           recordedAt: last.recordedAt,
         },
+      });
+      // V4 GPS — détection d'arrivée best-effort sur la DERNIÈRE position du
+      // lot (les intermédiaires sont rattrapés par l'historique). Une erreur
+      // ici ne fait JAMAIS échouer l'écriture du lot.
+      await maybeMarkArrival({
+        sessionId: session.id,
+        tripId: session.tripId,
+        lastPoint: { latitude: last.latitude, longitude: last.longitude },
+        actorUserId: auth.userId,
       });
     }
 

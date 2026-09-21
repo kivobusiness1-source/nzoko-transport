@@ -228,6 +228,12 @@ model Route {
   distanceKm               Int
   estimatedDurationMinutes Int
   basePrice                Int // XAF
+  // V4 GPS — tracé routier de la ligne : LineString GeoJSON SÉRIALISÉE en JSON,
+  // convention GeoJSON OBLIGATOIRE [longitude, latitude] :
+  //   {"type":"LineString","coordinates":[[lng,lat],[lng,lat],…]}
+  // Peuplé par scripts/generate-route-geometry.ts (OSRM routage réel si
+  // OSRM_BASE_URL est configuré, sinon lignes droites entre villes). Null = pas de tracé.
+  geometryJson             String?
   isActive                 Boolean  @default(true)
   createdAt                DateTime @default(now())
   updatedAt                DateTime @updatedAt
@@ -339,17 +345,18 @@ model TrackingSession {
 }
 
 model GpsPoint {
-  id         String          @id @default(cuid())
-  sessionId  String
-  session    TrackingSession @relation(fields: [sessionId], references: [id])
-  latitude   Float
-  longitude  Float
-  speed      Float? // km/h (m/s × 3,6 côté client)
-  heading    Float? // degrés 0–360
-  accuracy   Float? // rayon de confiance en mètres
-  altitude   Float? // mètres
-  recordedAt DateTime // horodatage ORIGINAL du GPS — jamais réécrit
-  createdAt  DateTime        @default(now()) // réception serveur (diagnostic latence)
+  id           String          @id @default(cuid())
+  sessionId    String
+  session      TrackingSession @relation(fields: [sessionId], references: [id])
+  latitude     Float
+  longitude    Float
+  speed        Float? // km/h (m/s × 3,6 côté client)
+  heading      Float? // degrés 0–360
+  accuracy     Float? // rayon de confiance en mètres
+  altitude     Float? // mètres
+  batteryLevel Float? // V4 GPS — pourcentage de batterie du téléphone chauffeur (0–100)
+  recordedAt   DateTime // horodatage ORIGINAL du GPS — jamais réécrit
+  createdAt    DateTime        @default(now()) // réception serveur (diagnostic latence)
 
   @@index([sessionId, recordedAt])
 }

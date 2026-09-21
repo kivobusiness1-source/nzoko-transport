@@ -4,11 +4,15 @@
 // ============================================================
 
 import type {
-  RoleCode, PermissionCode, BookingStatus, TripStatus, BusStatus, DriverStatus,
+  RoleCode, PermissionCode, BookingStatus, TripStatus, BusStatus as VehicleBusStatus, DriverStatus,
   PaymentProvider, PaymentStatus, TicketStatus, SeatType, ExpenseCategory,
   TransactionType, NotificationType, ComplaintCategory, ComplaintStatus,
   LoyaltyTier, RewardKey,
 } from "@/lib/constants";
+// V4 GPS — BusStatus ici = état GPS DÉRIVÉ du bus suivi (MOVING/STOPPED/…).
+// Le statut du VÉHICULE (ACTIVE/MAINTENANCE/…) reste `BusStatus` de @/lib/constants
+// (alias local VehicleBusStatus ci-dessus pour éviter la collision de noms).
+import type { BusStatus } from "@/lib/geo";
 
 // ---------- AUTH / SESSION ----------
 export interface SessionUser {
@@ -94,7 +98,7 @@ export interface BusDTO {
   model: string;
   year: number | null;
   capacity: number;
-  status: BusStatus;
+  status: VehicleBusStatus;
   agencyId: string;
   agencyName?: string;
   seatLayoutId: string;
@@ -421,6 +425,8 @@ export interface GpsPointInput {
   accuracy?: number | null;
   /** Altitude en mètres. */
   altitude?: number | null;
+  /** V4 GPS — pourcentage de batterie du téléphone chauffeur (0–100). */
+  batteryLevel?: number | null;
   /** Horodatage ORIGINAL du GPS (ISO 8601) — jamais réécrit. */
   recordedAt: string;
 }
@@ -431,6 +437,8 @@ export interface GpsPointDTO {
   speed?: number | null;
   heading?: number | null;
   accuracy?: number | null;
+  /** V4 GPS — pourcentage de batterie du téléphone chauffeur (0–100, null si inconnu). */
+  batteryLevel?: number | null;
   recordedAt: string;
 }
 
@@ -453,6 +461,10 @@ export interface TrackingSessionDTO {
   bus: { id: string; registrationNumber: string; model: string | null } | null;
   lastPoint: GpsPointDTO | null;
   pointsCount: number;
+  /** V4 GPS — état dérivé du bus (voir deriveBusStatus, @/lib/geo). */
+  busStatus?: BusStatus;
+  /** V4 GPS — distance restante jusqu'à la destination officielle (m, arrondie ; null si indisponible). */
+  distanceToDestinationM?: number | null;
 }
 
 /** Réponse de démarrage/arrêt — inclut le jeton temps réel (socket.io). */
@@ -468,12 +480,116 @@ export interface TrackingFleetDTO {
   generatedAt: string;
   socketUrl: string;
   socketToken: string; // HMAC court — abonnement salon temps réel
+  /** V4 GPS — compteurs par état (UNIQUEMENT en vue flotte, pas sur le trail). */
+  kpi?: FleetKpi;
+}
+
+/** Compteurs d'états de la flotte GPS (vue admin). */
+export interface FleetKpi {
+  total: number;
+  moving: number;
+  stopped: number;
+  offline: number;
+  arrived: number;
+  paused: number;
 }
 
 /** Réponse du flush de la file offline. */
 export interface TrackingBatchResultDTO {
   accepted: number;
   rejected: number; // points hors fenêtre de tolérance ou invalides
+}
+
+// ---------- V4 GPS — CONFIG & CARTE PUBLIQUE ----------
+
+/** Configuration de la carte ouverte (tuiles raster Leaflet, sans Google). */
+export interface MapConfigDTO {
+  provider: string;
+  tileUrl: string; // template {z}/{x}/{y} — SEULE source d'URL de tuiles
+  attribution: string; // HTML d'attribution légale
+  defaultLat: number;
+  defaultLng: number;
+}
+
+/** GET /api/tracking/config — valeurs EFFECTIVES serveur (aucune donnée sensible).
+ *  Source unique du hook chauffeur (intervalles) et des cartes (tuiles). */
+export interface TrackingConfigDTO {
+  activeIntervalMs: number;
+  idleIntervalMs: number;
+  stoppedIntervalMs: number;
+  stoppedSpeedKmh: number;
+  offlineThresholdMs: number;
+  arrivalRadiusM: number;
+  map: MapConfigDTO;
+}
+
+/** LineString GeoJSON — convention [longitude, latitude] OBLIGATOIRE. */
+export interface MapLineStringDTO {
+  type: "LineString";
+  coordinates: [number, number][];
+}
+
+/** Ville exposée sur la carte publique (uniquement avec coordonnées). */
+export interface MapCityDTO {
+  id: string;
+  name: string;
+  slug: string | null;
+  latitude: number;
+  longitude: number;
+}
+
+/** Agence publique (uniquement actives avec coordonnées — aucune donnée chauffeur). */
+export interface MapAgencyDTO {
+  id: string;
+  name: string;
+  address: string | null;
+  phone: string | null;
+  cityId: string;
+  latitude: number;
+  longitude: number;
+}
+
+/** Arrêt d'une ligne sur la carte publique. */
+export interface MapStopDTO {
+  name: string;
+  latitude: number;
+  longitude: number;
+  position: number;
+  minutesFromStart: number;
+}
+
+/** Ligne (Route) publique avec son tracé. */
+export interface MapRouteDTO {
+  id: string;
+  code: string;
+  originCityName: string;
+  destinationCityName: string;
+  distanceKm: number;
+  stops: MapStopDTO[];
+  /** Tracé LineString GeoJSON [lng, lat] — null si non généré. */
+  geometry: MapLineStringDTO | null;
+}
+
+/** Position d'un bus sur la carte publique (données VOLONTAIREMENT minimales :
+ *  ni nom de chauffeur, ni immatriculation, ni agence). */
+export interface MapBusDTO {
+  sessionId: string;
+  routeLabel: string;
+  latitude: number;
+  longitude: number;
+  speedKmh: number | null;
+  heading: number | null;
+  busStatus: BusStatus;
+  recordedAt: string;
+}
+
+/** GET /api/map/public — données de la carte ouverte. */
+export interface MapPublicDTO {
+  cities: MapCityDTO[];
+  agencies: MapAgencyDTO[];
+  routes: MapRouteDTO[];
+  /** Vide si PUBLIC_BUS_POSITIONS=false. */
+  buses: MapBusDTO[];
 }
 
 // ---------- DASHBOARD ADMIN ----------

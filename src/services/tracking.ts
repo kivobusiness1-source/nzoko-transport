@@ -9,6 +9,9 @@ import { createHmac, timingSafeEqual } from "crypto";
 import type { TrackingSession, GpsPoint, Trip, Bus, Driver, Agency } from "@prisma/client";
 import { TRACKING } from "@/lib/constants";
 import { db } from "@/lib/db";
+import { logAudit } from "@/lib/audit";
+import { arrivalDistance, deriveBusStatus, haversineMeters } from "@/lib/geo";
+import { arrivalRadiusM, offlineThresholdMs, stoppedSpeedKmh } from "@/lib/gps-config";
 import type { TrackingSessionDTO, TrackingSessionActionDTO } from "@/types";
 
 /** Secret partagé Next ↔ mini-service socket.io (défaut dev, override prod). */
@@ -23,12 +26,23 @@ export const TRACKING_REALTIME_URL = process.env.TRACKING_REALTIME_URL ?? "http:
  *    tentatives socket ni erreurs console). */
 export const TRACKING_SOCKET_URL = process.env.TRACKING_PUBLIC_SOCKET_URL ?? "/?XTransformPort=3003";
 
+type SessionCityRef = { name: string; latitude?: number | null; longitude?: number | null };
+
 type SessionWithRelations = TrackingSession & {
   driver: Driver;
   agency: Agency;
-  trip: (Trip & { route?: { originCity?: { name: string }; destinationCity?: { name: string } } }) | null;
+  trip: (Trip & { route?: { originCity?: SessionCityRef | null; destinationCity?: SessionCityRef | null } }) | null;
   bus: Bus | null;
 };
+
+/** Libellé lisible d'une ligne : « Pointe-Noire → Brazzaville »
+ *  (réutilisé par la carte publique — aucun identifiant interne). */
+export function routeLabelOf(route: { originCity?: SessionCityRef | null; destinationCity?: SessionCityRef | null } | undefined, fallback: string): string {
+  const origin = route?.originCity?.name;
+  const destination = route?.destinationCity?.name;
+  if (!origin || !destination) return fallback;
+  return `${origin} → ${destination}`;
+}
 
 /** Sérialise une ligne Prisma vers le DTO public (jamais d'ids internes inutiles au-delà du nécessaire). */
 export function toTrackingSessionDTO(
@@ -38,6 +52,11 @@ export function toTrackingSessionDTO(
 ): TrackingSessionDTO {
   const trip = session.trip;
   const route = trip?.route;
+  // Distance Haversine (m) jusqu'à la destination officielle — null si indisponible.
+  const distanceToDestination = arrivalDistance({
+    trip: trip ? { status: trip.status, route: { destinationCity: route?.destinationCity ?? null } } : null,
+    lastPoint: lastPoint ? { latitude: lastPoint.latitude, longitude: lastPoint.longitude } : null,
+  });
   return {
     id: session.id,
     status: session.status as TrackingSessionDTO["status"],
@@ -67,10 +86,20 @@ export function toTrackingSessionDTO(
           speed: lastPoint.speed,
           heading: lastPoint.heading,
           accuracy: lastPoint.accuracy,
+          batteryLevel: lastPoint.batteryLevel ?? null,
           recordedAt: lastPoint.recordedAt.toISOString(),
         }
       : null,
     pointsCount,
+    // V4 GPS — état dérivé + distance restante jusqu'à la destination officielle.
+    busStatus: deriveBusStatus({
+      speedKmh: lastPoint?.speed ?? null,
+      lastPointAt: lastPoint?.recordedAt ?? null,
+      offlineThresholdMs: offlineThresholdMs(),
+      stoppedSpeedKmh: stoppedSpeedKmh(),
+      tripArrived: trip?.status === "ARRIVED",
+    }),
+    distanceToDestinationM: distanceToDestination === null ? null : Math.round(distanceToDestination),
   };
 }
 
@@ -130,6 +159,92 @@ export async function emitRealtime(event: RealtimeEvent): Promise<void> {
 /** Point hors fenêtre de tolérance passé (mspéc TRACKING.pastToleranceMs) ? */
 export function isStalePoint(recordedAt: Date, now = new Date()): boolean {
   return now.getTime() - recordedAt.getTime() > TRACKING.pastToleranceMs;
+}
+
+// ============================================================
+// V4 — Détection d'arrivée automatique (destination officielle)
+// ============================================================
+
+export interface ArrivalMarkResult {
+  arrived: true;
+  tripId: string;
+  routeLabel: string;
+  /** Distance au moment de la détection (m, arrondie). */
+  distanceM: number;
+  /** Horodatage ISO de la détection serveur. */
+  at: string;
+}
+
+/**
+ * Après écriture d'un point GPS : si le bus est entré dans le rayon
+ * d'arrivée (GPS_ARRIVAL_RADIUS, autorité serveur) de la destination
+ * officielle du voyage, le trip passe ARRIVED — une seule fois
+ * (update CONDITIONNEL anti-concurrence) — et l'événement temps réel
+ * « bus-arrived » { sessionId, tripId, routeLabel, at } est émis vers
+ * le salon flotte (même mécanisme HMAC que les événements « gps »),
+ * avec journal d'audit TRIP_ARRIVED.
+ *
+ * BEST-EFFORT ABSOLU : une erreur ici ne doit JAMAIS faire échouer
+ * l'enregistrement du point GPS (silencieux + log serveur).
+ */
+export async function maybeMarkArrival(input: {
+  sessionId: string;
+  tripId: string | null;
+  lastPoint: { latitude: number; longitude: number };
+  /** Compte chauffeur à l'origine du point (journal d'audit), si connu. */
+  actorUserId?: string | null;
+}): Promise<ArrivalMarkResult | null> {
+  try {
+    if (!input.tripId) return null;
+    const trip = await db.trip.findUnique({
+      where: { id: input.tripId },
+      include: { route: { include: { originCity: true, destinationCity: true } } },
+    });
+    if (!trip) return null;
+    // Voyages déjà jugés (admin ou détection précédente) : on n'y touche plus.
+    if (trip.status === "ARRIVED" || trip.status === "COMPLETED" || trip.status === "CANCELLED") return null;
+    const destination = trip.route?.destinationCity;
+    if (!destination || destination.latitude === null || destination.longitude === null) return null;
+
+    const distanceM = haversineMeters(
+      { latitude: input.lastPoint.latitude, longitude: input.lastPoint.longitude },
+      { latitude: destination.latitude, longitude: destination.longitude }
+    );
+    if (distanceM > arrivalRadiusM()) return null;
+
+    const routeLabel = routeLabelOf(trip.route, trip.code);
+    // Update conditionnel : si le statut a changé entre-temps, count = 0
+    // → personne ne double-marque l'arrivée.
+    const updated = await db.trip.updateMany({
+      where: { id: trip.id, status: { notIn: ["ARRIVED", "COMPLETED", "CANCELLED"] } },
+      data: { status: "ARRIVED" },
+    });
+    if (updated.count === 0) return null;
+
+    const at = new Date().toISOString();
+    await emitRealtime({
+      room: "fleet",
+      event: "bus-arrived",
+      payload: { sessionId: input.sessionId, tripId: trip.id, routeLabel, at },
+    });
+    await logAudit({
+      userId: input.actorUserId ?? null,
+      action: "TRIP_ARRIVED",
+      entity: "Trip",
+      entityId: trip.id,
+      metadata: {
+        sessionId: input.sessionId,
+        routeLabel,
+        distanceM: Math.round(distanceM),
+        detectedFrom: "gps",
+      },
+    });
+    return { arrived: true, tripId: trip.id, routeLabel, distanceM: Math.round(distanceM), at };
+  } catch (err) {
+    // Best-effort : le point GPS reste enregistré quoi qu'il arrive.
+    console.error("[tracking] détection d'arrivée échouée (best-effort)", err);
+    return null;
+  }
 }
 
 // ============================================================

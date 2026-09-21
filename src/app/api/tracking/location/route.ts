@@ -10,7 +10,7 @@ import { RATE_LIMITS } from "@/lib/constants";
 import { ok, routeError, getClientIp, ApiError, ERROR_CODES } from "@/lib/api-response";
 import { getAuth, assertAuthenticated } from "@/lib/auth";
 import { db } from "@/lib/db";
-import { emitRealtime, isStalePoint } from "@/services/tracking";
+import { emitRealtime, isStalePoint, maybeMarkArrival } from "@/services/tracking";
 
 const pointSchema = z.object({
   sessionId: z.string().min(10),
@@ -20,6 +20,8 @@ const pointSchema = z.object({
   heading: z.number().min(0).max(360).nullable().optional(),
   accuracy: z.number().min(0).max(10_000).nullable().optional(),
   altitude: z.number().min(-1_000).max(10_000).nullable().optional(),
+  // V4 GPS — pourcentage de batterie du téléphone chauffeur (0–100).
+  batteryLevel: z.number().min(0).max(100).nullable().optional(),
   recordedAt: z.string().datetime({ offset: true }).min(10),
 });
 
@@ -41,7 +43,7 @@ export async function POST(req: NextRequest) {
     if (!driver) {
       throw new ApiError(404, ERROR_CODES.NOT_FOUND, "Aucun profil chauffeur n'est lié à votre compte.");
     }
-    const session = await db.trackingSession.findUnique({ where: { id: point.sessionId }, select: { id: true, status: true, agencyId: true, driverId: true } });
+    const session = await db.trackingSession.findUnique({ where: { id: point.sessionId }, select: { id: true, status: true, agencyId: true, driverId: true, tripId: true } });
     if (!session || session.driverId !== driver.id) {
       throw new ApiError(404, ERROR_CODES.NOT_FOUND, "Session de suivi introuvable.");
     }
@@ -59,6 +61,7 @@ export async function POST(req: NextRequest) {
         heading: point.heading ?? null,
         accuracy: point.accuracy ?? null,
         altitude: point.altitude ?? null,
+        batteryLevel: point.batteryLevel ?? null,
         recordedAt,
       },
     });
@@ -76,6 +79,16 @@ export async function POST(req: NextRequest) {
         heading: created.heading,
         recordedAt: created.recordedAt.toISOString(),
       },
+    });
+
+    // V4 GPS — détection d'arrivée best-effort : si le bus entre dans le
+    // rayon de la destination officielle, le trip passe ARRIVED + événement
+    // « bus-arrived ». Une erreur ici ne fait JAMAIS échouer le point.
+    await maybeMarkArrival({
+      sessionId: session.id,
+      tripId: session.tripId,
+      lastPoint: { latitude: created.latitude, longitude: created.longitude },
+      actorUserId: auth.userId,
     });
 
     return ok({ accepted: 1, rejected: 0 }, 201);
