@@ -8,7 +8,7 @@
 // ============================================================
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { BusFront, Gauge, Loader2, MapPin, Navigation, Pause, Play, Satellite, Square, WifiOff } from "lucide-react";
+import { Battery, BatteryLow, BatteryWarning, BusFront, Gauge, Loader2, MapPin, Navigation, Pause, Play, Satellite, Square, WifiOff } from "lucide-react";
 import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -16,6 +16,7 @@ import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
 import { api } from "@/lib/api-client";
+import { cn } from "@/lib/utils";
 import { useDriverGps, requestGpsPermission } from "@/hooks/use-driver-gps";
 import { geoDeniedMessage } from "@/lib/geo-permissions";
 import { todayCongoISO } from "@/components/shared/nzoko-format";
@@ -40,6 +41,15 @@ const STATUS_LABELS: Record<string, string> = {
   stopped: "Arrêté",
 };
 
+/** Rendu batterie (V4) : niveau + icône + ton selon le pourcentage —
+ *  ≥ 50 % normal, 20–49 % vigilance (ambre), < 20 % critique (rouge,
+ *  doublé du bandeau d'alerte dédié plus bas). */
+function batteryVisual(level: number): { level: number; icon: typeof Battery; tone: string } {
+  if (level < 20) return { level, icon: BatteryLow, tone: "text-red-600 dark:text-red-400" };
+  if (level < 50) return { level, icon: BatteryWarning, tone: "text-amber-600 dark:text-amber-400" };
+  return { level, icon: Battery, tone: "" };
+}
+
 export function DriverGpsPanel({ trips }: { trips: DriverTripDTO[] }) {
   const [session, setSession] = useState<TrackingSessionDTO | null>(null);
   const [loadingSession, setLoadingSession] = useState(true);
@@ -57,6 +67,10 @@ export function DriverGpsPanel({ trips }: { trips: DriverTripDTO[] }) {
   }, []);
 
   const gps = useDriverGps({ sessionId: session?.id ?? null, onConflict });
+
+  // V4 — batterie du téléphone exposée par le hook (null = inconnue,
+  // ex. iOS Safari → ligne et alerte cachées).
+  const battery = gps.batteryLevel === null ? null : batteryVisual(gps.batteryLevel);
 
   // Réconciliation initiale : session vivante ? → le watch repart.
   useEffect(() => {
@@ -222,6 +236,33 @@ export function DriverGpsPanel({ trips }: { trips: DriverTripDTO[] }) {
           </p>
         )}
 
+        {/* V4 — batterie du téléphone : visible uniquement pendant le suivi
+            actif, cachée si le niveau est inconnu (ex. iOS Safari). */}
+        {gps.status === "active" && battery && (
+          <div className="mt-2 flex items-center justify-between rounded-lg bg-muted/60 px-3 py-2 text-sm">
+            <span className="flex items-center gap-1.5 text-muted-foreground">
+              <battery.icon className="h-4 w-4" aria-hidden="true" />
+              Batterie du téléphone
+            </span>
+            <span className={cn("font-semibold", battery.tone)}>{battery.level} %</span>
+          </div>
+        )}
+
+        {/* V4 — batterie faible (< 20 %) : bandeau discret, AUCUN toast
+            répété — uniquement tant que le suivi est actif. */}
+        {gps.status === "active" && battery && battery.level < 20 && (
+          <div
+            className="mt-2 flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800 dark:border-amber-900 dark:bg-amber-950/40 dark:text-amber-300"
+            role="alert"
+          >
+            <BatteryLow className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
+            <p>
+              Batterie faible ({battery.level} %) — branchez votre téléphone, le suivi s&apos;arrête si la batterie
+              tombe à zéro.
+            </p>
+          </div>
+        )}
+
         {gps.message && (
           <p className="mt-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800" role="status">
             {gps.message}
@@ -292,7 +333,7 @@ export function DriverGpsPanel({ trips }: { trips: DriverTripDTO[] }) {
         {!session && (
           <div className="space-y-3">
             <label htmlFor="gps-trip" className="block text-sm font-medium">
-              Voyage rattaché (aujourd’hui)
+              Voyage rattaché (aujourd&apos;hui)
             </label>
             <Select value={tripId} onValueChange={setTripId}>
               <SelectTrigger id="gps-trip" className="min-h-[44px] w-full">
@@ -350,8 +391,10 @@ export function DriverGpsPanel({ trips }: { trips: DriverTripDTO[] }) {
       <div className="flex items-start gap-2 rounded-xl border bg-muted/40 p-3 text-xs text-muted-foreground">
         <BusFront className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
         <p>
-          Le suivi s’adapte à votre vitesse (envoi toutes les {8} s en mouvement, {30} s à l’arrêt) et continue de
-          fonctionner sans réseau — les positions manquantes sont envoyées automatiquement à votre retour en ligne.
+          Le suivi s&apos;adapte à votre vitesse (envoi toutes les {Math.round(gps.intervals.activeIntervalMs / 1000)} s en
+          mouvement, {Math.round(gps.intervals.idleIntervalMs / 1000)} s au ralenti et{" "}
+          {Math.round(gps.intervals.stoppedIntervalMs / 1000)} s à l&apos;arrêt) et continue de fonctionner sans réseau —
+          les positions manquantes sont envoyées automatiquement à votre retour en ligne.
         </p>
       </div>
     </div>

@@ -4,7 +4,7 @@
 // NZOKO TRANSPORT — État global (zustand) : session + navigation
 // + persistance courte de la vue (sessionStorage, Task 31) : un
 // rechargement de page ne renvoie PLUS un utilisateur connecté à
-// l'accueil — sa dernière vue (workspace/booking/tracking) est
+// l'accueil — sa dernière vue (workspace/booking/tracking/map) est
 // restaurée. JAMAIS login/register. Purgée à la déconnexion.
 // ============================================================
 
@@ -12,7 +12,7 @@ import { create } from "zustand";
 import { api } from "@/lib/api-client";
 import type { SessionUser } from "@/types";
 
-export type ViewKey = "home" | "booking" | "tracking" | "login" | "register" | "workspace";
+export type ViewKey = "home" | "booking" | "tracking" | "map" | "login" | "register" | "workspace";
 
 export interface BookingSearchParams {
   from: string; // cityId
@@ -22,8 +22,9 @@ export interface BookingSearchParams {
 
 /** Clé sessionStorage de la dernière vue persistable. */
 const VIEW_STORAGE_KEY = "nzoko:view";
-/** Vues restaurables après rechargement — JAMAIS les écrans d'auth. */
-const PERSISTABLE_VIEWS: readonly ViewKey[] = ["booking", "tracking", "workspace"];
+/** Vues restaurables après rechargement — JAMAIS les écrans d'auth.
+ *  « map » suit le même régime public que « tracking ». */
+const PERSISTABLE_VIEWS: readonly ViewKey[] = ["booking", "tracking", "map", "workspace"];
 
 /**
  * Restaure la dernière vue persistée — appelé UNE fois au montage du

@@ -1378,3 +1378,79 @@ Stage Summary:
   batteryLevel/geometryJson (2 schémas syncs), routes config/map-public, détection d'arrivée,
   KPI flotte, géométries OSRM 6/6, seeds gmail intacts.
 - RÈGLE RENFORCÉE : push GitHub immédiat après CHAQUE étape (même en cours de tâche GPS).
+
+---
+Task ID: 38-b
+Agent: sous-agent 38-b (Z.ai Code)
+Task: FRONTEND CHAUFFEUR GPS V4 — intervalles d'envoi dynamiques pilotés par la config serveur (3 paliers actif/ralenti/arrêté) + batterie du téléphone (Battery Status API) dans le hook use-driver-gps et le panneau driver-gps-panel. Périmètre strict : ces 2 fichiers uniquement.
+
+Work Log:
+- Lecture worklog (Tasks 1, 26, 38-a / 38-a-RESCUE) + contrat 38-a vérifié EN LIVE (curl GET /api/tracking/config → activeIntervalMs 8000 / idleIntervalMs 15000 / stoppedIntervalMs 30000 / stoppedSpeedKmh 5 / offlineThresholdMs 120000 / arrivalRadiusM 2000 + map OSM). Aucun autre fichier touché (types partagés et gps-queue non modifiés).
+- src/hooks/use-driver-gps.ts :
+  * NOUVEAU export DriverGpsIntervals {activeIntervalMs, idleIntervalMs, stoppedIntervalMs, stoppedSpeedKmh} + DEFAULT_INTERVALS (= TRACKING ; TRACKING n'a pas de palier intermédiaire → ralenti par défaut = moyenne mouvement/arrêt 19 s, documenté) + intervalsFromConfig (garde-fous champ par champ : valeur invalide → défaut TRACKING) + sendIntervalMs (fonction pure : ≥ seuil → actif, > 0 → ralenti, 0/inconnue → arrêté ; vitesse inconnue présumée nulle = comportement historique conservé).
+  * fetchConfigOnce() : api.tracking.config() au démarrage du watch (startWatching), UNE fois par vie du hook (configFetchedRef), best-effort (.catch silencieux → TRACKING reste en vigueur). Résultat dans intervalsRef (lecture à chaud dans handlePosition, AUCUNE recréation de callback) + state intervals exposé au panneau.
+  * handlePosition : les 2 paliers codés en dur (TRACKING.movingIntervalMs/stoppedIntervalMs) remplacés par les 3 paliers de config ; plancher anti-burst TRACKING.minSendIntervalMs et premier envoi immédiat inchangés.
+  * Batterie : types locaux BatteryManagerLike/NavigatorWithBattery (Battery Status API absente de lib.dom.d.ts ET d'iOS Safari → null silencieux). Effet au montage : getBattery() une fois → manager en ref + listener « levelchange » → DriverGpsState.batteryLevel (0-100, nouvel état exposé). readBatteryForSend() : lecture directe du manager à CHAQUE envoi (plus frais qu'un cache 30 s — propriété maintenue à jour par le navigateur), joint au GpsPointInput ; la file offline/batch le conserve tel quel (enqueue reçoit ...point, gps-queue NON modifié).
+  * Tout le comportement existant préservé : file IndexedDB + purge + flush par lots, listeners online/offline + retry 30 s, 409/404 → stopWatching + onConflict, réconciliation, timestamps originaux, nettoyage du watch.
+- src/features/driver/driver-gps-panel.tsx :
+  * Carte « État du suivi » : ligne « Batterie du téléphone » (icônes lucide Battery ≥ 50 % / BatteryWarning 20-49 % ton ambre / BatteryLow < 20 % ton rouge + pourcentage) UNIQUEMENT pendant le suivi actif, cachée si batterie inconnue (iOS Safari).
+  * Bandeau discret role=alert si batterie < 20 % pendant le suivi actif : « Batterie faible (X %) — branchez votre téléphone, le suivi s'arrête si la batterie tombe à zéro. » (AUCUN toast répété, aligné sur l'affichage conditionné au suivi actif).
+  * Texte d'aide final dynamique : « envoi toutes les {actif} s en mouvement, {ralenti} s au ralenti et {arrêt} s à l'arrêt » avec Math.round(gps.intervals.*/1000) — se met à jour dès que la config serveur est chargée (avant tout démarrage de watch : valeurs TRACKING).
+  * Toutes les alertes existantes conservées (permission refusée + bouton Réessayer, GPS indisponible, file offline, messages d'état). 2 apostrophes typographiques U+2019 résiduelles converties en &apos; (règle qualité).
+- VALIDATION E2E NAVIGATEUR (agent-browser, mobile 375×812, session isolée) : login chauffeur (« chauffeur »/« Chauffeur@2026! ») → onglet Suivi GPS : rendu idle OK (aide 8/19/30 = fallback TRACKING) ; refus géolocalisation headless → bandeau « Localisation bloquée » + Réessayer OK (parcours inchangé) ; mocks installés (permission granted + positions 43-58 km/h + getBattery 15 %) → Démarrer le suivi : session 201, GET /api/tracking/config 200 (fetch au démarrage du watch ✓), POST /api/tracking/location 201 ×4, ligne « Batterie du téléphone 15 % » (icône BatteryLow + ton rouge ✓), bandeau « Batterie faible (15 %) — … » ✓, aide passée à 8/15/30 (valeurs CONFIG ✓), lecture live Précision/Vitesse/Dernier envoi ✓ ; vérification SERVEUR (vue admin flotte) : lastPoint.batteryLevel = 15, speed 54, busStatus MOVING, 4 points ✓ ; Arrêter → « Suivi terminé », batterie + bandeau masqués à l'arrêt ✓, flotte revenue à 0 session vivante (état propre) ✓ ; zéro erreur page/console.
+- VALIDATIONS FINALES : bunx tsc --noEmit EXIT 0 ; bun run lint EXIT 0 ; dev.log propre sur mes flux (config 200, location 201, session 201/200). Registre détaillé : agent-ctx/38-b-zai-code.md. NB hors périmètre signalés à l'orchestrateur : POST /api/tracking/maintenance 401 récurrents (scheduler mini-service vs TRACKING_SECRET) et 500 éphémères sur /api/map/public + /api/admin/tracking pendant la refacto admin d'un agent parallèle (résorbés aussitôt).
+
+Stage Summary:
+- Hook chauffeur V4 livré : fréquence d'envoi pilotée par la config serveur (3 paliers actif 8 s / ralenti 15 s / arrêté 30 s, seuil 5 km/h — valeurs EFFECTIVES de /api/tracking/config, repli TRACKING au premier envoi ou en cas d'échec), batterie du téléphone exposée (listener levelchange) et jointe à chaque point (location ET batch via la file offline inchangée).
+- Panneau GPS livré : ligne batterie pendant le suivi actif (Battery/BatteryWarning/BatteryLow + tons ambre/rouge), bandeau discret batterie < 20 % sans toast répété, texte d'aide dynamique aux intervalles réels, alertes existantes intactes.
+- Validé de bout en bout en navigateur mobile (375 px) jusqu'à la persistance serveur (lastPoint.batteryLevel visible côté admin flotte). Contrat 38-a consommé à la lettre, tsc + lint EXIT 0, aucun autre fichier modifié.
+
+---
+Task ID: 38-c
+Agent: sous-agent 38-c (Z.ai Code) — interrompu par timeout de supervision, travail COMPLET retrouvé et validé par l'orchestrateur (entry rédigée par l'orchestrateur en son nom)
+
+Task: Dashboard admin « Suivi GPS » V4 — KPI, filtres, couches carto (agences/arrêts/tracés), panneau détail bus complet, replay du trail, statuts couleur.
+
+Work Log:
+- admin-tracking.tsx refondu (951 l.) : barre KPI (Bus en ligne/mouvement/arrêtés/hors ligne/arrivés depuis kpi serveur + re-dérivation live), 3 filtres (agence/état/ligne), cases à cocher de couches (Bus ON, Agences ON, Arrêts OFF, Tracés OFF par défaut), écoute socket « bus-arrived » (toast + maj live busStatus), liste sessions enrichie (badge busStatus + vitesse + batterie), panneau détail bus complet (vitesse, cap + direction cardinale, position, précision, « il y a X s » rafraîchi 5 s, batterie, distance restante Haversine, agence, points, démarrée à, téléphone, lien externe OSM), gestion du replay (timer 400 ms/vitesse, seek, pause, stop, un seul à la fois, reset au changement de sélection).
+- admin-tracking-map.tsx refondu (405 l.) : tuiles DEPUIS la config (plus aucune URL codée en dur), marqueurs bus couleur par statut (vert/ambre/gris/teal/rouge) + rotation heading, marqueurs agences 🏢 avec popup (nom/adresse/tél/ville), CircleMarker arrêts 📍 avec popup (position + minutes), Polylines des tracés de lignes (gris pointillé, surlignage ambre de la ligne du bus sélectionné), géométrie GeoJSON [lng,lat] → [lat,lng], fitBounds filtré, hauteur responsive 300/420 px, FleetMapSnapshot/FleetReplayPoint exportés (marqueur replay animé).
+- admin-tracking-filters.tsx (219 l.), admin-tracking-replay.tsx (140 l.), admin-tracking-shared.tsx (85 l.) créés.
+- Fix orchestrateur post-timeout : bouton Lecture du replay désactivé en bout de trail alors que toggleReplayPlay sait relancer depuis 0 → disabled={points.length < 2} seul.
+
+Stage Summary:
+- Exigences 4, 14, 16-17, 22-24, 32 du cahier des charges GPS livrées : dashboard admin professionnel complet, zéro Google, tuiles configurables, temps réel socket + polling, replay fonctionnel.
+
+---
+Task ID: 38-d
+Agent: sous-agent 38-d (Z.ai Code) — interrompu par timeout de supervision, travail COMPLET retrouvé et validé par l'orchestrateur (entry rédigée par l'orchestrateur en son nom)
+
+Task: Vue publique « Carte des lignes NZOKO » — carte Leaflet sans auth : agences, villes, tracés des lignes, sélection de ligne + arrêts chronologiques, bus si activé.
+
+Work Log:
+- src/features/client/public-map-view.tsx (380 l.) + public-map-canvas.tsx (343 l.) créés : carte client-only (lazy), tuiles depuis config (fallback GPS_MAP), couches agences 🏢 (popup nom/adresse/tél/ville), arrêts 📍, tracés verts + surlignage ambre à la sélection + fitBounds, chips de lignes scrollables, liste d'arrêts chronologique de la ligne choisie (départ/intermédiaires + minutes/arrivée), couche bus optionnelle (polling 30 s si buses non vide) STRICTEMENT minimale (aucun nom chauffeur/immat/agence — exigence 41), retour accueil, en-tête + attribution OSM.
+- Intégration : store.ts (vue « map »), nzoko-app.tsx (élément de navigation « Carte des lignes » + rendu client-only de la vue sans auth), bouton accessible depuis l'accueil public.
+
+Stage Summary:
+- Exigences 21 et 41 livrées : carte publique sans auth ni données sensibles, mêmes tuiles configurables, sélection de ligne avec stops + minutes.
+
+---
+Task ID: 38-e
+Agent: main (Z.ai Code) — orchestrateur
+Task: Intégration + validation E2E de la vague GPS V4 (38-b/c/d) + fix mini-service + corrections.
+
+Work Log:
+- Résolution de l'alerte 38-b : POST /api/tracking/maintenance 401 récurrent = vieux process mini-service signant avec l'ancien TRACKING_SECRET ; redémarrage propre (cwd mini-services/tracking-realtime, .env partagé) → premier tick maintenance 200 ✓.
+- Fix UX replay (cf. 38-c) : bouton Lecture relançable en fin de trail.
+- VALIDATION NAVIGATEUR E2E COMPLÈTE (agent-browser) :
+  * Onglet admin Suivi GPS V4 : KPI (5 compteurs) + 3 filtres + couches togglables rendus ; activation Tracés ✓.
+  * Temps réel : session chauffeur créée via API + 4 points GPS (recordedAt, speed 6,5-7,6, heading, batteryLevel 62-65) → bus Jean-Félix Mabiala apparu EN DIRECT dans la liste admin (socket) sans rechargement ✓.
+  * Panneau détail : VITESSE 8 km/h · CAP 85° (est) · POSITION -4.50000,13.40000 · PRÉCISION ±12 m · MÀJ « il y a 49 s » · BATTERIE 62 % · DISTANCE RESTANTE 209,4 km · AGENCE · POINTS · DÉMARRÉE À · TÉLÉPHONE · LIEN OSM — exigence 24 intégrale ✓.
+  * Replay : ouverture → lecture automatique 5 points (400 ms) → fin Point 5/5 ; relance depuis 0 après fix ✓ ; contrôles pause/arrêt/×1-×2-×5 ✓.
+  * DÉTECTION D'ARRIVÉE LIVE : point envoyé à 299 m de Brazzaville → trip SCHEDULED→ARRIVED en base + busStatus ARRIVED + kpi.arrived=1 + handler socket bus-arrived (toast + maj live) ✓.
+  * Carte publique (déconnecté) : bouton « Carte des lignes » depuis l'accueil → carte Leaflet 9 agences + 6 lignes (chips) + attribution OSM ; sélection Pointe-Noire→Brazzaville → arrêts chronologiques (Pointe-Noire · Dolisie +180 min · Nkayi +300 min · Brazzaville) ✓ ; PAS de débordement horizontal à 375 px ✓.
+  * Session de test arrêtée et nettoyée (STOP 200).
+- VALIDATIONS OUTILS : bunx tsc --noEmit EXIT 0 ; bun run lint EXIT 0 ; GET / 200.
+- COMMIT + PUSH immédiat.
+
+Stage Summary:
+- SYSTÈME GPS V4 COMPLET ET VALIDÉ DE BOUT EN BOUT sans Google Maps : socle V3 (temps réel socket.io, sécurité serveur, offline, PWA) + V4 (config centralisée OSM, statuts dérivés, batterie, arrivée auto, KPI/filtres/couches/replay admin, carte publique, géométries OSRM 6/6). Rapport 26 sections remis à l'utilisateur.

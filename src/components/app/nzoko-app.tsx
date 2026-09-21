@@ -8,7 +8,7 @@
 
 import { useEffect, useCallback, useState, useMemo, lazy, Suspense, type ReactNode } from "react";
 import Link from "next/link";
-import { Bus, Bell, LogOut, Home, Ticket, Search, UserRound, ChevronDown, Menu, Loader2 } from "lucide-react";
+import { Bus, Bell, LogOut, Home, Ticket, Search, UserRound, ChevronDown, Menu, Loader2, Map as MapIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
@@ -56,6 +56,8 @@ const FinanceWorkspace = lazy(() => import("@/features/finance/finance-workspace
 // jamais résolus côté serveur.
 const ClientWorkspace = lazy(() => import("@/features/client/client-workspace"));
 const AuthScreen = lazy(() => import("@/features/auth/auth-screen"));
+// Vue publique « Carte des lignes » (Leaflet) — client-only, aucune auth.
+const PublicMapView = lazy(() => import("@/features/client/public-map-view"));
 
 import { PwaRegister } from "@/components/app/pwa-register";
 import { AssistantWidget } from "@/components/app/assistant-widget";
@@ -198,10 +200,13 @@ function UserMenu() {
 
 function PublicNavLinks({ onNavigate }: { onNavigate?: () => void }) {
   const { setView, view, session } = useApp();
-  const items: { key: string; label: string; icon: typeof Home; target: Parameters<typeof setView>[0] }[] = [
+  // shortLabel : libellé compact sous lg pour préserver l'en-tête
+  // (même principe que la barre mobile « Suivi » pour « Suivi billet »).
+  const items: { key: string; label: string; shortLabel?: string; icon: typeof Home; target: Parameters<typeof setView>[0] }[] = [
     { key: "home", label: "Accueil", icon: Home, target: "home" },
     { key: "booking", label: "Réserver", icon: Ticket, target: "booking" },
     { key: "tracking", label: "Suivi billet", icon: Search, target: "tracking" },
+    { key: "map", label: "Carte des lignes", shortLabel: "Carte", icon: MapIcon, target: "map" },
   ];
   return (
     <>
@@ -217,7 +222,14 @@ function PublicNavLinks({ onNavigate }: { onNavigate?: () => void }) {
           }`}
         >
           <item.icon className="h-4 w-4" />
-          {item.label}
+          {item.shortLabel ? (
+            <>
+              <span className="hidden lg:inline">{item.label}</span>
+              <span className="lg:hidden">{item.shortLabel}</span>
+            </>
+          ) : (
+            item.label
+          )}
         </button>
       ))}
       {session && (
@@ -383,6 +395,12 @@ export default function NzokoApp() {
         );
       case "tracking":
         return <TrackingView />;
+      case "map":
+        return (
+          <Suspense fallback={<WorkspaceLoader />}>
+            <PublicMapView />
+          </Suspense>
+        );
       case "login":
       case "register":
         return (
