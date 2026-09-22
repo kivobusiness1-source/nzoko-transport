@@ -1527,3 +1527,21 @@ Stage Summary:
 - Connexion staff prod réparée en profondeur : exceptions SDK normalisées, alias e-mails historiques, imports pré-vérifiés. Après déploiement : saisir geormakoma1+superadmin@gmail.com / Nzoko@2026! (OU superadmin / Nzoko@2026!, OU superadmin@nzoko.cg — les trois fonctionnent).
 - Carte publique prod : déjà fonctionnelle (confirmée visuellement) ; géométries OSRM absentes (repli propre) — amélioration cosmétique possible plus tard.
 - Reste à vérifier après déploiement Vercel : E2E login staff prod (le garde-fou doit s'exécuter au cold start).
+
+---
+Task ID: 41-b
+Agent: main (Z.ai Code) — orchestrateur
+Task: Suite Task 41 — diagnostic et correction du garde-fou compte de service, puis validation E2E complète de la connexion staff en production.
+
+Work Log:
+- Rapport diagnostic ajouté au garde-fou (exposé via /api/auth/providers → serviceGuard) : 1re itération « disabled » (les bundles instrumentation ↔ routes ne partagent PAS l'état module — déclenchement paresseux ajouté dans la route), 2e « update-failed » + détail PostgreSQL.
+- CAUSE (erreur 42703 « column "emailverified" does not exist ») : l'introspection MINUSCULISAIT les noms de colonnes pour la comparaison, mais l'UPDATE quoted exige la casse D'ORIGINE — la colonne Better Auth réelle est « emailVerified » (camelCase). Correction : Map minuscule→nom exact, identifiants SQL reconstruits avec la casse d'origine.
+- RÉSULTAT : déploiement 09c20ad → garde-fou « applied » (compte de service geormakoma1+service@gmail.com : emailVerified=true + role='admin' dans neon_auth."user" — équivalent console « Verify email » + « Make admin ») ; déploiement suivant → « already-ok ». Sign-in service direct : HTTP 200, user {emailVerified:true, role:admin}, 2 cookies de session.
+- **VALIDATION E2E CONNEXION STAFF PRODUCTION (navigateur)** : geormakoma1+superadmin@gmail.com / Nzoko@2026! → chaîne complète POST /api/auth/sign-in/email 401 (compte pas encore chez Neon) → POST /api/auth/login 200 (pont : alias superadmin@nzoko.cg retrouvé, bcrypt validé, e-mail local modernisé, import Neon pré-vérifié) → sign-in retry 200 (session Neon) → POST /api/neon-auth/exchange 200 (session NZOKO) → dashboard « Administration — AD Aimé Directeur Super Administrateur ». AUCUNE erreur console.
+- **CARTE GPS ADMIN PRODUCTION validée** (onglet Suivi GPS) : tuiles 15/15, contrôles de couches (bus/agences/arrêts/tracés), KPI — VLM confirme interface saine ; aucun marqueur bus (normal : 0 sessions GPS réelles en prod, le mini-service temps réel ne tourne qu'en sandbox).
+- Commits : 49debf5 (fix principaux), 5d67d4a (worklog 41), 3126172 + 8ecb380 (diagnostic serviceGuard), 50991a1 + 09c20ad (fix casse colonnes), 3b9cadc (lint).
+
+Stage Summary:
+- **LA CONNEXION STAFF PRODUCTION EST RÉPARÉE ET VALIDÉE E2E** — les 3 verrous (exceptions SDK, e-mails legacy, compte de service non vérifié/admin) sont levés. L'auto-configuration demandée (« va et configure ça ce qu'il faut ») est effective : le compte de service est vérifié + admin SANS aucune action console manuelle.
+- Identifiants prod : les TROIS conventions fonctionnent désormais (geormakoma1+superadmin@gmail.com OU superadmin OU superadmin@nzoko.cg / Nzoko@2026! — première connexion importe et modernise le compte).
+- Carte publique prod : fonctionnelle (Task 40 + vérifs Task 41). Carte admin GPS : fonctionnelle. Restent cosmétiques : géométries OSRM (0/6 en prod — repli ville-à-ville propre) et flotte démo absente en prod (0 bus).
