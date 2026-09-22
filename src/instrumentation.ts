@@ -12,6 +12,13 @@ export async function register() {
   if (process.env.NEXT_PHASE === "phase-production-build") return;
 
   try {
+    // 1) Colonnes GPS V4 éventuellement manquantes en production (Neon) :
+    //    AVANT db-init/seed — Prisma échoue (P2022) sur toute requête
+    //    incluant `route` si "Route"."geometryJson" est absente.
+    const { ensureGpsV4Columns } = await import("./lib/db-schema-guards");
+    await ensureGpsV4Columns();
+
+    // 2) Base absente (installation fraîche) → schéma + seed automatiques.
     const { ensureDatabaseReady } = await import("./lib/db-init");
     await ensureDatabaseReady();
   } catch (err) {
