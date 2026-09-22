@@ -1454,3 +1454,22 @@ Work Log:
 
 Stage Summary:
 - SYSTÈME GPS V4 COMPLET ET VALIDÉ DE BOUT EN BOUT sans Google Maps : socle V3 (temps réel socket.io, sécurité serveur, offline, PWA) + V4 (config centralisée OSM, statuts dérivés, batterie, arrivée auto, KPI/filtres/couches/replay admin, carte publique, géométries OSRM 6/6). Rapport 26 sections remis à l'utilisateur.
+
+---
+Task ID: 39
+Agent: main (Z.ai Code) — orchestrateur
+Task: FIX « La carte ne s'affiche pas / je ne vois pas les 9 agences » — carte publique + carte admin GPS.
+
+Work Log:
+- DIAGNOSTIC : /api/map/public renvoyait 500. Cause racine : base SQLite sandbox CORROMPUE (« database disk image is malformed », erreur étendue 11) — 3e rollback sandbox (le tar de /start.sh a réécrit .env ET corrompu db/custom.db). Cause secondaire : .env à nouveau réduit à 3 variables (TRACKING_REALTIME_URL pointait sur le mauvais port 3006, OSRM/PUBLIC_BUS_POSITIONS/NEON_AUTH/AUTH_SECRET/etc. perdus), mini-services/tracking-realtime/.env ABSENT. Le warning « Module not found ./lib/db-init » du dev.log était obsolète (le fichier existe, import vérifié).
+- SAUVETAGE : processus tués, base corrompue quarantainée (/tmp/custom.db.corrupt-*.bak), db/custom.db recréé via db:push + seed principal (villes/rôles/permissions/8 comptes) + seed-v3 (15 quartiers, 9 agences, 14 bus, 130 voyages, 27 FAQ) + generate-route-geometry (6/6 lignes OSRM réelles — PO-DO-VCS obtenue par 2e passe après effacement ciblé de son geometryJson via Prisma).
+- .env RECONSTITUÉ (complet) : DATABASE_URL + AUTH_SECRET + PAYMENTS_SIMULATION=true + OTP_DEBUG=true + WEBHOOK_SECRET (régénérés) + NEON_AUTH_* (BASE_URL/COOKIE_SECRET/MODE=local/SERVICE_EMAIL/PASSWORD restaurés) + TRACKING_REALTIME_URL corrigé en 3004 + TRACKING_REALTIME_SECRET conservé + TRACKING_SECRET neuf + OSRM_BASE_URL + PUBLIC_BUS_POSITIONS=true ; mini-services/tracking-realtime/.env recréé avec le MÊME TRACKING_SECRET.
+- SERVEURS relancés via .zscripts/dev.sh (Next :3000 + mini-service :3003/3004).
+- VALIDATION NAVIGATEUR (agent-browser) : carte publique « Carte des lignes » desktop 15/15 tuiles chargées + 9 marqueurs agences + 9 tracés + conteneur 1118×480, zéro erreur console ; mobile 375 px : 4/4 tuiles, 9 marqueurs, 341×320, AUCUN débordement horizontal ; carte admin « Suivi GPS » (login admin/Admin@2026!) : 15/15 tuiles + 9 marqueurs agences (couche ON par défaut) + barre KPI 5 compteurs, zéro erreur console.
+- VALIDATIONS API : GET /api/map/public 200 (7 villes, 9 agences, 6 lignes, 6/6 géométries, bus [] sans session active) ; GET /api/tracking/config 200 (contrat complet) ; GET /health mini-service 200 ; POST /api/tracking/maintenance 200 (les 500 de la base corrompue ont disparu).
+- git config core.fileMode false (bruit de permissions du tar sandbox ignoré).
+
+Stage Summary:
+- Carte réparée de bout en bout : la base corrompue (conséquence d'un rollback sandbox) a été reconstruite depuis les seeds déterministes ; les deux .env (app + mini-service) restaurés avec des secrets alignés (TRACKING_SECRET partagé).
+- Les 9 agences sont visibles sur la carte publique ET sur la carte admin, tuiles OSM chargées, 6 tracés OSRM, KPI admin OK, temps réel prêt, maintenance 200.
+- Rappel règle anti-perte : push GitHub immédiat (fait ci-dessous).
