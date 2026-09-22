@@ -48,6 +48,31 @@ let checked = false;
 /** Colonnes candidates pour l'état de vérification (casse variable). */
 const VERIFIED_COLUMN_CANDIDATES = new Set(["emailverified", "email_verified"]);
 
+/**
+ * Résultat du dernier passage du garde-fou — diagnostic d'INFRASTRUCTURE
+ * (aucune donnée utilisateur, aucun secret) exposé par /api/auth/providers
+ * pour piloter l'exploitation (ex. savoir si le schéma neon_auth est
+ * joignable depuis la base applicative).
+ */
+export interface NeonServiceGuardReport {
+  status:
+    | "disabled" // pas de base Postgres / pas de compte de service configuré
+    | "schema-absent" // schéma neon_auth introuvable dans la base applicative
+    | "table-not-found" // schéma présent mais table utilisateurs non identifiée
+    | "update-failed" // UPDATE refusé (permissions) ou en erreur
+    | "applied" // UPDATE appliqué (≥ 1 ligne) lors de CE démarrage
+    | "already-ok"; // déjà vérifié + admin (aucune ligne à modifier)
+  /** Tables vues dans le schéma neon_auth (noms seuls — diagnostic). */
+  neonAuthTables?: string[];
+}
+
+let lastReport: NeonServiceGuardReport = { status: "disabled" };
+
+/** Dernier résultat connu du garde-fou (pour /api/auth/providers). */
+export function neonServiceGuardReport(): NeonServiceGuardReport {
+  return lastReport;
+}
+
 interface ColumnRow {
   table_name: string;
   column_name: string;
@@ -72,7 +97,10 @@ export async function ensureNeonServiceAccountReady(): Promise<void> {
     const columns: ColumnRow[] = await db.$queryRawUnsafe(
       `SELECT table_name, column_name FROM information_schema.columns WHERE table_schema = 'neon_auth'`
     );
-    if (columns.length === 0) return; // schéma absent → base non concernée
+    if (columns.length === 0) {
+      lastReport = { status: "schema-absent", neonAuthTables: [] };
+      return; // schéma absent → base non concernée
+    }
 
     const columnsByTable = new Map<string, Set<string>>();
     for (const { table_name, column_name } of columns) {
@@ -83,6 +111,7 @@ export async function ensureNeonServiceAccountReady(): Promise<void> {
       }
       set.add(column_name.toLowerCase());
     }
+    const tableNames = [...columnsByTable.keys()].sort();
 
     // Table utilisateurs = possède « email », une colonne de vérification
     // ET une colonne de rôle (les tables session/verification n'ont pas
@@ -95,7 +124,10 @@ export async function ensureNeonServiceAccountReady(): Promise<void> {
       target = { table, verifiedColumn: verified, roleColumn: "role" };
       break;
     }
-    if (!target) return; // schéma neon_auth inattendu → no-op silencieux
+    if (!target) {
+      lastReport = { status: "table-not-found", neonAuthTables: tableNames };
+      return; // schéma neon_auth inattendu → no-op documenté
+    }
 
     // 2. Application ciblée. Les identifiants (table, colonnes) proviennent
     //    de l'introspection et l'e-mail d'une variable serveur de confiance
@@ -108,6 +140,11 @@ export async function ensureNeonServiceAccountReady(): Promise<void> {
         `AND ("${target.verifiedColumn}" IS NOT true OR "${target.roleColumn}" IS DISTINCT FROM 'admin')`
     );
 
+    lastReport = {
+      status: updated > 0 ? "applied" : "already-ok",
+      neonAuthTables: tableNames,
+    };
+
     if (updated > 0) {
       console.warn(
         `🔧 [neon-auth] Compte de service ${serviceEmail} auto-configuré dans neon_auth ` +
@@ -118,6 +155,7 @@ export async function ensureNeonServiceAccountReady(): Promise<void> {
     // Non fatal : l'app démarre quand même ; le pont d'import continuera
     // de renvoyer son 502 explicite tant que la configuration n'est pas
     // effective (action manuelle console toujours possible).
+    lastReport = { status: "update-failed", neonAuthTables: [] };
     console.warn(
       "⚠️  [neon-auth] Auto-configuration du compte de service impossible (non fatal) :",
       err instanceof Error ? err.message : err

@@ -13,6 +13,7 @@ import { ok, routeError } from "@/lib/api-response";
 import { isSupabaseEnabled } from "@/services/supabase-auth";
 import { isNeonAuthEnabled, neonAuthMode } from "@/lib/neon-auth/server";
 import { isNeonServiceConfigured } from "@/lib/neon-auth/service-account";
+import { neonServiceGuardReport } from "@/lib/neon-auth/service-account-guards";
 
 export async function GET(_req: NextRequest) {
   try {
@@ -21,6 +22,10 @@ export async function GET(_req: NextRequest) {
       neon: isNeonAuthEnabled,
       mode: neonAuthMode,
       neonService: isNeonServiceConfigured,
+      // Diagnostic d'infrastructure (noms de tables managées uniquement —
+      // aucune donnée utilisateur, aucun secret) : état de l'auto-
+      // configuration du compte de service (garde-fou instrumentation).
+      serviceGuard: neonServiceGuardReport(),
     });
   } catch (err) {
     return routeError(err, "GET /api/auth/providers");
