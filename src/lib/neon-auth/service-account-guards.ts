@@ -133,7 +133,8 @@ export async function ensureNeonServiceAccountReady(): Promise<void> {
       if (!emailColumn || !roleColumn) continue;
       const verifiedKey = [...map.keys()].find((c) => VERIFIED_COLUMN_CANDIDATES.has(c));
       if (!verifiedKey) continue;
-      target = { table, emailColumn, verifiedColumn: map.get(verifiedKey)!, roleColumn };
+      const verifiedColumn = map.get(verifiedKey) ?? verifiedKey;
+      target = { table, emailColumn, verifiedColumn, roleColumn };
       break;
     }
     if (!target) {
