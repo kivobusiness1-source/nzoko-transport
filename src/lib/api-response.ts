@@ -69,7 +69,12 @@ export function routeError(err: unknown, context = "Erreur"): NextResponse {
     return fail(404, ERROR_CODES.NOT_FOUND, "Ressource introuvable.");
   }
   console.error(`[${context}]`, err);
-  return fail(500, ERROR_CODES.INTERNAL, "Une erreur interne est survenue. Veuillez réessayer.");
+  // 500 générique — le message ne divulgue AUCUN détail interne, mais la
+  // RÉFÉRENCE du code d'erreur (P2022 « colonne absente », P1001 connexion…)
+  // est communiquée : codes standards non sensibles, indispensables au
+  // diagnostic (support/monitoring) sans exposer le schéma ni les données.
+  const ref = typeof prismaErr?.code === "string" && prismaErr.code ? ` (réf. ${prismaErr.code})` : "";
+  return fail(500, ERROR_CODES.INTERNAL, `Une erreur interne est survenue.${ref} Veuillez réessayer.`);
 }
 
 export function getClientIp(req: Request): string {
