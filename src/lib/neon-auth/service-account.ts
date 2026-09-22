@@ -159,7 +159,11 @@ export async function ensureNeonPhoneUser(phoneE164: string): Promise<EnsurePhon
     email: synthetic,
     name: `Client ${phoneE164}`,
     role: "user",
-    data: { phoneNumber: phoneE164 },
+    // emailVerified : un e-mail synthétique {phone}@phone.nzoko.cg n'est
+    // JAMAIS vérifiable par boîte mail — sans cela la connexion du client
+    // serait bloquée (« Email not verified », configuration Neon exigeant
+    // la vérification). Le numéro, lui, est vérifié par l'OTP lui-même.
+    data: { phoneNumber: phoneE164, emailVerified: true },
   });
   if (created.ok) {
     const user = created.json.user as { id?: string } | undefined;
@@ -201,7 +205,11 @@ export async function importNeonAccount(input: {
     password: input.password,
     name: input.name || email.split("@")[0],
     role: "user",
-    ...(input.phone ? { data: { phoneNumber: input.phone } } : {}),
+    // emailVerified : le compte staff vient d'être authentifié par le
+    // mot de passe local bcrypt VÉRIFIÉ CÔTÉ SERVEUR — le marquer vérifié
+    // d'office, sinon la connexion Neon suivante échouerait (« Email not
+    // verified », constaté en production sur le compte de service).
+    ...(input.phone ? { data: { phoneNumber: input.phone, emailVerified: true } } : { data: { emailVerified: true } }),
   });
   if (created.ok) {
     const user = created.json.user as { id?: string } | undefined;
@@ -227,6 +235,15 @@ export async function importNeonAccount(input: {
     if (!updated.ok) {
       throw new Error(`Alignement du mot de passe impossible (${updated.status}).`);
     }
+    // Compte Neon PRÉ-EXISTANT (ex. inscrit via l'onglet e-mail) : on
+    // aligne AUSSI l'état de vérification — sinon la connexion resterait
+    // bloquée (« Email not verified »). Best-effort : un échec (permission
+    // manquante, champ inconnu) est non bloquant, l'alignement du mot de
+    // passe a déjà réussi.
+    await serviceFetch("/admin/update-user", {
+      userId: match.id,
+      data: { emailVerified: true },
+    });
     return { imported: true, neonUserId: match.id };
   }
   const code = String(created.json.code ?? "");

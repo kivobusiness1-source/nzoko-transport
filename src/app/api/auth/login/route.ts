@@ -21,7 +21,7 @@ import { ok, routeError, ApiError, ERROR_CODES, getClientIp, getUserAgent, asser
 import { createSession, setSessionCookie, verifyPassword, externalAuthProvider } from "@/lib/auth";
 import { enforceRateLimit } from "@/lib/rate-limit";
 import { logSecurity } from "@/lib/audit";
-import { RATE_LIMITS, SHORT_ID_EMAILS } from "@/lib/constants";
+import { RATE_LIMITS, SHORT_ID_EMAILS, LEGACY_EMAIL_ALIASES } from "@/lib/constants";
 import { normalizePhone } from "@/lib/phone";
 import { isNeonAuthEnabled, neonAuthMode } from "@/lib/neon-auth/server";
 import { importNeonAccount, isNeonServiceAccount, isNeonServiceConfigured } from "@/lib/neon-auth/service-account";
@@ -263,10 +263,24 @@ async function handleMigrationBridge(input: {
     );
   }
 
-  // Compte local visé (e-mail direct, alias court résolu, ou téléphone)
-  const localUser = lookupEmail
+  // Compte local visé : e-mail direct, ALIAS HISTORIQUE (@nzoko.cg —
+  // la base de production migrée porte les anciens e-mails : l'alias
+  // permet de saisir la convention actuelle geormakoma1+<role>@gmail.com),
+  // ou téléphone.
+  let localUser = lookupEmail
     ? await db.user.findUnique({ where: { email: lookupEmail } })
     : await db.user.findFirst({ where: { phone: lookupPhone ?? undefined } });
+  let legacyAliasEmail: string | null = null; // ancien e-mail réellement trouvé
+  if (!localUser && lookupEmail) {
+    const legacyEmail = LEGACY_EMAIL_ALIASES[lookupEmail] ?? null;
+    if (legacyEmail) {
+      const aliased = await db.user.findUnique({ where: { email: legacyEmail } });
+      if (aliased) {
+        localUser = aliased;
+        legacyAliasEmail = legacyEmail;
+      }
+    }
+  }
 
   const valid = localUser ? await verifyPassword(password, localUser.passwordHash) : false;
 
@@ -286,8 +300,16 @@ async function handleMigrationBridge(input: {
     throw new ApiError(401, ERROR_CODES.UNAUTHORIZED, "Identifiants incorrects.");
   }
 
-  // Import (ou alignement) du compte vers Neon Auth — même mot de passe
-  const email = localUser.email.toLowerCase();
+  // E-mail d'import : l'e-mail SAISI (convention actuelle). Si le compte
+  // local portait l'ancien e-mail (@nzoko.cg), il est modernisé ICI —
+  // aucune autre ligne User ne porte l'e-mail saisi (vérifié ci-dessus :
+  // findUnique(lookupEmail) = null, sinon l'alias n'aurait pas servi) —
+  // pour que le miroir d'échange (/api/neon-auth/exchange) adopte le bon
+  // compte staff par e-mail, avec son rôle et ses permissions.
+  const email = (lookupEmail ?? localUser.email).toLowerCase();
+  if (legacyAliasEmail && email !== localUser.email.toLowerCase()) {
+    await db.user.update({ where: { id: localUser.id }, data: { email } });
+  }
   try {
     await importNeonAccount({
       email,

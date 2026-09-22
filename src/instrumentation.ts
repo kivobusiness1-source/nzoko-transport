@@ -18,7 +18,13 @@ export async function register() {
     const { ensureGpsV4Columns } = await import("./lib/db-schema-guards");
     await ensureGpsV4Columns();
 
-    // 2) Base absente (installation fraîche) → schéma + seed automatiques.
+    // 2) Compte de service Neon Auth (production uniquement) : e-mail
+    //    vérifié + rôle admin dans le schéma neon_auth — sinon AUCUN
+    //    import de compte staff possible (502 pont /api/auth/login).
+    const { ensureNeonServiceAccountReady } = await import("./lib/neon-auth/service-account-guards");
+    await ensureNeonServiceAccountReady();
+
+    // 3) Base absente (installation fraîche) → schéma + seed automatiques.
     const { ensureDatabaseReady } = await import("./lib/db-init");
     await ensureDatabaseReady();
   } catch (err) {

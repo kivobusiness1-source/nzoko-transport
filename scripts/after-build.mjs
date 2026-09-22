@@ -28,4 +28,4 @@ if (existsSync(publicSrc)) {
   cpSync(publicSrc, publicDest, { recursive: true });
 }
 
-console.log("✅ Build standalone prêt : npm run start (ou bun .next/standalone/server.js)");
+console.warn("✅ Build standalone prêt : npm run start (ou bun .next/standalone/server.js)");

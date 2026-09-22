@@ -101,9 +101,11 @@ export const useApp = create<AppState>((set) => ({
     // Session Neon Auth : déconnexion du service managé en best-effort —
     // systématique depuis l'unification de l'identité (sans objet si
     // aucune session Neon n'existe : l'appel échoue silencieusement).
-    // (import dynamique : le SDK ne charge que lorsqu'il sert vraiment.)
+    // (import dynamique : le SDK ne charge que lorsqu'il sert vraiment ;
+    //  neonAuthCall neutralise AUSSI les exceptions LANCÉES par le
+    //  wrapper Neon — cf. src/lib/neon-auth/client.ts.)
     void import("@/lib/neon-auth/client")
-      .then(({ neonAuthClient }) => neonAuthClient.signOut())
+      .then(({ neonAuthCall, neonAuthClient }) => neonAuthCall(() => neonAuthClient.signOut()))
       .catch(() => {});
     if (typeof window !== "undefined") {
       try {

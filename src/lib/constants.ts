@@ -332,6 +332,27 @@ export const SHORT_ID_EMAILS: Record<string, string> = {
   support: "geormakoma1+support@gmail.com",
 } as const;
 
+// ---------- E-MAILS ACTUELS → ANCIENS E-MAILS (@nzoko.cg) ----------
+// Les comptes internes de la base de PRODUCTION (Neon PostgreSQL, migrée
+// avant le renommage des seeds) portent les ANCIENS e-mails @nzoko.cg.
+// Cet alias permet au pont d'import (/api/auth/login, mode Neon) de
+// retrouver le compte local quand l'utilisateur saisit la convention
+// ACTUELLE (geormakoma1+<role>@gmail.com) : le compte est importé vers
+// Neon Auth avec l'e-mail SAISI et son e-mail local est modernisé au
+// passage (renommage) — les deux conventions fonctionnent ensuite.
+// Carte FIXE et contrôlée serveur : aucune énumération possible (les
+// réponses d'échec restent génériques).
+export const LEGACY_EMAIL_ALIASES: Record<string, string> = {
+  "geormakoma1+superadmin@gmail.com": "superadmin@nzoko.cg",
+  "geormakoma1+admin@gmail.com": "admin@nzoko.cg",
+  "geormakoma1+manager@gmail.com": "manager.pn@nzoko.cg",
+  "geormakoma1+agent@gmail.com": "agent.pn@nzoko.cg",
+  "geormakoma1+checker@gmail.com": "checker.pn@nzoko.cg",
+  "geormakoma1+comptable@gmail.com": "comptable@nzoko.cg",
+  "geormakoma1+chauffeur@gmail.com": "chauffeur.jean@nzoko.cg",
+  "geormakoma1+support@gmail.com": "support@nzoko.cg",
+} as const;
+
 // Client inactif (intelligence fidélisation) — seuil en jours
 export const INACTIVE_CLIENT_DAYS = 60;
 

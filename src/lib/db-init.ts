@@ -55,7 +55,7 @@ export async function ensureDatabaseReady(): Promise<void> {
     /* sonde infructueuse → tenter l'initialisation */
   }
 
-  console.log("🛠  [db-init] Base de données absente — initialisation automatique (≈15 s, une seule fois)…");
+  console.warn("🛠  [db-init] Base de données absente — initialisation automatique (≈15 s, une seule fois)…");
 
   const { stdout, stderr } = await execFileAsync(
     process.execPath, // node ou bun — les deux exécutent le CLI Prisma
@@ -65,12 +65,12 @@ export async function ensureDatabaseReady(): Promise<void> {
     console.error("❌ [db-init] prisma db push a échoué :", err.message);
     throw err;
   });
-  if (stdout) console.log(stdout.trim());
+  if (stdout) console.warn(stdout.trim());
   if (stderr) console.error(stderr.trim());
 
-  console.log("🌱 [db-init] Schéma créé — chargement des données initiales (production)…");
+  console.warn("🌱 [db-init] Schéma créé — chargement des données initiales (production)…");
   // prisma/seed.ts s'exécute à l'IMPORT (main() top-level, client Prisma
   // dédié) — il n'exporte pas de fonction : l'import suffit.
   await import("../../prisma/seed");
-  console.log("✅ [db-init] Base initialisée — identifiants de l'administrateur affichés ci-dessus.");
+  console.warn("✅ [db-init] Base initialisée — identifiants de l'administrateur affichés ci-dessus.");
 }

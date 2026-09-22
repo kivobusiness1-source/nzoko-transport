@@ -172,15 +172,15 @@ async function main() {
     const file = `${OUT}/splash/${d.name}.png`;
     await sharp(Buffer.from(splashSvg(d.w * d.dpr, d.h * d.dpr))).png({ compressionLevel: 9 }).toFile(file);
     const media = `(device-width: ${d.w}px) and (device-height: ${d.h}px) and (-webkit-device-pixel-ratio: ${d.dpr}) and (orientation: portrait)`;
-    console.log(`splash ${d.name} ${d.w * d.dpr}x${d.h * d.dpr} → ${media}`);
+    console.warn(`splash ${d.name} ${d.w * d.dpr}x${d.h * d.dpr} → ${media}`);
   }
 
   // Screenshots manifest
   await sharp(Buffer.from(screenshotNarrowSvg(1080, 1920))).png({ compressionLevel: 9 }).toFile(`${OUT}/screenshots/narrow.png`);
-  console.log("screenshot narrow 1080x1920");
+  console.warn("screenshot narrow 1080x1920");
   await sharp(Buffer.from(screenshotWideSvg(1920, 1080))).png({ compressionLevel: 9 }).toFile(`${OUT}/screenshots/wide.png`);
-  console.log("screenshot wide 1920x1080");
-  console.log("✓ Assets PWA générés");
+  console.warn("screenshot wide 1920x1080");
+  console.warn("✓ Assets PWA générés");
 }
 
 main().catch((e) => {

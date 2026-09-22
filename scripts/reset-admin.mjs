@@ -54,13 +54,13 @@ async function main() {
     });
   }
 
-  console.log("──────────────────────────────────────────────────────────");
-  console.log("🔑 MOT DE PASSE ADMINISTRATEUR RÉINITIALISÉ :");
-  console.log(`   E-mail       : ${ADMIN_EMAIL}`);
-  console.log(`   Mot de passe : ${password}`);
-  console.log("   ⚠  Affiché une seule fois — changez-le après connexion");
-  console.log("      (menu utilisateur → « Changer mon mot de passe »).");
-  console.log("──────────────────────────────────────────────────────────");
+  console.warn("──────────────────────────────────────────────────────────");
+  console.warn("🔑 MOT DE PASSE ADMINISTRATEUR RÉINITIALISÉ :");
+  console.warn(`   E-mail       : ${ADMIN_EMAIL}`);
+  console.warn(`   Mot de passe : ${password}`);
+  console.warn("   ⚠  Affiché une seule fois — changez-le après connexion");
+  console.warn("      (menu utilisateur → « Changer mon mot de passe »).");
+  console.warn("──────────────────────────────────────────────────────────");
 }
 
 main()

@@ -15,6 +15,35 @@ import { createAuthClient } from "@neondatabase/auth/next";
 
 export const neonAuthClient = createAuthClient();
 
+/** Forme d'erreur attendue par neonAuthErrorMessage (retournée OU lancée). */
+export type NeonAuthSdkError = { message?: string; code?: string; status?: number };
+
+/**
+ * Exécute un appel du SDK Neon Auth en normalisant ses DEUX modes
+ * d'échec vers le contrat { data, error } de better-auth :
+ *  - erreur RETOURNÉE ({ data: null, error }) — convention better-auth ;
+ *  - erreur LANCÉE — le wrapper @neondatabase/auth fait THROW une
+ *    AuthApiError normalisée ({ message, code, status }) sur les
+ *    réponses non-OK (constaté en production : signIn.email invalide
+ *    → promesse REJETÉE, court-circuitait le pont d'import de
+ *    auth-screen.tsx qui déstructurait { error } sans try/catch).
+ * Tous les appels SDK de l'app DOIVENT passer par ce wrapper.
+ */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export async function neonAuthCall<TData>(call: () => Promise<{ data: TData; error: any }>): Promise<{
+  data: TData | null;
+  error: NeonAuthSdkError | null;
+}> {
+  try {
+    return await call();
+  } catch (thrown) {
+    if (thrown && typeof thrown === "object" && ("message" in thrown || "code" in thrown)) {
+      return { data: null, error: thrown as NeonAuthSdkError };
+    }
+    return { data: null, error: { message: thrown instanceof Error ? thrown.message : String(thrown) } };
+  }
+}
+
 /** Traduit une erreur du service Neon Auth en message français actionnable. */
 export function neonAuthErrorMessage(err: { message?: string; code?: string; status?: number } | null | undefined): string {
   const message = (err?.message ?? "").toLowerCase();

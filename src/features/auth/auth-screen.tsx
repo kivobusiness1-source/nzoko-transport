@@ -36,7 +36,7 @@ import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "
 import { Input } from "@/components/ui/input";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { api, ApiClientError } from "@/lib/api-client";
-import { neonAuthClient, neonAuthErrorMessage } from "@/lib/neon-auth/client";
+import { neonAuthCall, neonAuthClient, neonAuthErrorMessage } from "@/lib/neon-auth/client";
 import { useApp } from "@/lib/store";
 import type { AuthProvidersDTO, RegisterResult, SessionUser } from "@/types";
 
@@ -157,7 +157,9 @@ export default function AuthScreen({ defaultTab = "login" }: { defaultTab?: "log
       if (res.mode === "neon") {
         // Provisioning fait côté serveur → envoi du code par le service
         // managé (webhook send.otp → SMS).
-        const { error: sdkError } = await neonAuthClient.phoneNumber.sendOtp({ phoneNumber: res.phone });
+        const { error: sdkError } = await neonAuthCall(() =>
+          neonAuthClient.phoneNumber.sendOtp({ phoneNumber: res.phone })
+        );
         if (sdkError) {
           throw new Error(neonAuthErrorMessage(sdkError));
         }
@@ -190,10 +192,12 @@ export default function AuthScreen({ defaultTab = "login" }: { defaultTab?: "log
     try {
       if (neon) {
         // Session Neon Auth (cookie signé) → échange applicatif NZOKO
-        const { error: sdkError } = await neonAuthClient.phoneNumber.verify({
-          phoneNumber: otpPhone,
-          code: values.code.trim(),
-        });
+        const { error: sdkError } = await neonAuthCall(() =>
+          neonAuthClient.phoneNumber.verify({
+            phoneNumber: otpPhone,
+            code: values.code.trim(),
+          })
+        );
         if (sdkError) {
           throw new Error(neonAuthErrorMessage(sdkError));
         }
@@ -230,10 +234,12 @@ export default function AuthScreen({ defaultTab = "login" }: { defaultTab?: "log
       // 1. Si l'identifiant est une adresse e-mail → tentative directe SDK.
       //    (Identifiant court « superadmin » / téléphone → pont d'abord.)
       if (identifier.includes("@")) {
-        const { error: sdkError } = await neonAuthClient.signIn.email({
-          email: identifier.toLowerCase(),
-          password: values.password,
-        });
+        const { error: sdkError } = await neonAuthCall(() =>
+          neonAuthClient.signIn.email({
+            email: identifier.toLowerCase(),
+            password: values.password,
+          })
+        );
         if (!sdkError) {
           onSession(await api.auth.exchangeNeonSession());
           return;
@@ -251,10 +257,12 @@ export default function AuthScreen({ defaultTab = "login" }: { defaultTab?: "log
       const bridge = await api.auth.loginBridge(identifier, values.password);
 
       // 3. Connexion Neon avec l'e-mail résolu par le pont.
-      const { error: retryError } = await neonAuthClient.signIn.email({
-        email: bridge.email,
-        password: values.password,
-      });
+      const { error: retryError } = await neonAuthCall(() =>
+        neonAuthClient.signIn.email({
+          email: bridge.email,
+          password: values.password,
+        })
+      );
       if (retryError) {
         throw new Error(neonAuthErrorMessage(retryError));
       }
@@ -304,11 +312,13 @@ export default function AuthScreen({ defaultTab = "login" }: { defaultTab?: "log
   const onEmailSignup = async (values: EmailSignupValues) => {
     setError(null);
     try {
-      const { data, error: sdkError } = await neonAuthClient.signUp.email({
-        name: values.name.trim(),
-        email: values.email.trim(),
-        password: values.password,
-      });
+      const { data, error: sdkError } = await neonAuthCall(() =>
+        neonAuthClient.signUp.email({
+          name: values.name.trim(),
+          email: values.email.trim(),
+          password: values.password,
+        })
+      );
       if (sdkError) {
         throw new Error(neonAuthErrorMessage(sdkError));
       }
@@ -338,10 +348,12 @@ export default function AuthScreen({ defaultTab = "login" }: { defaultTab?: "log
   const onVerifyEmail = async (values: VerifyEmailValues) => {
     setError(null);
     try {
-      const { error: sdkError } = await neonAuthClient.emailOtp.verifyEmail({
-        email: pendingEmail ?? "",
-        otp: values.otp.trim(),
-      });
+      const { error: sdkError } = await neonAuthCall(() =>
+        neonAuthClient.emailOtp.verifyEmail({
+          email: pendingEmail ?? "",
+          otp: values.otp.trim(),
+        })
+      );
       if (sdkError) {
         throw new Error(neonAuthErrorMessage(sdkError));
       }
