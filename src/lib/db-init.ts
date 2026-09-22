@@ -69,7 +69,8 @@ export async function ensureDatabaseReady(): Promise<void> {
   if (stderr) console.error(stderr.trim());
 
   console.log("🌱 [db-init] Schéma créé — chargement des données initiales (production)…");
-  const { runSeed } = await import("../../prisma/seed");
-  await runSeed();
+  // prisma/seed.ts s'exécute à l'IMPORT (main() top-level, client Prisma
+  // dédié) — il n'exporte pas de fonction : l'import suffit.
+  await import("../../prisma/seed");
   console.log("✅ [db-init] Base initialisée — identifiants de l'administrateur affichés ci-dessus.");
 }
