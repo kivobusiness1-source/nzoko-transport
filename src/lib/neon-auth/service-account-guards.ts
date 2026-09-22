@@ -64,6 +64,8 @@ export interface NeonServiceGuardReport {
     | "already-ok"; // déjà vérifié + admin (aucune ligne à modifier)
   /** Tables vues dans le schéma neon_auth (noms seuls — diagnostic). */
   neonAuthTables?: string[];
+  /** Message d'erreur PostgreSQL standard (travaillé, sans secret) — diagnostic. */
+  detail?: string;
 }
 
 let lastReport: NeonServiceGuardReport = { status: "disabled" };
@@ -90,6 +92,9 @@ export async function ensureNeonServiceAccountReady(): Promise<void> {
   const serviceEmail = (process.env.NEON_AUTH_SERVICE_EMAIL ?? "").trim().toLowerCase();
   if (!serviceEmail.includes("@") || !serviceEmail.includes(".")) return;
 
+  // Tables neon_auth vues au fil de l'introspection (diagnostic du catch).
+  let seenTables: string[] = [];
+
   try {
     // 1. Découverte du schéma neon_auth et de sa table utilisateurs.
     //    (L'intitulé exact varie selon l'installation managée — « user »,
@@ -112,6 +117,7 @@ export async function ensureNeonServiceAccountReady(): Promise<void> {
       set.add(column_name.toLowerCase());
     }
     const tableNames = [...columnsByTable.keys()].sort();
+    seenTables = tableNames;
 
     // Table utilisateurs = possède « email », une colonne de vérification
     // ET une colonne de rôle (les tables session/verification n'ont pas
@@ -155,7 +161,11 @@ export async function ensureNeonServiceAccountReady(): Promise<void> {
     // Non fatal : l'app démarre quand même ; le pont d'import continuera
     // de renvoyer son 502 explicite tant que la configuration n'est pas
     // effective (action manuelle console toujours possible).
-    lastReport = { status: "update-failed", neonAuthTables: [] };
+    lastReport = {
+      status: "update-failed",
+      neonAuthTables: seenTables,
+      detail: (err instanceof Error ? err.message : String(err)).slice(0, 200),
+    };
     console.warn(
       "⚠️  [neon-auth] Auto-configuration du compte de service impossible (non fatal) :",
       err instanceof Error ? err.message : err
