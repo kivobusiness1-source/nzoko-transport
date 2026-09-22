@@ -107,14 +107,18 @@ export async function ensureNeonServiceAccountReady(): Promise<void> {
       return; // schéma absent → base non concernée
     }
 
-    const columnsByTable = new Map<string, Set<string>>();
+    const columnsByTable = new Map<string, Map<string, string>>();
     for (const { table_name, column_name } of columns) {
-      let set = columnsByTable.get(table_name);
-      if (!set) {
-        set = new Set();
-        columnsByTable.set(table_name, set);
+      let map = columnsByTable.get(table_name);
+      if (!map) {
+        map = new Map();
+        columnsByTable.set(table_name, map);
       }
-      set.add(column_name.toLowerCase());
+      // clé = nom MINUSCULE (comparaison insensible à la casse — la colonne
+      // réelle est « emailVerified » en camelCase chez Better Auth) ;
+      // valeur = nom EXACT d'origine (obligatoire dans les identifiants
+      // QUOTÉS du SQL : "emailverified" n'existe pas, "emailVerified" si).
+      map.set(column_name.toLowerCase(), column_name);
     }
     const tableNames = [...columnsByTable.keys()].sort();
     seenTables = tableNames;
@@ -122,12 +126,14 @@ export async function ensureNeonServiceAccountReady(): Promise<void> {
     // Table utilisateurs = possède « email », une colonne de vérification
     // ET une colonne de rôle (les tables session/verification n'ont pas
     // cette combinaison).
-    let target: { table: string; verifiedColumn: string; roleColumn: string } | null = null;
-    for (const [table, set] of columnsByTable) {
-      if (!set.has("email") || !set.has("role")) continue;
-      const verified = [...set].find((c) => VERIFIED_COLUMN_CANDIDATES.has(c));
-      if (!verified) continue;
-      target = { table, verifiedColumn: verified, roleColumn: "role" };
+    let target: { table: string; emailColumn: string; verifiedColumn: string; roleColumn: string } | null = null;
+    for (const [table, map] of columnsByTable) {
+      const emailColumn = map.get("email");
+      const roleColumn = map.get("role");
+      if (!emailColumn || !roleColumn) continue;
+      const verifiedKey = [...map.keys()].find((c) => VERIFIED_COLUMN_CANDIDATES.has(c));
+      if (!verifiedKey) continue;
+      target = { table, emailColumn, verifiedColumn: map.get(verifiedKey)!, roleColumn };
       break;
     }
     if (!target) {
@@ -135,14 +141,15 @@ export async function ensureNeonServiceAccountReady(): Promise<void> {
       return; // schéma neon_auth inattendu → no-op documenté
     }
 
-    // 2. Application ciblée. Les identifiants (table, colonnes) proviennent
-    //    de l'introspection et l'e-mail d'une variable serveur de confiance
-    //    — l'échappement ci-dessous reste une ceinture de sécurité.
+    // 2. Application ciblée. Les identifiants (table, colonnes — casse
+    //    d'ORIGINALE issue de l'introspection, requise par les identifiants
+    //    quoted Postgres) ; l'e-mail vient d'une variable serveur de
+    //    confiance — l'échappement ci-dessous reste une ceinture de sécurité.
     const safeEmail = serviceEmail.replace(/'/g, "''");
     const updated: number = await db.$executeRawUnsafe(
       `UPDATE neon_auth."${target.table}" ` +
         `SET "${target.verifiedColumn}" = true, "${target.roleColumn}" = 'admin' ` +
-        `WHERE lower("email") = '${safeEmail}' ` +
+        `WHERE lower("${target.emailColumn}") = '${safeEmail}' ` +
         `AND ("${target.verifiedColumn}" IS NOT true OR "${target.roleColumn}" IS DISTINCT FROM 'admin')`
     );
 
