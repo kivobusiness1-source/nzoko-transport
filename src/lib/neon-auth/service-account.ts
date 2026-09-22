@@ -32,6 +32,17 @@ import { neonAuthBaseUrl, isNeonAuthEnabled } from "./server";
 const SERVICE_EMAIL = (process.env.NEON_AUTH_SERVICE_EMAIL ?? "").trim().toLowerCase();
 const SERVICE_PASSWORD = process.env.NEON_AUTH_SERVICE_PASSWORD ?? "";
 
+// ⚠️ Le service managé Neon Auth EXIGE un en-tête Origin sur les appels
+// serveur→serveur (403 « Origin header required » sinon — découvert Task 36
+// sur le script de création, ici sur le flux applicatif). La valeur doit
+// figurer dans les origines autorisées de la console Neon :
+//  - NEON_SERVICE_ORIGIN : override explicite (ex. l'URL de production,
+//    une fois ajoutée à la console → Auth → Configuration) ;
+//  - défaut : http://localhost:3000 — origine de développement
+//    universellement autorisée par Neon (validée en Task 36), qui débloque
+//    le pont d'import SANS action console.
+const SERVICE_ORIGIN = (process.env.NEON_SERVICE_ORIGIN ?? "").trim() || "http://localhost:3000";
+
 /** true = le compte de service est configuré (provisioning possible). */
 export const isNeonServiceConfigured = isNeonAuthEnabled && SERVICE_EMAIL.length > 3 && SERVICE_PASSWORD.length >= 8;
 
@@ -57,7 +68,7 @@ async function getServiceCookie(): Promise<string> {
   }
   const res = await fetch(`${neonAuthBaseUrl}/sign-in/email`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: { "Content-Type": "application/json", Origin: SERVICE_ORIGIN },
     body: JSON.stringify({ email: SERVICE_EMAIL, password: SERVICE_PASSWORD }),
     cache: "no-store",
   });
@@ -86,7 +97,7 @@ async function serviceFetch(path: string, body: unknown): Promise<{ ok: boolean;
   const cookie = await getServiceCookie();
   const res = await fetch(`${neonAuthBaseUrl}${path}`, {
     method: "POST",
-    headers: { "Content-Type": "application/json", Cookie: cookie },
+    headers: { "Content-Type": "application/json", Cookie: cookie, Origin: SERVICE_ORIGIN },
     body: JSON.stringify(body),
     cache: "no-store",
   });
@@ -97,7 +108,7 @@ async function serviceFetch(path: string, body: unknown): Promise<{ ok: boolean;
     const retryCookie = await getServiceCookie();
     const retry = await fetch(`${neonAuthBaseUrl}${path}`, {
       method: "POST",
-      headers: { "Content-Type": "application/json", Cookie: retryCookie },
+      headers: { "Content-Type": "application/json", Cookie: retryCookie, Origin: SERVICE_ORIGIN },
       body: JSON.stringify(body),
       cache: "no-store",
     });
