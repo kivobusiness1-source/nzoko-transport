@@ -48,6 +48,52 @@ const V4_COLUMNS: MissingColumn[] = [
   },
 ];
 
+// ============================================================
+// V5 GPS MULTI-BUS (2026-09-24) — colonnes additives + table
+// TrackingEvent + index d'idempotence. STRICTEMENT additif :
+// aucune colonne/table n'est jamais supprimée ni modifiée.
+// ============================================================
+const V5_COLUMNS: MissingColumn[] = [
+  { table: "RouteStop", column: "radiusM", ddl: `ALTER TABLE "RouteStop" ADD COLUMN IF NOT EXISTS "radiusM" INTEGER` },
+  { table: "TrackingSession", column: "deviceId", ddl: `ALTER TABLE "TrackingSession" ADD COLUMN IF NOT EXISTS "deviceId" TEXT` },
+  { table: "TrackingSession", column: "lastPositionAt", ddl: `ALTER TABLE "TrackingSession" ADD COLUMN IF NOT EXISTS "lastPositionAt" TIMESTAMP(3)` },
+  { table: "TrackingSession", column: "lastLatitude", ddl: `ALTER TABLE "TrackingSession" ADD COLUMN IF NOT EXISTS "lastLatitude" DOUBLE PRECISION` },
+  { table: "TrackingSession", column: "lastLongitude", ddl: `ALTER TABLE "TrackingSession" ADD COLUMN IF NOT EXISTS "lastLongitude" DOUBLE PRECISION` },
+  { table: "TrackingSession", column: "lastSpeed", ddl: `ALTER TABLE "TrackingSession" ADD COLUMN IF NOT EXISTS "lastSpeed" DOUBLE PRECISION` },
+  { table: "TrackingSession", column: "lastHeading", ddl: `ALTER TABLE "TrackingSession" ADD COLUMN IF NOT EXISTS "lastHeading" DOUBLE PRECISION` },
+  { table: "TrackingSession", column: "lastAccuracy", ddl: `ALTER TABLE "TrackingSession" ADD COLUMN IF NOT EXISTS "lastAccuracy" DOUBLE PRECISION` },
+  { table: "TrackingSession", column: "lastBatteryLevel", ddl: `ALTER TABLE "TrackingSession" ADD COLUMN IF NOT EXISTS "lastBatteryLevel" DOUBLE PRECISION` },
+  { table: "TrackingSession", column: "lastHeartbeatAt", ddl: `ALTER TABLE "TrackingSession" ADD COLUMN IF NOT EXISTS "lastHeartbeatAt" TIMESTAMP(3)` },
+  { table: "TrackingSession", column: "geofenceStopId", ddl: `ALTER TABLE "TrackingSession" ADD COLUMN IF NOT EXISTS "geofenceStopId" TEXT` },
+  { table: "TrackingSession", column: "geofenceEnteredAt", ddl: `ALTER TABLE "TrackingSession" ADD COLUMN IF NOT EXISTS "geofenceEnteredAt" TIMESTAMP(3)` },
+  { table: "TrackingSession", column: "tripPhase", ddl: `ALTER TABLE "TrackingSession" ADD COLUMN IF NOT EXISTS "tripPhase" TEXT` },
+  { table: "TrackingSession", column: "endReason", ddl: `ALTER TABLE "TrackingSession" ADD COLUMN IF NOT EXISTS "endReason" TEXT` },
+  { table: "GpsPoint", column: "positionId", ddl: `ALTER TABLE "GpsPoint" ADD COLUMN IF NOT EXISTS "positionId" TEXT` },
+];
+
+/** Création idempotente de la table TrackingEvent (miroir exact du
+ *  modèle Prisma — casse camelCase quotée, types PostgreSQL). */
+const V5_TABLES: string[] = [
+  `CREATE TABLE IF NOT EXISTS "TrackingEvent" (` +
+    `"id" TEXT NOT NULL, "sessionId" TEXT, "tripId" TEXT, "busId" TEXT, "driverId" TEXT, "agencyId" TEXT, ` +
+    `"type" TEXT NOT NULL, "severity" TEXT NOT NULL DEFAULT 'INFO', "message" TEXT, "payloadJson" TEXT, ` +
+    `"createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP, ` +
+    `CONSTRAINT "TrackingEvent_pkey" PRIMARY KEY ("id"))`,
+];
+
+/** Index V5 (idempotents) — unicité d'idempotence des positions +
+ *  index de performance flotte/événements. */
+const V5_INDEXES: string[] = [
+  `CREATE UNIQUE INDEX IF NOT EXISTS "GpsPoint_sessionId_positionId_key" ON "GpsPoint"("sessionId", "positionId")`,
+  `CREATE INDEX IF NOT EXISTS "TrackingSession_busId_status_idx" ON "TrackingSession"("busId", "status")`,
+  `CREATE INDEX IF NOT EXISTS "TrackingSession_driverId_status_idx" ON "TrackingSession"("driverId", "status")`,
+  `CREATE INDEX IF NOT EXISTS "TrackingSession_status_lastPositionAt_idx" ON "TrackingSession"("status", "lastPositionAt")`,
+  `CREATE INDEX IF NOT EXISTS "TrackingEvent_sessionId_createdAt_idx" ON "TrackingEvent"("sessionId", "createdAt")`,
+  `CREATE INDEX IF NOT EXISTS "TrackingEvent_type_createdAt_idx" ON "TrackingEvent"("type", "createdAt")`,
+  `CREATE INDEX IF NOT EXISTS "TrackingEvent_severity_createdAt_idx" ON "TrackingEvent"("severity", "createdAt")`,
+  `CREATE INDEX IF NOT EXISTS "TrackingEvent_agencyId_createdAt_idx" ON "TrackingEvent"("agencyId", "createdAt")`,
+];
+
 /** Garde mémoire : une vérification par instance de serveur. */
 let checked = false;
 
@@ -65,7 +111,7 @@ export async function ensureGpsV4Columns(): Promise<void> {
   if (!/^postgres(ql)?:\/\//.test(url)) return;
 
   try {
-    for (const { table, column, ddl } of V4_COLUMNS) {
+    for (const { table, column, ddl } of [...V4_COLUMNS, ...V5_COLUMNS]) {
       // Identifiants constants (aucun risque d'injection) — SQL inliné
       // volontairement : compatible pooler PgBouncer (Neon) sans
       // recours aux requêtes préparées.
@@ -79,6 +125,12 @@ export async function ensureGpsV4Columns(): Promise<void> {
       console.warn(`🛠  [db-schema] Colonne absente détectée : ${table}.${column} — création (additif, sans perte)…`);
       await db.$executeRawUnsafe(ddl);
       console.warn(`✅ [db-schema] ${table}.${column} créée.`);
+    }
+
+    // V5 — table d'événements + index (idempotents, toujours exécutés :
+    // CREATE ... IF NOT EXISTS est un no-op quand tout existe déjà).
+    for (const ddl of [...V5_TABLES, ...V5_INDEXES]) {
+      await db.$executeRawUnsafe(ddl);
     }
   } catch (err) {
     // Non fatal : l'app démarre quand même (cf. en-tête).

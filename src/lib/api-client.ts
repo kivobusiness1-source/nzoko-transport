@@ -9,7 +9,7 @@ import type {
   AgencyDTO, AgencyStatsDTO, AdminStatsDTO, AssistantReplyDTO, AuditLogDTO, BoardingTripDTO, BookingDTO,
   BookingDetailDTO, BusDTO, CityDTO, DriverDTO, DriverTripDTO, ExpenseDTO, FinanceSummaryDTO,
   GpsPointInput, TrackingSessionDTO, TrackingSessionActionDTO, TrackingFleetDTO, TrackingBatchResultDTO,
-  TrackingConfigDTO, MapPublicDTO,
+  TrackingConfigDTO, TrackingLocationResultDTO, MapPublicDTO,
   MomoOverviewDTO, NotificationDTO, Paginated, PaymentDTO, RefundMode, ReportDTO, RoleDTO, RouteDTO, ScanResultDTO,
   SeatLayoutDTO, SeatMapDTO, SecurityLogDTO, SessionUser, TransactionDTO, TripContactsDTO, TripSearchDTO, UserDTO,
   RegisterInput, OtpRequestDTO, OtpVerifyInput, RegisterResult, ClientProfileDTO, ClientStatsDTO, ClientTripDTO, TripRatingInput,
@@ -246,10 +246,10 @@ export const api = {
     config: () => request<TrackingConfigDTO>("/tracking/config"),
     /** Session courante (ACTIVE/PAUSED) — réconciliation après rechargement. */
     session: () => request<TrackingSessionDTO | null>("/tracking/session"),
-    start: (input: { tripId?: string | null } = {}) =>
+    start: (input: { tripId?: string | null; deviceId?: string | null } = {}) =>
       request<TrackingSessionActionDTO>("/tracking/session", {
         method: "POST",
-        body: JSON.stringify({ action: "START", tripId: input.tripId ?? null }),
+        body: JSON.stringify({ action: "START", tripId: input.tripId ?? null, deviceId: input.deviceId ?? null }),
       }),
     pause: () =>
       request<TrackingSessionActionDTO>("/tracking/session", {
@@ -266,17 +266,24 @@ export const api = {
         method: "POST",
         body: JSON.stringify({ action: "STOP" }),
       }),
-    /** Point isolé (envoi en ligne). */
-    location: (sessionId: string, point: GpsPointInput) =>
-      request<void>("/tracking/location", {
+    /** V5 — battement de cœur (§11) : téléphone en ligne, sans position. */
+    heartbeat: (sessionId: string, input: { batteryLevel?: number | null } = {}) =>
+      request<{ ok: boolean; positionFresh: boolean; sessionStatus: string }>("/tracking/heartbeat", {
         method: "POST",
-        body: JSON.stringify({ sessionId, ...point }),
+        body: JSON.stringify({ sessionId, batteryLevel: input.batteryLevel ?? null }),
       }),
-    /** Lot de points ≤ TRACKING.batchMaxPoints (flush file offline). */
-    batch: (sessionId: string, points: GpsPointInput[]) =>
+    /** Point isolé (envoi en ligne) — réponse V5 : verdict détaillé. */
+    location: (sessionId: string, point: GpsPointInput, deviceId?: string | null) =>
+      request<TrackingLocationResultDTO>("/tracking/location", {
+        method: "POST",
+        body: JSON.stringify({ sessionId, deviceId: deviceId ?? null, ...point }),
+      }),
+    /** Lot de points ≤ TRACKING.batchMaxPoints (flush file offline) —
+     *  réponse V5 : verdict PAR position (§38). */
+    batch: (sessionId: string, points: GpsPointInput[], deviceId?: string | null) =>
       request<TrackingBatchResultDTO>("/tracking/batch", {
         method: "POST",
-        body: JSON.stringify({ sessionId, points }),
+        body: JSON.stringify({ sessionId, deviceId: deviceId ?? null, points }),
       }),
   },
 

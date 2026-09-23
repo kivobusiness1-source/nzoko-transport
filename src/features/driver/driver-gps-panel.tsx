@@ -8,14 +8,19 @@
 // ============================================================
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Battery, BatteryLow, BatteryWarning, BusFront, Gauge, Loader2, MapPin, Navigation, Pause, Play, Satellite, Square, WifiOff } from "lucide-react";
+import { Battery, BatteryLow, BatteryWarning, BusFront, Gauge, Loader2, MapPin, Navigation, Pause, Play, Satellite, Signal, SignalHigh, SignalZero, Square, Wifi, WifiOff } from "lucide-react";
 import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
+  AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription,
+  AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
 import { api } from "@/lib/api-client";
+import { getDeviceId } from "@/lib/device-id";
 import { cn } from "@/lib/utils";
 import { useDriverGps, requestGpsPermission } from "@/hooks/use-driver-gps";
 import { geoDeniedMessage } from "@/lib/geo-permissions";
@@ -55,6 +60,8 @@ export function DriverGpsPanel({ trips }: { trips: DriverTripDTO[] }) {
   const [loadingSession, setLoadingSession] = useState(true);
   const [tripId, setTripId] = useState<string>("none");
   const [busy, setBusy] = useState(false);
+  /** V5 (§41) — le bouton TERMINER demande CONFIRMATION. */
+  const [confirmStop, setConfirmStop] = useState(false);
   /** Refus persistant de la permission au démarrage (le toast est
    *  éphémère — le bandeau guide l'utilisateur jusqu'à ce qu'il agisse). */
   const [permissionDenied, setPermissionDenied] = useState(false);
@@ -116,7 +123,12 @@ export function DriverGpsPanel({ trips }: { trips: DriverTripDTO[] }) {
         });
         return;
       }
-      const created = await api.tracking.start(tripId === "none" ? {} : { tripId });
+      const created = await api.tracking.start({
+        tripId: tripId === "none" ? null : tripId,
+        // V5 (§6) — le téléphone est identifié par un UUID stable
+        // (localStorage), indépendant du compte chauffeur.
+        deviceId: getDeviceId(),
+      });
       setSession(created);
       gps.startWatching();
       toast.success("Suivi GPS démarré. Bonne route !");
@@ -166,6 +178,7 @@ export function DriverGpsPanel({ trips }: { trips: DriverTripDTO[] }) {
       toast.error((error as Error).message ?? "Action impossible.");
     } finally {
       setBusy(false);
+      setConfirmStop(false);
     }
   }, [gps]);
 
@@ -193,6 +206,12 @@ export function DriverGpsPanel({ trips }: { trips: DriverTripDTO[] }) {
 
   const activeTrip = todayTrips.find((t) => t.id === tripId);
 
+  // V5 (§41) — voyants d'état : GPS / Internet / Synchronisation.
+  const gpsActive = gps.status === "active";
+  const gpsStale = gpsActive && gps.positionFresh === false; // téléphone OK, GPS silencieux
+  const internetOk = gps.online;
+  const syncOk = gpsActive && internetOk && gps.queued === 0 && gps.lastSentAt !== null;
+
   return (
     <div className="space-y-4">
       {/* ---- Carte d'état ---- */}
@@ -212,7 +231,32 @@ export function DriverGpsPanel({ trips }: { trips: DriverTripDTO[] }) {
             <Loader2 className="h-5 w-5 animate-spin text-primary" aria-hidden="true" />
           </div>
         ) : session ? (
-          <div className="mt-3 grid gap-2 text-sm">
+          <div className="mt-3 space-y-2">
+            {/* V5 (§41) — voyants GPS / Internet / Synchronisation */}
+            <div className="grid grid-cols-3 gap-2 text-center">
+              <div className={cn("rounded-lg border px-2 py-2", gpsActive ? (gpsStale ? "border-amber-300 bg-amber-50 dark:border-amber-900 dark:bg-amber-950/40" : "border-emerald-300 bg-emerald-50 dark:border-emerald-900 dark:bg-emerald-950/40") : "border-border bg-muted/60")}>
+                {gpsActive ? gpsStale ? <Signal className="mx-auto h-4 w-4 text-amber-600" aria-hidden /> : <SignalHigh className="mx-auto h-4 w-4 text-emerald-600" aria-hidden /> : <SignalZero className="mx-auto h-4 w-4 text-muted-foreground" aria-hidden />}
+                <p className="mt-1 text-[11px] font-semibold">GPS</p>
+                <p className="text-[10px] text-muted-foreground">{gpsActive ? (gpsStale ? "Silencieux" : "Actif") : "Inactif"}</p>
+              </div>
+              <div className={cn("rounded-lg border px-2 py-2", internetOk ? "border-emerald-300 bg-emerald-50 dark:border-emerald-900 dark:bg-emerald-950/40" : "border-red-300 bg-red-50 dark:border-red-900 dark:bg-red-950/40")}>
+                {internetOk ? <Wifi className="mx-auto h-4 w-4 text-emerald-600" aria-hidden /> : <WifiOff className="mx-auto h-4 w-4 text-red-600" aria-hidden />}
+                <p className="mt-1 text-[11px] font-semibold">Internet</p>
+                <p className="text-[10px] text-muted-foreground">{internetOk ? "Connecté" : "Hors ligne"}</p>
+              </div>
+              <div className={cn("rounded-lg border px-2 py-2", syncOk ? "border-emerald-300 bg-emerald-50 dark:border-emerald-900 dark:bg-emerald-950/40" : "border-amber-300 bg-amber-50 dark:border-amber-900 dark:bg-amber-950/40")}>
+                <Satellite className={cn("mx-auto h-4 w-4", syncOk ? "text-emerald-600" : "text-amber-600")} aria-hidden />
+                <p className="mt-1 text-[11px] font-semibold">Position</p>
+                <p className="text-[10px] text-muted-foreground">{gps.queued > 0 ? `${gps.queued} en file` : gps.lastSentAt ? "Synchronisée" : "En attente"}</p>
+              </div>
+            </div>
+            {gps.lastSentAt && (
+              <p className="text-center text-[11px] text-muted-foreground">
+                Dernière synchronisation : {formatTime(gps.lastSentAt)}
+                {gps.lastHeartbeatAt ? ` · lien serveur : ${formatTime(gps.lastHeartbeatAt)}` : ""}
+              </p>
+            )}
+            <div className="grid gap-2 text-sm">
             <div className="flex items-center justify-between rounded-lg bg-muted/60 px-3 py-2">
               <span className="text-muted-foreground">Session</span>
               <span className="font-semibold">{TRACKING_STATUS_LABELS[session.status] ?? session.status}</span>
@@ -228,6 +272,7 @@ export function DriverGpsPanel({ trips }: { trips: DriverTripDTO[] }) {
             <div className="flex items-center justify-between rounded-lg bg-muted/60 px-3 py-2">
               <span className="text-muted-foreground">Points enregistrés</span>
               <span className="font-semibold">{session.pointsCount}</span>
+            </div>
             </div>
           </div>
         ) : (
@@ -366,7 +411,7 @@ export function DriverGpsPanel({ trips }: { trips: DriverTripDTO[] }) {
               <Pause className="mr-2 h-4 w-4" aria-hidden="true" />
               Pause
             </Button>
-            <Button onClick={stopSession} disabled={busy} variant="destructive" className="min-h-[48px]">
+            <Button onClick={() => setConfirmStop(true)} disabled={busy} variant="destructive" className="min-h-[48px]">
               <Square className="mr-2 h-4 w-4" aria-hidden="true" />
               Arrêter
             </Button>
@@ -379,7 +424,7 @@ export function DriverGpsPanel({ trips }: { trips: DriverTripDTO[] }) {
               <Play className="mr-2 h-4 w-4" aria-hidden="true" />
               Reprendre
             </Button>
-            <Button onClick={stopSession} disabled={busy} variant="destructive" className="min-h-[48px]">
+            <Button onClick={() => setConfirmStop(true)} disabled={busy} variant="destructive" className="min-h-[48px]">
               <Square className="mr-2 h-4 w-4" aria-hidden="true" />
               Terminer
             </Button>
@@ -397,6 +442,32 @@ export function DriverGpsPanel({ trips }: { trips: DriverTripDTO[] }) {
           les positions manquantes sont envoyées automatiquement à votre retour en ligne.
         </p>
       </div>
+
+      {/* V5 (§41) — confirmation obligatoire avant d'arrêter le suivi. */}
+      <AlertDialog open={confirmStop} onOpenChange={setConfirmStop}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Terminer le suivi GPS ?</AlertDialogTitle>
+            <AlertDialogDescription>
+              La position du car ne sera plus transmise au centre de contrôle. Cette action met fin à la session de
+              suivi du voyage en cours.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Continuer le suivi</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={(e) => {
+                e.preventDefault();
+                void stopSession();
+              }}
+              disabled={busy}
+              className="bg-destructive text-white hover:bg-destructive/90"
+            >
+              {busy ? "Arrêt…" : "Oui, terminer"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

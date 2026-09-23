@@ -253,6 +253,8 @@ model RouteStop {
   city             City     @relation(fields: [cityId], references: [id])
   position         Int // ordre croissant, 0 = origine
   minutesFromStart Int // temps estimé depuis le départ (minutes)
+  // V5 GPS — rayon de géofence de l'arrêt (mètres). null = défaut config.
+  radiusM          Int?
   createdAt        DateTime @default(now())
 
   @@unique([routeId, position])
@@ -320,6 +322,9 @@ model Bus {
 
 // ============================================================
 // SUIVI GPS TEMPS RÉEL — une session par trajet/portion de trajet
+// V5 multi-bus : deviceId, état courant dénormalisé (anti N+1,
+// anti-hors-ordre), heartbeat séparé, géofence arrêts, tripPhase
+// technique distincte du statut métier, endReason d'audit.
 // ============================================================
 model TrackingSession {
   id        String    @id @default(cuid())
@@ -332,6 +337,26 @@ model TrackingSession {
   agencyId  String
   agency    Agency    @relation(fields: [agencyId], references: [id])
   status    String    @default("ACTIVE") // ACTIVE | PAUSED | COMPLETED
+  // V5 — identifiant du téléphone émetteur (UUID client, localStorage).
+  deviceId  String?
+  // V5 — état courant dénormalisé (anti N+1 + anti-hors-ordre).
+  lastPositionAt DateTime?
+  lastLatitude    Float?
+  lastLongitude   Float?
+  lastSpeed       Float? // km/h
+  lastHeading     Float? // degrés 0–360
+  lastAccuracy    Float? // mètres
+  // V5 — batterie du téléphone au dernier point (affichage flotte).
+  lastBatteryLevel Float? // 0–100
+  // V5 — heartbeat : téléphone encore connecté (≠ position fraîche).
+  lastHeartbeatAt DateTime?
+  // V5 — moteur géofence : arrêt courant + date d'entrée (dwell).
+  geofenceStopId    String?
+  geofenceEnteredAt DateTime?
+  // V5 — phase technique GPS (distincte du statut métier Trip).
+  tripPhase String? // IN_TRANSIT | AT_STOP | ARRIVING
+  // V5 — raison de fin de session (audit).
+  endReason String? // DRIVER | WATCHDOG | ARRIVAL | CONFLICT | ADMIN
   startedAt DateTime  @default(now())
   endedAt   DateTime?
   createdAt DateTime  @default(now())
@@ -342,23 +367,56 @@ model TrackingSession {
   @@index([status, agencyId])
   @@index([driverId, startedAt])
   @@index([tripId])
+  // V5 — conflits bus (un seul suivi actif par car) + vue flotte.
+  @@index([busId, status])
+  @@index([driverId, status])
+  @@index([status, lastPositionAt])
 }
 
 model GpsPoint {
   id           String          @id @default(cuid())
   sessionId    String
   session      TrackingSession @relation(fields: [sessionId], references: [id])
+  // V5 — identifiant d'idempotence généré PAR LE CLIENT à la capture
+  // (UUID) : double envoi / retry / re-synchronisation offline ne
+  // crée JAMAIS deux lignes (contrainte d'unicité ci-dessous).
+  positionId   String?
   latitude     Float
   longitude    Float
   speed        Float? // km/h (m/s × 3,6 côté client)
   heading      Float? // degrés 0–360
   accuracy     Float? // rayon de confiance en mètres
   altitude     Float? // mètres
-  batteryLevel Float? // V4 GPS — pourcentage de batterie du téléphone chauffeur (0–100)
+  batteryLevel Float? // V4 GPS — batterie du téléphone chauffeur (0–100)
   recordedAt   DateTime // horodatage ORIGINAL du GPS — jamais réécrit
   createdAt    DateTime        @default(now()) // réception serveur (diagnostic latence)
 
+  @@unique([sessionId, positionId]) // V5 idempotence (null autorisé × N)
   @@index([sessionId, recordedAt])
+}
+
+// ============================================================
+// V5 GPS — JOURNAL D'ÉVÉNEMENTS DE SUIVI (audit + alertes admin)
+// Identifiants en chaînes simples (PAS de FK) : le journal survit
+// aux suppressions et son écriture ne dépend d'aucune relation.
+// ============================================================
+model TrackingEvent {
+  id          String   @id @default(cuid())
+  sessionId   String?
+  tripId      String?
+  busId       String?
+  driverId    String?
+  agencyId    String?
+  type        String
+  severity    String   @default("INFO") // INFO | WARN | CRITICAL
+  message     String?
+  payloadJson String? // métadonnées sérialisées (jamais de secret)
+  createdAt   DateTime @default(now())
+
+  @@index([sessionId, createdAt])
+  @@index([type, createdAt])
+  @@index([severity, createdAt])
+  @@index([agencyId, createdAt])
 }
 
 model Driver {

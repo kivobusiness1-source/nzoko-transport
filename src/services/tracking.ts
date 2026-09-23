@@ -12,6 +12,7 @@ import { db } from "@/lib/db";
 import { logAudit } from "@/lib/audit";
 import { arrivalDistance, deriveBusStatus, haversineMeters } from "@/lib/geo";
 import { arrivalRadiusM, offlineThresholdMs, stoppedSpeedKmh } from "@/lib/gps-config";
+import { logTrackingEvent } from "@/services/tracking-events";
 import type { TrackingSessionDTO, TrackingSessionActionDTO } from "@/types";
 
 /** Secret partagé Next ↔ mini-service socket.io (défaut dev, override prod). */
@@ -44,10 +45,14 @@ export function routeLabelOf(route: { originCity?: SessionCityRef | null; destin
   return `${origin} → ${destination}`;
 }
 
+/** Dernier point « léger » — soit un GpsPoint réel (requête), soit
+ *  l'état courant dénormalisé de la session V5 (vue flotte sans N+1). */
+export type SessionLastPoint = Pick<GpsPoint, "latitude" | "longitude" | "speed" | "heading" | "accuracy" | "batteryLevel" | "recordedAt"> | null;
+
 /** Sérialise une ligne Prisma vers le DTO public (jamais d'ids internes inutiles au-delà du nécessaire). */
 export function toTrackingSessionDTO(
   session: SessionWithRelations,
-  lastPoint: GpsPoint | null,
+  lastPoint: SessionLastPoint,
   pointsCount: number
 ): TrackingSessionDTO {
   const trip = session.trip;
@@ -103,7 +108,7 @@ export function toTrackingSessionDTO(
   };
 }
 
-export function toTrackingSessionActionDTO(session: SessionWithRelations, lastPoint: GpsPoint | null, pointsCount: number): TrackingSessionActionDTO {
+export function toTrackingSessionActionDTO(session: SessionWithRelations, lastPoint: SessionLastPoint, pointsCount: number): TrackingSessionActionDTO {
   return { ...toTrackingSessionDTO(session, lastPoint, pointsCount), socketUrl: TRACKING_SOCKET_URL };
 }
 
@@ -266,10 +271,12 @@ export interface WatchdogResult {
  *  (45 min) est quasi certainement orpheline (navigateur fermé sans STOP,
  *  crash, batterie). On la passe en PAUSED — le chauffeur de retour peut la
  *  reprendre (RESUME) ou l'arrêter proprement ; l'admin voit l'état réel.
+ *  Un événement GPS_OFFLINE (WARN) est journalisé pour l'alerte.
  *
  *  Stade 2 : une session vivante plus vieille que watchdogHardMs (24 h) est
- *  close d'office (COMPLETED, endedAt) et le chauffeur est libéré — un car
- *  interurbain Congo ne roule pas 24 h d'affilée sur une même session.
+ *  close d'office (COMPLETED, endReason WATCHDOG, endedAt) et le chauffeur
+ *  est libéré — un car interurbain Congo ne roule pas 24 h d'affilée sur
+ *  une même session. Événement GPS_SESSION_STOPPED (payload watchdog).
  */
 export async function runTrackingWatchdog(now = new Date()): Promise<WatchdogResult> {
   // Stade 1 — sessions orphelines (aucun point récent, démarrées avant le cutoff).
@@ -280,7 +287,7 @@ export async function runTrackingWatchdog(now = new Date()): Promise<WatchdogRes
       startedAt: { lt: staleCutoff },
       points: { none: { recordedAt: { gt: staleCutoff } } },
     },
-    select: { id: true },
+    select: { id: true, tripId: true, busId: true, driverId: true, agencyId: true },
   });
   const pausedCount = stale.length;
   if (pausedCount > 0) {
@@ -288,20 +295,46 @@ export async function runTrackingWatchdog(now = new Date()): Promise<WatchdogRes
       where: { id: { in: stale.map((s) => s.id) }, status: "ACTIVE" },
       data: { status: "PAUSED" },
     });
+    for (const s of stale) {
+      await logTrackingEvent({
+        type: "GPS_OFFLINE",
+        severity: "WARN",
+        sessionId: s.id,
+        tripId: s.tripId,
+        busId: s.busId,
+        driverId: s.driverId,
+        agencyId: s.agencyId,
+        message: "Session orpheline mise en pause par le watchdog (aucun signal récent)",
+        payload: { by: "watchdog", stage: 1 },
+      });
+    }
   }
 
   // Stade 2 — sessions vivantes trop anciennes → COMPLETED + chauffeur libéré.
   const hardCutoff = new Date(now.getTime() - TRACKING.watchdogHardMs);
   const ancient = await db.trackingSession.findMany({
     where: { status: { in: ["ACTIVE", "PAUSED"] }, startedAt: { lt: hardCutoff } },
-    select: { id: true, driverId: true },
+    select: { id: true, driverId: true, tripId: true, busId: true, agencyId: true },
   });
   const completedCount = ancient.length;
   if (completedCount > 0) {
     await db.trackingSession.updateMany({
       where: { id: { in: ancient.map((s) => s.id) } },
-      data: { status: "COMPLETED", endedAt: now },
+      data: { status: "COMPLETED", endedAt: now, endReason: "WATCHDOG" },
     });
+    for (const s of ancient) {
+      await logTrackingEvent({
+        type: "GPS_SESSION_STOPPED",
+        severity: "INFO",
+        sessionId: s.id,
+        tripId: s.tripId,
+        busId: s.busId,
+        driverId: s.driverId,
+        agencyId: s.agencyId,
+        message: "Session close automatiquement (durée maximale atteinte)",
+        payload: { by: "watchdog", stage: 2, endReason: "WATCHDOG" },
+      });
+    }
   }
 
   // Libération des chauffeurs ON_TRIP n'ayant plus aucune session vivante.
@@ -331,6 +364,8 @@ export interface RetentionResult {
   purgedPoints: number;
   /** Sessions COMPLETED supprimées (> retentionSessionDays). */
   purgedSessions: number;
+  /** V5 — événements GPS purgés (> retentionSessionDays). */
+  purgedEvents: number;
 }
 
 /** Purge de rétention — la base Neon ne croît pas indéfiniment :
@@ -369,5 +404,11 @@ export async function runRetentionCleanup(now = new Date()): Promise<RetentionRe
     purgedSessions = res.count;
   }
 
-  return { purgedPoints, purgedSessions };
+  // 3. V5 — événements GPS (audit/alertes) purgés après le même délai
+  //    que les sessions : le journal reste consultable 90 jours.
+  const eventsRes = await db.trackingEvent.deleteMany({
+    where: { createdAt: { lt: sessionsCutoff } },
+  });
+
+  return { purgedPoints, purgedSessions, purgedEvents: eventsRes.count };
 }

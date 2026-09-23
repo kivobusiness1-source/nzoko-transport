@@ -12,21 +12,30 @@
 //   (d) JAMAIS < minSendIntervalMs (plancher anti-burst client).
 // m/s → km/h (×3,6).
 //
+// V5 MULTI-BUS (§6/§9/§11) :
+//   - chaque lecture reçoit un positionId (UUID) à la CAPTURE →
+//     idempotence serveur (double envoi/retry/re-synchronisation
+//     offline ne crée jamais de doublon en base) ;
+//   - deviceId (localStorage, @/lib/device-id) joint aux envois et au
+//     démarrage de session — identifie le TÉLÉPHONE, pas le compte ;
+//   - HEARTBEAT séparé des positions (30 s en ligne + page visible) :
+//     le centre de contrôle distingue « téléphone en ligne » et
+//     « GPS actif » même en zone blanche GPS ;
+//   - verdicts serveur exploités : DUPLICATE/REJECT → abandon définitif
+//     silencieux, ACCEPT_FLAGGED/ACCEPT_HISTORY_ONLY → OK.
+//
 // Batterie (V4) : Battery Status API — best-effort, absente d'iOS
-// Safari → null silencieux. Niveau exposé dans l'état (listener
-// « levelchange ») et joint à CHAQUE point envoyé (location et
-// batch : la file offline conserve le champ tel quel).
+// Safari → null silencieux.
 //
 // Offline (navigator.onLine / fetch échoué / 5xx) → file IndexedDB.
 // 409/404 → stopWatching + onConflict (session terminée/pause serveur).
 // Réseau : listeners online/offline + flush auto au retour + retry 30 s
 // si file non vide alors qu'on est en ligne.
-// Réconciliation : rechargement de page en plein trajet → le watch
-// repart dès que la session est relue par l'appelant.
 // ============================================================
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { api } from "@/lib/api-client";
+import { getDeviceId } from "@/lib/device-id";
 import { enqueue, flushQueue, pendingCount } from "@/lib/gps-queue";
 import { TRACKING } from "@/lib/constants";
 import { queryGeoPermission } from "@/lib/geo-permissions";
@@ -35,6 +44,8 @@ import type { GpsPointInput, TrackingConfigDTO } from "@/types";
 export type GpsStatus = "idle" | "requesting" | "active" | "denied" | "unavailable" | "stopped";
 
 export interface GpsReading {
+  /** V5 — identifiant d'idempotence (UUID, généré à la capture). */
+  positionId: string;
   latitude: number;
   longitude: number;
   speed: number | null; // km/h
@@ -53,6 +64,12 @@ export interface DriverGpsState {
   /** V4 — batterie du téléphone (0–100), null si inconnue
    *  (Battery Status API absente, ex. iOS Safari). */
   batteryLevel: number | null;
+  /** V5 — le navigateur est-il en ligne ? (§11, voyant Internet). */
+  online: boolean;
+  /** V5 — dernier heartbeat confirmé par le serveur (ISO). */
+  lastHeartbeatAt: string | null;
+  /** V5 — le serveur considère-t-il la dernière position fraîche ? */
+  positionFresh: boolean | null;
 }
 
 /** Intervalles d'envoi adaptatif résolus (config serveur, sinon TRACKING). */
@@ -162,6 +179,9 @@ export function useDriverGps({ sessionId, onConflict }: UseDriverGpsOptions) {
     queued: 0,
     lastSentAt: null,
     batteryLevel: null,
+    online: typeof navigator === "undefined" ? true : navigator.onLine,
+    lastHeartbeatAt: null,
+    positionFresh: null,
   });
   /** Intervalles d'envoi résolus (TRACKING par défaut, config serveur dès
    *  qu'elle est chargée) — exposés au panneau pour le texte d'aide. */
@@ -238,6 +258,15 @@ export function useDriverGps({ sessionId, onConflict }: UseDriverGpsOptions) {
     return level;
   }, []);
 
+  /** UUID court pour l'idempotence (§9) — généré à la CAPTURE de la
+   *   lecture, conservé par la file offline, jamais régénéré. */
+  const newPositionId = useCallback((): string => {
+    if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
+      return crypto.randomUUID();
+    }
+    return `pos-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+  }, []);
+
   const sendPoint = useCallback(
     async (reading: GpsReading) => {
       const sid = sessionRef.current;
@@ -253,9 +282,13 @@ export function useDriverGps({ sessionId, onConflict }: UseDriverGpsOptions) {
         // ex. iOS Safari). Conservée telle quelle par la file offline/batch.
         batteryLevel: readBatteryForSend(),
         recordedAt: reading.recordedAt,
+        // V5 — idempotence : identifiant de la LECTURE (stable même après
+        // passage par la file offline — jamais régénéré au renvoi).
+        positionId: reading.positionId,
       };
       try {
-        await api.tracking.location(sid, point);
+        // V5 — deviceId du téléphone joint à CHAQUE envoi (audit §6).
+        await api.tracking.location(sid, point, getDeviceId());
         lastSentRef.current = Date.now();
         setState((s) => ({ ...s, lastSentAt: new Date().toISOString() }));
       } catch (error) {
@@ -269,7 +302,8 @@ export function useDriverGps({ sessionId, onConflict }: UseDriverGpsOptions) {
           return;
         }
         if (status === 422) {
-          // Point invalide (trop ancien) — abandonné, jugement définitif.
+          // Position rejetée par le serveur (verdict REJECT_*) — jugement
+          // DÉFINITIF : abandonnée, jamais renvoyée.
           return;
         }
         // Hors ligne / réseau / 429 / 5xx → file offline.
@@ -277,7 +311,7 @@ export function useDriverGps({ sessionId, onConflict }: UseDriverGpsOptions) {
         await refreshQueued();
       }
     },
-    [readBatteryForSend, refreshQueued, stopWatchingInternal]
+    [newPositionId, readBatteryForSend, refreshQueued, stopWatchingInternal]
   );
 
   const handlePosition = useCallback(
@@ -285,6 +319,8 @@ export function useDriverGps({ sessionId, onConflict }: UseDriverGpsOptions) {
       const coords = position.coords;
       const speedKmh = coords.speed !== null && coords.speed !== undefined ? Math.max(0, coords.speed * 3.6) : null;
       const reading: GpsReading = {
+        // V5 — l'identifiant d'idempotence est créé À LA CAPTURE (§9).
+        positionId: newPositionId(),
         latitude: coords.latitude,
         longitude: coords.longitude,
         speed: speedKmh,
@@ -308,7 +344,7 @@ export function useDriverGps({ sessionId, onConflict }: UseDriverGpsOptions) {
         void sendPoint(reading);
       }
     },
-    [sendPoint]
+    [newPositionId, sendPoint]
   );
 
   /** Charge la config serveur des intervalles (UNE tentative par vie du
@@ -353,6 +389,46 @@ export function useDriverGps({ sessionId, onConflict }: UseDriverGpsOptions) {
   const stopWatching = useCallback(() => {
     stopWatchingInternal("stopped", "Suivi arrêté.");
   }, [stopWatchingInternal]);
+
+  // V5 (§11) — HEARTBEAT séparé des positions : toutes les 30 s, UNIQUEMENT
+  // en ligne + page visible + session active. Prouve que le téléphone est
+  // vivant même sans position GPS fraîche (tunnel, GPS perdu…).
+  useEffect(() => {
+    const HEARTBEAT_MS = 30_000;
+    const beat = async () => {
+      const sid = sessionRef.current;
+      if (!sid || typeof navigator === "undefined") return;
+      if (!navigator.onLine || document.visibilityState !== "visible") return;
+      if (watchIdRef.current === null) return; // suivi non actif
+      try {
+        const result = await api.tracking.heartbeat(sid, { batteryLevel: readBatteryForSend() });
+        setState((s) => ({ ...s, lastHeartbeatAt: new Date().toISOString(), positionFresh: result.positionFresh }));
+      } catch (error) {
+        const status = (error as { status?: number }).status ?? 0;
+        if (status === 409 || status === 404) {
+          // Session terminée côté serveur — même traitement que les positions.
+          stopWatchingInternal("stopped", "La session de suivi a été arrêtée côté serveur.");
+          conflictRef.current?.("La session de suivi a été arrêtée côté serveur.");
+          return;
+        }
+        // Réseau indisponible — silencieux : le prochain battement retentera.
+      }
+    };
+    const timer = window.setInterval(() => void beat(), HEARTBEAT_MS);
+    return () => window.clearInterval(timer);
+  }, [readBatteryForSend, stopWatchingInternal]);
+
+  // V5 (§11) — voyant Internet : listeners online/offline du navigateur.
+  useEffect(() => {
+    if (typeof navigator === "undefined") return;
+    const sync = () => setState((s) => (s.online === navigator.onLine ? s : { ...s, online: navigator.onLine }));
+    window.addEventListener("online", sync);
+    window.addEventListener("offline", sync);
+    return () => {
+      window.removeEventListener("online", sync);
+      window.removeEventListener("offline", sync);
+    };
+  }, []);
 
   // Flush au retour du réseau + retry périodique si file non vide en ligne.
   useEffect(() => {

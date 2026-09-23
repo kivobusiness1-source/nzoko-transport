@@ -13,6 +13,7 @@
 // ============================================================
 
 import { api } from "@/lib/api-client";
+import { getDeviceId } from "@/lib/device-id";
 import { TRACKING } from "@/lib/constants";
 import type { GpsPointInput } from "@/types";
 
@@ -117,9 +118,14 @@ export async function pendingCount(sessionId?: string): Promise<number> {
 /**
  * Vide la file vers le serveur (lots ≤ TRACKING.batchMaxPoints, ordre
  * chronologique). Seuls les lots TRANSMIS (HTTP 2xx) sont supprimés —
- * l'appel réussi = jugement définitif du serveur (points rejetés comptés
- * côté réponse « rejected » et abandonnés). Échec réseau / 409 / 429 →
- * le lot est conservé et sera retenté au prochain flush.
+ * l'appel réussi = jugement définitif du serveur.
+ *
+ * V5 (§38) : quand la réponse contient `results` (verdict PAR
+ * position), seules les positions JUGÉES sont supprimées — les
+ * éventuelles absentes (échec interne ponctuel) restent en file et
+ * seront retentées SANS être renvoyées en double (idempotence §9 :
+ * leur positionId est déjà connu du serveur, réponse DOUBLON).
+ * Sans `results` (serveur V4) : tout le lot transmis est supprimé.
  *
  * Retourne le nombre de points transmis, ou -1 si un conflit de session
  * a été détecté (409/404 : la file de cette session est purgée —
@@ -150,13 +156,21 @@ export async function flushQueue(sessionId?: string): Promise<number> {
       try {
         const result = await api.tracking.batch(
           first.sessionId,
-          chunk.map(({ sessionId: _s, queuedAt: _q, id: _i, ...point }) => point)
+          chunk.map(({ sessionId: _s, queuedAt: _q, id: _i, ...point }) => point),
+          getDeviceId()
         );
-        // Lot accepté (2xx) → suppression AU FUR ET À MESURE des seuls
-        // enregistrements de ce lot, quelle que soit la réponse (le serveur
-        // a rendu son jugement : les « rejected » sont définitifs).
-        await removeBatch(chunk);
-        sent += result.accepted;
+        // Lot accepté (2xx) → suppression AU FUR ET À MESURE.
+        if (Array.isArray(result.results) && result.results.length > 0) {
+          // V5 : verdict PAR position — on ne supprime que les jugées.
+          const judged = new Set(result.results.map((r) => r.positionId));
+          const judgedRecords = chunk.filter((p) => !p.positionId || judged.has(p.positionId));
+          await removeBatch(judgedRecords);
+          sent += judgedRecords.length;
+        } else {
+          // V4 (pas de results) : le serveur a jugé TOUT le lot.
+          await removeBatch(chunk);
+          sent += result.accepted;
+        }
       } catch (error) {
         const status = (error as { status?: number }).status ?? 0;
         if (status === 409 || status === 404) {

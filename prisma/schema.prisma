@@ -249,6 +249,9 @@ model RouteStop {
   city             City     @relation(fields: [cityId], references: [id])
   position         Int // ordre croissant, 0 = origine
   minutesFromStart Int // temps estimé depuis le départ (minutes)
+  // V5 GPS — rayon de géofence de l'arrêt (mètres). null = valeur par
+  // défaut de la configuration serveur (GPS_STOP_RADIUS, cf. gps-config).
+  radiusM          Int?
   createdAt        DateTime @default(now())
 
   @@unique([routeId, position])
@@ -316,6 +319,21 @@ model Bus {
 
 // ============================================================
 // SUIVI GPS TEMPS RÉEL — une session par trajet/portion de trajet
+// V5 multi-bus (2026-09-24) :
+//   - deviceId : identifiant du TÉLÉPHONE (indépendant du compte —
+//     un chauffeur peut changer de téléphone, un téléphone peut
+//     changer de chauffeur) ;
+//   - état COURANT dénormalisé (lastPositionAt/lastLatitude/…) :
+//     la vue flotte lit UNE requête sans N+1, les positions
+//     obsolètes ne remplacent JAMAIS un état plus récent (§12) ;
+//   - lastHeartbeatAt : battement de cœur SÉPARÉ des positions —
+//     distinguer « téléphone en ligne » et « GPS actif » (§11) ;
+//   - geofenceStopId/geofenceEnteredAt : état du moteur d'arrêts
+//     (arrêt en cours + date d'entrée pour le dwell time, §20) ;
+//   - tripPhase : phase technique GPS (IN_TRANSIT | AT_STOP |
+//     ARRIVING) — SÉPARÉE du statut métier Trip (§22) ;
+//   - endReason : pourquoi la session s'est terminée (DRIVER |
+//     WATCHDOG | ARRIVAL | CONFLICT | ADMIN).
 // ============================================================
 model TrackingSession {
   id        String    @id @default(cuid())
@@ -328,6 +346,26 @@ model TrackingSession {
   agencyId  String
   agency    Agency    @relation(fields: [agencyId], references: [id])
   status    String    @default("ACTIVE") // ACTIVE | PAUSED | COMPLETED
+  // V5 — identifiant du téléphone émetteur (UUID client, localStorage).
+  deviceId  String?
+  // V5 — état courant dénormalisé (anti N+1 + anti-hors-ordre).
+  lastPositionAt DateTime?
+  lastLatitude    Float?
+  lastLongitude   Float?
+  lastSpeed       Float? // km/h
+  lastHeading     Float? // degrés 0–360
+  lastAccuracy    Float? // mètres
+  // V5 — batterie du téléphone au dernier point (affichage flotte).
+  lastBatteryLevel Float? // 0–100
+  // V5 — heartbeat : téléphone encore connecté (≠ position fraîche).
+  lastHeartbeatAt DateTime?
+  // V5 — moteur géofence : arrêt courant + date d'entrée (dwell).
+  geofenceStopId    String? // RouteStop.id lorsque le car est DANS la géofence
+  geofenceEnteredAt DateTime? // première entrée dans la géofence candidate
+  // V5 — phase technique GPS (distincte du statut métier Trip).
+  tripPhase String? // IN_TRANSIT | AT_STOP | ARRIVING (null = indéterminé)
+  // V5 — raison de fin de session (audit).
+  endReason String? // DRIVER | WATCHDOG | ARRIVAL | CONFLICT | ADMIN
   startedAt DateTime  @default(now())
   endedAt   DateTime?
   createdAt DateTime  @default(now())
@@ -338,12 +376,21 @@ model TrackingSession {
   @@index([status, agencyId])
   @@index([driverId, startedAt])
   @@index([tripId])
+  // V5 — conflits bus (un seul suivi actif par car) + vue flotte.
+  @@index([busId, status])
+  @@index([driverId, status])
+  @@index([status, lastPositionAt])
 }
 
 model GpsPoint {
   id           String          @id @default(cuid())
   sessionId    String
   session      TrackingSession @relation(fields: [sessionId], references: [id])
+  // V5 — identifiant d'idempotence généré PAR LE CLIENT à la capture
+  // (UUID) : double envoi / retry / re-synchronisation offline ne
+  // crée JAMAIS deux lignes (contrainte d'unicité ci-dessous ; les
+  // points historiques sans identifiant restent null).
+  positionId   String?
   latitude     Float
   longitude    Float
   speed        Float? // km/h (m/s × 3,6 côté client)
@@ -354,7 +401,38 @@ model GpsPoint {
   recordedAt   DateTime // horodatage ORIGINAL du GPS — jamais réécrit
   createdAt    DateTime        @default(now()) // réception serveur (diagnostic latence)
 
+  @@unique([sessionId, positionId]) // V5 idempotence (null autorisé × N)
   @@index([sessionId, recordedAt])
+}
+
+// ============================================================
+// V5 GPS — JOURNAL D'ÉVÉNEMENTS DE SUIVI (audit + alertes admin)
+// Identifiants conservés en chaînes simples (PAS de foreign key) :
+// le journal survit à la suppression des entités et son écriture
+// ne doit jamais échouer sur une relation manquante.
+// ============================================================
+model TrackingEvent {
+  id          String   @id @default(cuid())
+  sessionId   String?
+  tripId      String?
+  busId       String?
+  driverId    String?
+  agencyId    String?
+  // GPS_SESSION_STARTED | GPS_SESSION_STOPPED | GPS_HEARTBEAT_LOST |
+  // GPS_STALE | GPS_OFFLINE | GPS_POSITION_REJECTED | GPS_ANOMALY_DETECTED |
+  // GPS_DEVICE_CHANGED | SESSION_CONFLICT | STOP_ARRIVAL_DETECTED |
+  // STOP_DEPARTURE_DETECTED | DESTINATION_APPROACHING | DESTINATION_ARRIVED |
+  // TRIP_COMPLETED
+  type        String
+  severity    String   @default("INFO") // INFO | WARN | CRITICAL
+  message     String?
+  payloadJson String? // métadonnées sérialisées (jamais de secret)
+  createdAt   DateTime @default(now())
+
+  @@index([sessionId, createdAt])
+  @@index([type, createdAt])
+  @@index([severity, createdAt])
+  @@index([agencyId, createdAt])
 }
 
 model Driver {

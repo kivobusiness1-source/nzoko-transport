@@ -98,6 +98,57 @@ export const GPS_SERVER = {
 } as const;
 
 // ------------------------------------------------------------
+// V5 MULTI-BUS — validation, idempotence, heartbeat, géofences,
+// retards. Toutes les valeurs ci-dessous sont configurables par
+// variable d'environnement (aucun nombre magique dispersé).
+// ------------------------------------------------------------
+export const GPS_V5 = {
+  // ---- Heartbeat (§11) : séparé des positions ----
+  /** Intervalle d'envoi du heartbeat côté client (30 s). */
+  heartbeatIntervalMs: envPositiveInt("GPS_HEARTBEAT_INTERVAL", 30_000),
+  /** Heartbeat plus vieux que ce délai → téléphone considéré HORS LIGNE. */
+  heartbeatOfflineMs: envPositiveInt("GPS_HEARTBEAT_OFFLINE", 150) * 1000,
+
+  // ---- Validation des positions (§8) ----
+  /** Vitesse km/h au-delà de laquelle une position est IMPOSSIBLE → REJECT. */
+  maxSpeedKmh: envPositiveNumber("GPS_MAX_SPEED_KMH", 200),
+  /** Vitesse km/h au-delà de laquelle la position est SUSPECTE → FLAG. */
+  suspectSpeedKmh: envPositiveNumber("GPS_SUSPECT_SPEED_KMH", 140),
+  /** Vitesse implicite (km/h) entre 2 positions au-delà de laquelle le
+   *  déplacement est une TÉLÉPORTATION → REJECT (GPS glitch / spoof). */
+  teleportSpeedKmh: envPositiveNumber("GPS_TELEPORT_SPEED_KMH", 500),
+  /** Précision (m) au-delà de laquelle la position est SIGNALÉE (FLAG). */
+  suspectAccuracyM: envPositiveInt("GPS_SUSPECT_ACCURACY", 5_000),
+  /** Tolérance d'horodatage dans le futur (ms) au-delà de laquelle → REJECT. */
+  futureToleranceMs: envPositiveInt("GPS_FUTURE_TOLERANCE", 60_000),
+
+  // ---- Géofences des arrêts (§20) ----
+  /** Rayon par défaut des arrêts (m) quand RouteStop.radiusM est null. */
+  stopRadiusM: envPositiveInt("GPS_STOP_RADIUS", 1_200),
+  /** Hystérésis : sortie de géofence seulement au-delà de rayon × ce facteur. */
+  stopExitFactor: envPositiveNumber("GPS_STOP_EXIT_FACTOR", 1.5),
+  /** Durée minimale DANS la géofence avant ARRIVÉE confirmée (ms). */
+  stopMinDwellMs: envPositiveInt("GPS_STOP_MIN_DWELL", 25_000),
+  /** Distance à la destination (m) sous laquelle tripPhase → ARRIVING. */
+  approachingRadiusM: envPositiveInt("GPS_APPROACHING_RADIUS", 10_000),
+
+  // ---- Retards (§23) ----
+  /** Retard (min) au-delà duquel un bus est « en retard léger ». */
+  delaySlightMin: envPositiveInt("GPS_DELAY_SLIGHT_MIN", 10),
+  /** Retard (min) au-delà duquel un bus est « en retard important ». */
+  delayHeavyMin: envPositiveInt("GPS_DELAY_HEAVY_MIN", 30),
+  /** Vitesse moyenne de croisière (km/h) pour l'ETA quand la vitesse
+   *  instantanée est indisponible/nulle (ETA = distance / vitesse). */
+  cruiseSpeedKmh: envPositiveNumber("GPS_CRUISE_SPEED_KMH", 60),
+
+  // ---- Alertes (§35) ----
+  /** Immobilité (min) au-delà de laquelle une alerte « bus immobilisé ». */
+  longStopMin: envPositiveInt("GPS_LONG_STOP_MIN", 30),
+  /** Nombre maximal d'événements récents renvoyés à l'admin. */
+  alertsMaxEvents: envPositiveInt("GPS_ALERTS_MAX", 50),
+} as const;
+
+// ------------------------------------------------------------
 // HELPERS — l'API stable consommée par les routes et composants
 // ------------------------------------------------------------
 /** Template de tuiles raster Leaflet ({z}/{x}/{y}). */

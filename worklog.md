@@ -1569,3 +1569,44 @@ Stage Summary:
 - Clients : inscription par e-mail + code de vérification (flux signUp → code → verifyEmail déjà en place, livré par Neon Auth nativement).
 - Compte de service geormakoma1+service@gmail.com : admin + vérifié (outil de provisioning — n'est pas un compte utilisateur).
 - Anciennes adresses (geormakoma1+<rôle>, <rôle>@nzoko.cg) : toujours acceptées à la connexion (canonisation automatique).
+
+---
+Task ID: 44 (analyse & conception)
+Agent: main (Z.ai Code) — orchestrateur
+Task: Refonte robuste du système GPS multi-bus + Centre de contrôle Super Admin (cahier des charges 50 sections).
+
+Work Log:
+- ANALYSE COMPLÈTE du système GPS V4 existant (conservé comme socle) :
+  * Prisma : TrackingSession (driver/trip/bus/agency, ACTIVE/PAUSED/COMPLETED), GpsPoint (batteryLevel, recordedAt, createdAt), Route.geometryJson, RouteStop (cityId, position, minutesFromStart).
+  * API : /api/tracking/{config,session,location,batch,maintenance}, /api/admin/tracking (flotte + trail ?sessionId=).
+  * Services : tracking.ts (DTO, HMAC socket, watchdog 2 stades, rétention, maybeMarkArrival updateMany conditionnel anti-concurrence).
+  * Client : use-driver-gps (intervalles adaptatifs config serveur, batterie, conflit 409/404), gps-queue (IndexedDB + purge + flush par lots + repli mémoire).
+  * Temps réel : mini-service tracking-realtime (socket.io :3003 path / + API interne HMAC :3004 + scheduler maintenance 5 min).
+  * Admin : admin-tracking.tsx (KPI, filtres agence/état/ligne, carte Leaflet, panneau détail, replay), driver-gps-panel.tsx (permission, batterie, file offline).
+- LACUNES IDENTIFIÉES vs cahier des charges (à combler, sans casser l'existant) :
+  1. Pas d'idempotence des positions (positionId + unicité) — §9.
+  2. Pas de heartbeat séparé des positions (online vs GPS actif) — §11.
+  3. Pas de deviceId (identification téléphone) — §6.
+  4. Pas d'état courant dénormalisé sur TrackingSession → vue flotte N+1 (findFirst+count PAR session) — §5/§25/§33.
+  5. Pas de validation anti-anomalie (téléportation, vitesse impossible, précision, futur) — §8.
+  6. Pas de protection anti-hors-ordre sur l'état courant — §12.
+  7. Pas de conflit au niveau BUS (2 téléphones/2 chauffeurs sur le même car) — §5/§27.
+  8. Pas de moteur géofence des arrêts intermédiaires (hystérésis, dwell) — §20 ; pas de prochain arrêt/ETA/retard — §15/§23.
+  9. Pas de machine à états centralisée des transitions Trip — §22.
+  10. Pas de table TrackingEvent (événements/audit GPS dédiés) — §34/§47.
+  11. Pas de panneau d'alertes Super Admin — §35.
+  12. Batch sans résultat par position — §38.
+  13. Pas de filtre chauffeur, pas d'onglets historique/arrêts/événements — §18/§44.
+  14. Pas de test 20 scénarios ni simulateur de charge multi-bus — §39/§40.
+- CONCEPTION (décisions clés) :
+  * Schéma (les DEUX fichiers prisma synchrones) : TrackingSession += deviceId, lastHeartbeatAt, lastPositionAt, lastLatitude/Longitude/Speed/Heading/Accuracy, endReason, geofenceStopId, geofenceEnteredAt, tripPhase (IN_TRANSIT/AT_STOP/ARRIVING — phase technique, SÉPARÉE du statut métier Trip §22), + index [busId,status],[status,lastPositionAt],[driverId,status]. GpsPoint += positionId + @@unique([sessionId,positionId]). NOUVEAU TrackingEvent (type, severity, payloadJson, ids simples sans FK, 4 index). RouteStop += radiusM (null = défaut config). Guards Neon étendus (colonnes + table + index, additif).
+  * Moteur : lib/trip-state-machine.ts (transitions validées), services/tracking-validate.ts (verdicts ACCEPT/ACCEPT_HISTORY_ONLY/FLAG/REJECT, pures + testables), services/tracking-geofence.ts (arrêts avec hystérésis ×1,5 + dwell min + précision, destination durable → ARRIVED existant, approche → ARRIVING, ETA/retard via minutesFromStart + vitesse moyenne ligne), services/tracking-events.ts (log + requêtes admin, jamais bloquant).
+  * API : POST /api/tracking/heartbeat (NOUVEAU), location/batch durcis (pipeline validation, idempotence, réponse par position), session START (deviceId + conflits bus/trajet + BOARDING), STOP (endReason + TRIP_COMPLETED), admin/tracking réécrit SANS N+1 (état dénormalisé + groupBy unique) + nextStop/eta/delay + événements récents.
+  * Client : lib/device-id.ts (UUID localStorage), positionId crypto.randomUUID() par lecture, heartbeat 30 s (online + visible), gps-queue résultat par position, panneau chauffeur (confirmation TERMINER §41, voyants GPS/Internet/Sync).
+  * Admin : KPI élargis (en retard), panneau alertes temps réel, détail bus enrichi (prochain arrêt, ETA, retard, onglets), filtre chauffeur.
+  * Tests : scripts/test-tracking-v5.ts (20 scénarios §39) + scripts/load-test-tracking.ts (100 bus simulés §40).
+  * CONTRAINTE SANDBOX respectée : tout dans / (SPA par vues) — PAS de nouvelle route page ; AdminTracking existant devient le Centre de contrôle.
+
+Stage Summary:
+- Conception verrouillée : le GPS V4 existant est conservé et renforcé (aucune réécriture inutile) ; 14 lacunes précises à combler.
+- Ordre d'implémentation : (1) schéma+guards+push, (2) moteur serveur, (3) API, (4) client chauffeur, (5) centre de contrôle admin, (6) tests+charge, (7) lint/build/vérif navigateur.

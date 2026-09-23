@@ -429,6 +429,8 @@ export interface GpsPointInput {
   batteryLevel?: number | null;
   /** Horodatage ORIGINAL du GPS (ISO 8601) — jamais réécrit. */
   recordedAt: string;
+  /** V5 — identifiant d'idempotence (UUID généré à la capture, §9). */
+  positionId?: string | null;
 }
 
 export interface GpsPointDTO {
@@ -443,6 +445,27 @@ export interface GpsPointDTO {
 }
 
 export type TrackingSessionStatus = "ACTIVE" | "PAUSED" | "COMPLETED";
+
+/** V5 — phase technique GPS du trajet (distincte du statut métier §22). */
+export type SessionTripPhase = "IN_TRANSIT" | "AT_STOP" | "ARRIVING";
+
+/** V5 — état GPS technique de la session (§11 : heartbeat vs position). */
+export type SessionGpsStatus = "GPS_ACTIVE" | "GPS_STALE" | "GPS_OFFLINE" | "TERMINATED";
+
+/** V5 — retard au prochain arrêt (§23). */
+export type DelayStatus = "ON_TIME" | "SLIGHT_DELAY" | "HEAVY_DELAY";
+
+export interface SessionNextStopDTO {
+  name: string;
+  distanceM: number | null;
+  /** ETA estimée (ISO) selon la vitesse effective. */
+  etaIso: string | null;
+  /** Horaire prévu de passage (ISO). */
+  scheduledIso: string | null;
+  /** Retard en minutes (négatif = en avance). */
+  delayMin: number | null;
+  delayStatus: DelayStatus | null;
+}
 
 export interface TrackingSessionDTO {
   id: string;
@@ -465,6 +488,18 @@ export interface TrackingSessionDTO {
   busStatus?: BusStatus;
   /** V4 GPS — distance restante jusqu'à la destination officielle (m, arrondie ; null si indisponible). */
   distanceToDestinationM?: number | null;
+  /** V5 — phase technique GPS du trajet (§22). */
+  tripPhase?: SessionTripPhase | null;
+  /** V5 — état GPS technique (heartbeat vs positions, §11). */
+  gpsStatus?: SessionGpsStatus;
+  /** V5 — dernier signal quelconque (heartbeat ou position, ISO). */
+  lastSignalAt?: string | null;
+  /** V5 — batterie du téléphone au dernier point (0–100). */
+  batteryLevel?: number | null;
+  /** V5 — arrêt courant lorsque le car est À L'ARRÊT (§20). */
+  geofenceStopName?: string | null;
+  /** V5 — prochain arrêt + ETA + retard (§15/§23). */
+  nextStop?: SessionNextStopDTO | null;
 }
 
 /** Réponse de démarrage/arrêt — inclut le jeton temps réel (socket.io). */
@@ -477,11 +512,28 @@ export interface TrackingFleetDTO {
   sessions: TrackingSessionDTO[];
   /** Présent uniquement en réponse à ?sessionId= — historique de la session. */
   trail?: GpsPointDTO[];
+  /** V5 — événements récents (vue flotte : WARN+CRITICAL ; détail : tous). */
+  events?: TrackingEventItemDTO[];
   generatedAt: string;
   socketUrl: string;
   socketToken: string; // HMAC court — abonnement salon temps réel
   /** V4 GPS — compteurs par état (UNIQUEMENT en vue flotte, pas sur le trail). */
   kpi?: FleetKpi;
+}
+
+/** V5 — événement du journal GPS (panneau d'alertes + onglet Événements). */
+export interface TrackingEventItemDTO {
+  id: string;
+  type: string;
+  severity: "INFO" | "WARN" | "CRITICAL" | string;
+  message: string | null;
+  sessionId: string | null;
+  tripId: string | null;
+  busId: string | null;
+  driverId: string | null;
+  agencyId: string | null;
+  payload: Record<string, unknown> | null;
+  createdAt: string;
 }
 
 /** Compteurs d'états de la flotte GPS (vue admin). */
@@ -492,12 +544,55 @@ export interface FleetKpi {
   offline: number;
   arrived: number;
   paused: number;
+  /** V5 — bus en retard (léger ou important) au prochain arrêt. */
+  delayed?: number;
+  /** V5 — bus GPS silencieux (téléphone en ligne, positions périmées). */
+  stale?: number;
+}
+
+/** V5 — verdict d'une position après jugement serveur (§38). */
+export type GpsPositionVerdict =
+  | "ACCEPT"
+  | "ACCEPT_HISTORY_ONLY"
+  | "ACCEPT_FLAGGED"
+  | "DUPLICATE"
+  | "REJECT_INVALID_COORDS"
+  | "REJECT_FUTURE_TIMESTAMP"
+  | "REJECT_STALE_TIMESTAMP"
+  | "REJECT_IMPOSSIBLE_SPEED"
+  | "REJECT_TELEPORT";
+
+/** V5 — réponse du point isolé (verdict détaillé). */
+export interface TrackingLocationResultDTO {
+  verdict: GpsPositionVerdict;
+  label: string;
+  reason: string | null;
+  accepted: number;
+  rejected: number;
+  duplicate: boolean;
+  flagged: boolean;
+  historyOnly: boolean;
+  destinationArrived?: boolean;
+  routeLabel?: string | null;
+}
+
+/** V5 — résultat PAR position d'un lot (§38). */
+export interface TrackingBatchPointResultDTO {
+  positionId: string | null;
+  verdict: GpsPositionVerdict;
+  reason: string | null;
 }
 
 /** Réponse du flush de la file offline. */
 export interface TrackingBatchResultDTO {
   accepted: number;
   rejected: number; // points hors fenêtre de tolérance ou invalides
+  /** V5 — doublons idempotents (aucune écriture). */
+  duplicates?: number;
+  /** V5 — arrivée destination détectée pendant le lot. */
+  destinationArrived?: boolean;
+  /** V5 — verdict PAR position. */
+  results?: TrackingBatchPointResultDTO[];
 }
 
 // ---------- V4 GPS — CONFIG & CARTE PUBLIQUE ----------
