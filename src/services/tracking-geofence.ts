@@ -182,7 +182,11 @@ export function decideGeofence(input: DecideGeofenceInput): GeofenceEvaluation {
   // Le candidat est-il la destination déjà atteinte ? (trip ARRIVED
   // géré par ailleurs — ici le moteur ne re-détecte rien.)
   if (state.candidateEnteredAt !== null) {
-    const dwellMs = now.getTime() - state.candidateEnteredAt.getTime();
+    // Dwell mesuré sur l'HORODATAGE GPS (recordedAt) — pas sur l'heure de
+    // traitement serveur : une re-synchronisation offline (lot complet
+    // traité en quelques ms) doit pouvoir confirmer une halte réelle de
+    // 10 minutes effectuée pendant la zone blanche (§10).
+    const dwellMs = point.recordedAt.getTime() - state.candidateEnteredAt.getTime();
     const stillInside = distanceM <= candidate.radiusM;
     if (!stillInside) {
       // Sorti avant le dwell minimal → faux positif GPS filtré (§20) :
@@ -216,7 +220,7 @@ export function decideGeofence(input: DecideGeofenceInput): GeofenceEvaluation {
   if (distanceM <= candidate.radiusM) {
     return {
       decision: { action: "ENTER_CANDIDATE" },
-      nextState: { lastPassedStopId: state.lastPassedStopId, candidateEnteredAt: now, tripPhase: state.tripPhase ?? "IN_TRANSIT" },
+      nextState: { lastPassedStopId: state.lastPassedStopId, candidateEnteredAt: point.recordedAt, tripPhase: state.tripPhase ?? "IN_TRANSIT" },
       phase: state.tripPhase ?? "IN_TRANSIT",
       candidateDistanceM: distanceM,
       nextStop: candidate,
@@ -254,6 +258,8 @@ export interface StopProgress {
   delayStatus: DelayStatus | null;
   /** Distance à la destination finale (m). */
   distanceToDestinationM: number | null;
+  /** V5 — nom de l'arrêt COURANT (dernier atteint), pour le DTO admin. */
+  lastPassedStopName: string | null;
 }
 
 export interface StopProgressInput {
@@ -268,18 +274,20 @@ export interface StopProgressInput {
 export function computeStopProgress(input: StopProgressInput): StopProgress {
   const now = input.now ?? new Date();
   const { stops, state, lastPoint } = input;
+  const empty: StopProgress = { nextStop: null, distanceM: null, etaIso: null, scheduledIso: null, delayMin: null, delayStatus: null, distanceToDestinationM: null, lastPassedStopName: null };
   if (stops.length === 0 || !lastPoint) {
-    return { nextStop: null, distanceM: null, etaIso: null, scheduledIso: null, delayMin: null, delayStatus: null, distanceToDestinationM: null };
+    return empty;
   }
 
   const lastIdx = passedIndex(stops, state.lastPassedStopId);
+  const lastPassedStopName = lastIdx >= 0 ? stops[lastIdx].name : null;
   const atDestination = lastIdx === stops.length - 1;
   const destination = stops[stops.length - 1];
   const distanceToDestinationM = haversineMeters(lastPoint, { latitude: destination.latitude, longitude: destination.longitude });
 
   if (atDestination) {
     // Arrivé à destination : plus de prochain arrêt.
-    return { nextStop: null, distanceM: null, etaIso: null, scheduledIso: null, delayMin: null, delayStatus: null, distanceToDestinationM };
+    return { ...empty, distanceToDestinationM, lastPassedStopName };
   }
 
   // Prochain arrêt : candidat courant (même logique de saut que le moteur).
@@ -308,6 +316,7 @@ export function computeStopProgress(input: StopProgressInput): StopProgress {
     delayMin,
     delayStatus: deriveDelayStatus({ delayMin, slightMin: GPS_V5.delaySlightMin, heavyMin: GPS_V5.delayHeavyMin }),
     distanceToDestinationM: Math.round(distanceToDestinationM),
+    lastPassedStopName,
   };
 }
 
@@ -511,11 +520,11 @@ export async function stopProgressOfSession(session: {
   lastSpeed: number | null;
 }): Promise<StopProgress> {
   if (!session.tripId) {
-    return { nextStop: null, distanceM: null, etaIso: null, scheduledIso: null, delayMin: null, delayStatus: null, distanceToDestinationM: null };
+    return { nextStop: null, distanceM: null, etaIso: null, scheduledIso: null, delayMin: null, delayStatus: null, distanceToDestinationM: null, lastPassedStopName: null };
   }
   const tripStops = await getTripStops(session.tripId);
   if (!tripStops) {
-    return { nextStop: null, distanceM: null, etaIso: null, scheduledIso: null, delayMin: null, delayStatus: null, distanceToDestinationM: null };
+    return { nextStop: null, distanceM: null, etaIso: null, scheduledIso: null, delayMin: null, delayStatus: null, distanceToDestinationM: null, lastPassedStopName: null };
   }
   const hasPosition = session.lastLatitude !== null && session.lastLongitude !== null;
   return computeStopProgress({

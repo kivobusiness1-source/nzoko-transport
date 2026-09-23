@@ -84,7 +84,7 @@ async function enrichDto(dto: TrackingSessionDTO, s: FleetSessionRow, now: Date)
     gpsStatus,
     lastSignalAt: lastSignalAt?.toISOString() ?? null,
     batteryLevel: s.lastBatteryLevel,
-    geofenceStopName: s.tripPhase === "AT_STOP" ? progress.nextStop?.name ?? null : null,
+    geofenceStopName: s.tripPhase === "AT_STOP" ? progress.lastPassedStopName : null,
     nextStop: progress.nextStop
       ? {
           name: progress.nextStop.name,
