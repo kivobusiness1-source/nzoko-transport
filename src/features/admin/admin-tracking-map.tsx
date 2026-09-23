@@ -30,7 +30,7 @@ import type {
   MapRouteDTO,
   TrackingSessionDTO,
 } from "@/types";
-import { BUS_STATUS_COLORS, busStatusOf } from "@/features/admin/admin-tracking-shared";
+import { BUS_STATUS_COLORS, busStatusOf, GPS_STATUS_LABELS } from "@/features/admin/admin-tracking-shared";
 import type { MapLayersState } from "@/features/admin/admin-tracking-filters";
 
 /** Instantané de configuration carte (depuis /api/tracking/config). */
@@ -260,11 +260,21 @@ export default function FleetMap({
     return sessions.filter(hasPoint).map((s) => {
       const point = s.lastPoint;
       const status = busStatusOf(s);
+      // V5 (§11) — la couleur du marqueur reflète l'état GPS TECHNIQUE
+      // quand il est connu : 🟢 actif / 🟡 silencieux / 🔴 hors ligne.
+      // Sans gpsStatus (payload V4), le busStatus historique reste la source.
+      const gpsStatus = s.gpsStatus ?? null;
+      const background =
+        gpsStatus === "GPS_OFFLINE"
+          ? "#6b7280" // gris — téléphone hors ligne
+          : gpsStatus === "GPS_STALE"
+            ? "#d97706" // ambre — GPS silencieux
+            : BUS_STATUS_COLORS[status];
       return (
         <Marker
           key={s.id}
           position={[point.latitude, point.longitude]}
-          icon={busIcon(point.heading ?? null, BUS_STATUS_COLORS[status])}
+          icon={busIcon(point.heading ?? null, background)}
           eventHandlers={{ click: () => onSelect(s.id) }}
           zIndexOffset={s.id === selectedId ? 1000 : 0}
         >
@@ -276,6 +286,7 @@ export default function FleetMap({
               {s.trip ? ` · ${s.trip.originCityName} → ${s.trip.destinationCityName}` : " · hors voyage"}
               {point.speed != null ? ` · ${Math.round(point.speed)} km/h` : ""}
               {` · ${BUS_STATUS_LABELS[status]}`}
+              {gpsStatus ? ` · ${GPS_STATUS_LABELS[gpsStatus] ?? gpsStatus}` : ""}
               {point.batteryLevel != null ? ` · 🔋 ${Math.round(point.batteryLevel)} %` : ""}
               {s.distanceToDestinationM != null ? ` · ${humanDistance(s.distanceToDestinationM)} restants` : ""}
             </span>

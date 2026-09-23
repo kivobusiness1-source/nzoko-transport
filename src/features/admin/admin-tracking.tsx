@@ -43,16 +43,23 @@ import type { FleetMapSnapshot, FleetReplayPoint } from "@/features/admin/admin-
 import {
   BusStatusBadge,
   busStatusOf,
+  DelayBadge,
   deriveFleetKpi,
+  GpsStatusBadge,
   headingLabel,
   routeKeyOf,
+  trackingEventEmoji,
+  TRACKING_EVENT_LABELS,
+  TripPhaseBadge,
 } from "@/features/admin/admin-tracking-shared";
 import {
   AdminTrackingFilters,
   AGENCY_FILTER_ALL,
+  DRIVER_FILTER_ALL,
   ROUTE_FILTER_ALL,
   STATUS_FILTER_ALL,
   type AgencyFilterOption,
+  type DriverFilterOption,
   type MapLayersState,
   type RouteFilterOption,
   type StatusFilterValue,
@@ -63,6 +70,7 @@ import type {
   MapCityDTO,
   MapPublicDTO,
   TrackingConfigDTO,
+  TrackingEventItemDTO,
   TrackingFleetDTO,
   TrackingSessionDTO,
 } from "@/types";
@@ -70,15 +78,33 @@ import type {
 // Leaflet ne doit JAMAIS être évalué côté serveur (accès window à l'import).
 const FleetMap = lazy(() => import("@/features/admin/admin-tracking-map"));
 
-/** Événement socket « gps » (position live d'un bus). */
+/** Événement socket « gps » (position live d'un bus) — V5 : payload enrichi
+ *  (busId, tripId, tripPhase, accuracy, batteryLevel voyagent désormais). */
 interface LiveGpsEvent {
   sessionId: string;
   agencyId: string;
+  busId?: string | null;
+  tripId?: string | null;
   latitude: number;
   longitude: number;
   speed?: number | null;
   heading?: number | null;
+  accuracy?: number | null;
+  batteryLevel?: number | null;
+  tripPhase?: string | null;
   recordedAt: string;
+}
+
+/** Événement socket « tracking-event » V5 (alerte temps réel §35). */
+interface LiveTrackingEvent {
+  type: string;
+  severity: string;
+  sessionId: string | null;
+  tripId: string | null;
+  busId: string | null;
+  agencyId: string | null;
+  message: string | null;
+  at: string;
 }
 
 /** Événement socket « bus-arrived » (détection d'arrivée côté serveur). */
@@ -133,6 +159,91 @@ function InfoItem({ label, value }: { label: string; value: ReactNode }) {
   );
 }
 
+// ============================================================
+// V5 — Panneau d'alertes (§35) : événements WARN/CRITICAL du serveur
+// + événements temps réel reçus par socket, dédupliqués par clé
+// type:sessionId:at. Repliable, jamais bloquant.
+// ============================================================
+interface AlertsPanelProps {
+  serverEvents: TrackingEventItemDTO[];
+  liveAlerts: TrackingEventItemDTO[];
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  nowMs: number | null;
+}
+
+function AlertsPanel({ serverEvents, liveAlerts, open, onOpenChange, nowMs }: AlertsPanelProps) {
+  // Fusion : alertes live en tête (les plus fraîches), puis serveur — sans doublon.
+  const merged = useMemo(() => {
+    const seen = new Set<string>();
+    const out: TrackingEventItemDTO[] = [];
+    for (const e of [liveAlerts, serverEvents].flat()) {
+      const key = `${e.type}:${e.sessionId ?? "-"}:${e.createdAt}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      out.push(e);
+    }
+    return out.slice(0, 60);
+  }, [serverEvents, liveAlerts]);
+
+  const criticalCount = merged.filter((e) => e.severity === "CRITICAL").length;
+
+  return (
+    <div className="rounded-xl border bg-card shadow-sm">
+      <button
+        type="button"
+        onClick={() => onOpenChange(!open)}
+        aria-expanded={open}
+        aria-controls="tracking-alerts-body"
+        className="flex min-h-[48px] w-full flex-wrap items-center justify-between gap-2 px-4 py-3 text-left"
+      >
+        <span className="flex flex-wrap items-center gap-2 text-sm font-semibold uppercase tracking-wide text-muted-foreground">
+          <span aria-hidden>⚠️</span>
+          Alertes de la flotte
+          {merged.length > 0 && (
+            <Badge variant="outline" className={criticalCount > 0 ? "border-red-300 bg-red-100 text-red-700" : "border-amber-300 bg-amber-100 text-amber-800"}>
+              {merged.length}
+            </Badge>
+          )}
+        </span>
+        <span className="text-xs text-muted-foreground">{open ? "Masquer" : "Afficher"}</span>
+      </button>
+      {open && (
+        <div id="tracking-alerts-body" className="nzoko-scroll max-h-96 overflow-y-auto border-t p-2" role="region" aria-label="Alertes récentes">
+          {merged.length === 0 ? (
+            <p className="px-3 py-6 text-center text-sm text-muted-foreground">
+              Aucune alerte — la flotte roule sans incident signalé.
+            </p>
+          ) : (
+            <ul className="space-y-1">
+              {merged.map((e) => {
+                const critical = e.severity === "CRITICAL";
+                return (
+                  <li
+                    key={e.id}
+                    className={`flex min-h-[44px] items-start gap-2 rounded-lg px-3 py-2 text-sm ${
+                      critical ? "bg-red-50 dark:bg-red-950/30" : "bg-amber-50 dark:bg-amber-950/30"
+                    }`}
+                  >
+                    <span className="mt-0.5 shrink-0" aria-hidden>{trackingEventEmoji(e.type)}</span>
+                    <span className="min-w-0 flex-1">
+                      <span className="font-medium">{TRACKING_EVENT_LABELS[e.type] ?? e.type}</span>
+                      {e.message ? <span className="ml-1.5 text-muted-foreground">— {e.message}</span> : null}
+                      <span className="block text-[11px] text-muted-foreground">
+                        {nowMs !== null ? secondsAgoLabel(nowMs - new Date(e.createdAt).getTime()) : formatTime(e.createdAt)}
+                      </span>
+                    </span>
+                  </li>
+                );
+              })}
+            </ul>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 export function AdminTracking() {
   const { data, loading, error, reload } = useApiData<TrackingFleetDTO>(() => api.admin.tracking(), {
     autoRefreshMs: 10_000, // repli polling — le socket prend le relais en live
@@ -152,6 +263,16 @@ export function AdminTracking() {
   const [agencyFilter, setAgencyFilter] = useState<string>(AGENCY_FILTER_ALL);
   const [statusFilter, setStatusFilter] = useState<StatusFilterValue>(STATUS_FILTER_ALL);
   const [routeFilter, setRouteFilter] = useState<string>(ROUTE_FILTER_ALL);
+  // V5 (§18) — filtre chauffeur.
+  const [driverFilter, setDriverFilter] = useState<string>(DRIVER_FILTER_ALL);
+  // V5 (§35) — panneau d'alertes : événements temps réel reçus par socket
+  // (en tête, dédupliqués, NORMALISÉS en TrackingEventItemDTO) ; la base
+  // reste data.events (polling 10 s).
+  const [liveAlerts, setLiveAlerts] = useState<TrackingEventItemDTO[]>([]);
+  const [alertsOpen, setAlertsOpen] = useState(false);
+  // V5 (§44) — événements de la session sélectionnée (mode détail).
+  const [sessionEvents, setSessionEvents] = useState<{ sessionId: string; events: TrackingEventItemDTO[] } | null>(null);
+  const [eventsOpen, setEventsOpen] = useState(false);
   // Couches de la carte : bus + agences visibles par défaut, arrêts et
   // tracés masqués par défaut (exigence 16).
   const [layers, setLayers] = useState<MapLayersState>({ buses: true, agencies: true, stops: false, routes: false });
@@ -266,9 +387,11 @@ export function AdminTracking() {
         if (agencyFilter !== AGENCY_FILTER_ALL && s.agency.id !== agencyFilter) return false;
         if (statusFilter !== STATUS_FILTER_ALL && busStatusOf(s) !== statusFilter) return false;
         if (filterRouteKey && sessionRouteKey(s) !== filterRouteKey) return false;
+        // V5 (§18) — filtre chauffeur.
+        if (driverFilter !== DRIVER_FILTER_ALL && s.driver.id !== driverFilter) return false;
         return true;
       }),
-    [sessions, agencyFilter, statusFilter, filterRouteKey]
+    [sessions, agencyFilter, statusFilter, filterRouteKey, driverFilter]
   );
 
   // KPI : base serveur puis re-déduction locale des sessions fusionnées
@@ -301,12 +424,24 @@ export function AdminTracking() {
     return Array.from(seen.values());
   }, [mapData, sessions]);
 
+  // V5 (§18) — options du filtre chauffeur (déduites des sessions vivantes).
+  const driverOptions = useMemo<DriverFilterOption[]>(() => {
+    const seen = new Map<string, DriverFilterOption>();
+    for (const s of sessions) {
+      if (!seen.has(s.driver.id)) {
+        seen.set(s.driver.id, { id: s.driver.id, name: `${s.driver.firstName} ${s.driver.lastName}` });
+      }
+    }
+    return Array.from(seen.values()).sort((a, b) => a.name.localeCompare(b.name, "fr"));
+  }, [sessions]);
+
   const hasActiveFilters =
-    agencyFilter !== AGENCY_FILTER_ALL || statusFilter !== STATUS_FILTER_ALL || routeFilter !== ROUTE_FILTER_ALL;
+    agencyFilter !== AGENCY_FILTER_ALL || statusFilter !== STATUS_FILTER_ALL || routeFilter !== ROUTE_FILTER_ALL || driverFilter !== DRIVER_FILTER_ALL;
   const resetFilters = useCallback(() => {
     setAgencyFilter(AGENCY_FILTER_ALL);
     setStatusFilter(STATUS_FILTER_ALL);
     setRouteFilter(ROUTE_FILTER_ALL);
+    setDriverFilter(DRIVER_FILTER_ALL);
   }, []);
   const handleLayerToggle = useCallback((layer: keyof MapLayersState) => {
     setLayers((current) => ({ ...current, [layer]: !current[layer] }));
@@ -381,6 +516,8 @@ export function AdminTracking() {
             );
           }
         }
+        // V5 : une position fraîche est la preuve d'un GPS actif ; la phase
+        // technique voyagent désormais dans l'événement (sinon conservée).
         return {
           ...previous,
           [event.sessionId]: {
@@ -388,15 +525,18 @@ export function AdminTracking() {
               ...current,
               busStatus: status,
               distanceToDestinationM: distance,
+              gpsStatus: current.gpsStatus === "TERMINATED" ? current.gpsStatus : "GPS_ACTIVE",
+              tripPhase: (event.tripPhase as TrackingSessionDTO["tripPhase"]) ?? current.tripPhase,
+              lastSignalAt: event.recordedAt,
               lastPoint: {
                 latitude: event.latitude,
                 longitude: event.longitude,
                 speed: event.speed ?? null,
                 heading: event.heading ?? null,
-                // Batterie et précision ne voyagent pas dans l'événement :
-                // on conserve les dernières valeurs connues (poll).
-                accuracy: current.lastPoint?.accuracy ?? null,
-                batteryLevel: current.lastPoint?.batteryLevel ?? null,
+                // V5 : précision et batterie voyagent désormais dans l'événement
+                // (repli sur les dernières valeurs connues sinon).
+                accuracy: event.accuracy ?? current.lastPoint?.accuracy ?? null,
+                batteryLevel: event.batteryLevel ?? current.lastPoint?.batteryLevel ?? null,
                 recordedAt: event.recordedAt,
               },
             },
@@ -448,6 +588,29 @@ export function AdminTracking() {
       reload();
     });
 
+    // V5 (§35) — événements d'alerte temps réel : head de liste dédupliqué
+    // (clé type+sessionId+at), plafonné à 50 entrées locales.
+    socket.on("tracking-event", (event: LiveTrackingEvent) => {
+      const key = `${event.type}:${event.sessionId ?? "-"}:${event.at}`;
+      const normalized: TrackingEventItemDTO = {
+        id: `live:${key}`,
+        type: event.type,
+        severity: event.severity,
+        message: event.message,
+        sessionId: event.sessionId,
+        tripId: event.tripId,
+        busId: event.busId,
+        driverId: null,
+        agencyId: event.agencyId,
+        payload: null,
+        createdAt: event.at,
+      };
+      setLiveAlerts((previous) => {
+        if (previous.some((e) => e.id === normalized.id)) return previous;
+        return [normalized, ...previous].slice(0, 50);
+      });
+    });
+
     return () => {
       disposed = true;
       socket.removeAllListeners();
@@ -480,15 +643,22 @@ export function AdminTracking() {
 
   // Trail de la session sélectionnée (rechargé périodiquement — sert au
   // tracé ET au replay ; les setTrail vivent dans les callbacks async/timer).
+  // V5 : la même réponse détail fournit les ÉVÉNEMENTS de la session (§44).
   useEffect(() => {
     if (!selectedId) return;
     let cancelled = false;
     const load = async () => {
       try {
         const detail = await api.admin.tracking(selectedId);
-        if (!cancelled) setTrail({ sessionId: selectedId, points: detail.trail ?? [] });
+        if (!cancelled) {
+          setTrail({ sessionId: selectedId, points: detail.trail ?? [] });
+          setSessionEvents({ sessionId: selectedId, events: detail.events ?? [] });
+        }
       } catch {
-        if (!cancelled) setTrail({ sessionId: selectedId, points: [] });
+        if (!cancelled) {
+          setTrail({ sessionId: selectedId, points: [] });
+          setSessionEvents({ sessionId: selectedId, events: [] });
+        }
       }
     };
     void load();
@@ -502,6 +672,10 @@ export function AdminTracking() {
   const displayTrail = useMemo(
     () => (trail && trail.sessionId === selectedId ? trail.points : []),
     [trail, selectedId]
+  );
+  const displayEvents = useMemo(
+    () => (sessionEvents && sessionEvents.sessionId === selectedId ? sessionEvents.events : []),
+    [sessionEvents, selectedId]
   );
 
   // ----- Replay (exigence 32) : lecture pas-à-pas (~400 ms / point) -----
@@ -607,12 +781,14 @@ export function AdminTracking() {
 
   return (
     <div className="space-y-4">
-      {/* --- Barre KPI par état GPS (exigence 4) --- */}
+      {/* --- Barre KPI par état GPS (exigence 4 + §43 V5) --- */}
       <div className="flex flex-wrap items-center gap-2">
         <KpiChip label="Bus en ligne" value={kpi.total} dotClassName="bg-primary" />
         <KpiChip label="En mouvement" value={kpi.moving} dotClassName="bg-emerald-600" />
         <KpiChip label="Arrêtés" value={kpi.stopped} dotClassName="bg-amber-600" />
         <KpiChip label="Hors ligne" value={kpi.offline} dotClassName="bg-gray-500" />
+        {(kpi.delayed ?? 0) > 0 && <KpiChip label="En retard" value={kpi.delayed ?? 0} dotClassName="bg-red-600" />}
+        {(kpi.stale ?? 0) > 0 && <KpiChip label="GPS silencieux" value={kpi.stale ?? 0} dotClassName="bg-amber-400" />}
         <KpiChip label="Arrivés" value={kpi.arrived} dotClassName="bg-teal-600" />
         {kpi.paused > 0 && <KpiChip label="En pause" value={kpi.paused} dotClassName="bg-slate-400" />}
         <Badge
@@ -636,20 +812,32 @@ export function AdminTracking() {
         </Button>
       </div>
 
-      {/* --- Filtres + légende des couches (exigences 5-6) --- */}
+      {/* --- Filtres + légende des couches (exigences 5-6 + §18 V5) --- */}
       <AdminTrackingFilters
         agencies={agencyOptions}
         routes={routeOptions}
+        drivers={driverOptions}
         agencyFilter={agencyFilter}
         statusFilter={statusFilter}
         routeFilter={routeFilter}
+        driverFilter={driverFilter}
         onAgencyFilterChange={setAgencyFilter}
         onStatusFilterChange={setStatusFilter}
         onRouteFilterChange={setRouteFilter}
+        onDriverFilterChange={setDriverFilter}
         layers={layers}
         onLayerToggle={handleLayerToggle}
         hasActiveFilters={hasActiveFilters}
         onReset={resetFilters}
+      />
+
+      {/* --- Panneau d'alertes V5 (§35) : événements WARN/CRITICAL --- */}
+      <AlertsPanel
+        serverEvents={data?.events ?? []}
+        liveAlerts={liveAlerts}
+        open={alertsOpen}
+        onOpenChange={setAlertsOpen}
+        nowMs={nowMs}
       />
 
       {/* --- Carte multi-couches (exigences 14, 16-17, 22-23) --- */}
@@ -679,7 +867,7 @@ export function AdminTracking() {
         />
       </Suspense>
 
-      {/* --- Panneau détail bus (exigence 24) --- */}
+      {/* --- Panneau détail bus (exigence 24 + §15/§44 V5) --- */}
       {selected && (
         <div className="rounded-xl border bg-card p-4 text-sm shadow-sm">
           <div className="flex flex-wrap items-center justify-between gap-2">
@@ -688,6 +876,9 @@ export function AdminTracking() {
               {selected.trip ? ` · ${selected.trip.originCityName} → ${selected.trip.destinationCityName}` : " · hors voyage"}
             </p>
             <span className="flex flex-wrap items-center gap-2">
+              {/* V5 (§11/§22) — état GPS technique + phase du trajet. */}
+              <GpsStatusBadge status={selected.gpsStatus} />
+              <TripPhaseBadge phase={selected.tripPhase} />
               <BusStatusBadge status={busStatusOf(selected)} />
               {selected.status === "PAUSED" && (
                 <Badge variant="outline" className="border-slate-300 bg-slate-100 text-slate-700">
@@ -696,6 +887,29 @@ export function AdminTracking() {
               )}
             </span>
           </div>
+
+          {/* V5 (§15) — bloc « prochain arrêt » : arrêt, distance, ETA, retard. */}
+          {selected.trip && selected.nextStop && (
+            <div className="mt-3 flex flex-wrap items-center justify-between gap-2 rounded-lg border border-primary/20 bg-muted/40 px-3 py-2">
+              <div className="min-w-0">
+                <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Prochain arrêt</p>
+                <p className="truncate font-semibold">📍 {selected.nextStop.name}</p>
+                {selected.nextStop.distanceM != null && (
+                  <p className="text-xs text-muted-foreground">
+                    {humanDistance(selected.nextStop.distanceM)}
+                    {selected.nextStop.etaIso ? ` · arrivée estimée ${formatTime(selected.nextStop.etaIso)}` : ""}
+                  </p>
+                )}
+              </div>
+              <DelayBadge delay={selected.nextStop} />
+            </div>
+          )}
+          {/* V5 (§20) — arrêt en cours (géofence confirmée). */}
+          {selected.tripPhase === "AT_STOP" && selected.geofenceStopName && (
+            <p className="mt-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-medium text-amber-800 dark:border-amber-900 dark:bg-amber-950/40 dark:text-amber-300" role="status">
+              🛑 Arrêt en cours : {selected.geofenceStopName}
+            </p>
+          )}
 
           <dl className="mt-3 grid grid-cols-1 gap-x-4 gap-y-3 sm:grid-cols-2 lg:grid-cols-3">
             <InfoItem
@@ -745,6 +959,15 @@ export function AdminTracking() {
               value={
                 selected.lastPoint && nowMs !== null
                   ? secondsAgoLabel(nowMs - new Date(selected.lastPoint.recordedAt).getTime())
+                  : "—"
+              }
+            />
+            {/* V5 (§11) — dernier signal quelconque (heartbeat OU position). */}
+            <InfoItem
+              label="Dernier signal"
+              value={
+                selected.lastSignalAt && nowMs !== null
+                  ? secondsAgoLabel(nowMs - new Date(selected.lastSignalAt).getTime())
                   : "—"
               }
             />
@@ -814,6 +1037,43 @@ export function AdminTracking() {
               {selected.bus.model ? ` (${selected.bus.model})` : ""}
             </p>
           )}
+
+          {/* V5 (§44) — Événements de la session (tous niveaux, repliable). */}
+          <div className="mt-3 rounded-lg border">
+            <button
+              type="button"
+              onClick={() => setEventsOpen(!eventsOpen)}
+              aria-expanded={eventsOpen}
+              aria-controls="tracking-session-events"
+              className="flex min-h-[44px] w-full items-center justify-between gap-2 px-3 py-2 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground"
+            >
+              <span className="flex items-center gap-2">
+                <History className="h-3.5 w-3.5" aria-hidden />
+                Événements de la session ({displayEvents.length})
+              </span>
+              <span>{eventsOpen ? "Masquer" : "Afficher"}</span>
+            </button>
+            {eventsOpen && (
+              <div id="tracking-session-events" className="nzoko-scroll max-h-64 overflow-y-auto border-t p-2">
+                {displayEvents.length === 0 ? (
+                  <p className="px-2 py-4 text-center text-xs text-muted-foreground">Aucun événement enregistré pour cette session.</p>
+                ) : (
+                  <ul className="space-y-1">
+                    {displayEvents.map((e) => (
+                      <li key={e.id} className="flex items-start gap-2 rounded-md px-2 py-1.5 text-xs">
+                        <span aria-hidden>{trackingEventEmoji(e.type)}</span>
+                        <span className="min-w-0 flex-1">
+                          <span className="font-medium">{TRACKING_EVENT_LABELS[e.type] ?? e.type}</span>
+                          {e.message ? <span className="text-muted-foreground"> — {e.message}</span> : null}
+                          <span className="block text-[10px] text-muted-foreground">{formatTime(e.createdAt)}</span>
+                        </span>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+            )}
+          </div>
 
           {/* Actions : trail + replay (exigence 32) */}
           <div className="mt-3 flex flex-wrap gap-2">

@@ -22,7 +22,6 @@
 
 import { db } from "@/lib/db";
 import { GPS_V5 } from "@/lib/gps-config";
-import { canTransition } from "@/lib/trip-state-machine";
 import { logTrackingEvent } from "@/services/tracking-events";
 import { applyGeofence, type GeofenceState } from "@/services/tracking-geofence";
 import {
@@ -32,7 +31,7 @@ import {
   type LastKnownState,
   type PositionVerdict,
 } from "@/services/tracking-validate";
-import { emitRealtime, maybeMarkArrival, routeLabelOf } from "@/services/tracking";
+import { emitRealtime, maybeMarkArrival } from "@/services/tracking";
 
 /** Position brute reçue du téléphone (déjà désérialisée par la route). */
 export interface IngestPoint {

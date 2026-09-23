@@ -311,7 +311,7 @@ export function useDriverGps({ sessionId, onConflict }: UseDriverGpsOptions) {
         await refreshQueued();
       }
     },
-    [newPositionId, readBatteryForSend, refreshQueued, stopWatchingInternal]
+    [readBatteryForSend, refreshQueued, stopWatchingInternal]
   );
 
   const handlePosition = useCallback(

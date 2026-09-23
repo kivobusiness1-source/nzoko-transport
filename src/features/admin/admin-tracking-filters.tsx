@@ -36,12 +36,20 @@ export interface RouteFilterOption {
   destinationCityName: string;
 }
 
+/** V5 (§18) — option chauffeur du filtre (déduite des sessions). */
+export interface DriverFilterOption {
+  id: string;
+  name: string;
+}
+
 /** Valeur du filtre agence (« all » = toutes). */
 export const AGENCY_FILTER_ALL = "all";
 /** Valeur du filtre état (« all » = tous). */
 export const STATUS_FILTER_ALL = "all";
 /** Valeur du filtre ligne (« all » = toutes). */
 export const ROUTE_FILTER_ALL = "all";
+/** V5 — valeur du filtre chauffeur (« all » = tous). */
+export const DRIVER_FILTER_ALL = "all";
 
 export type StatusFilterValue = typeof STATUS_FILTER_ALL | BusStatus;
 export type SimpleFilterValue = string; // agence / ligne : identifiant ou "all"
@@ -62,12 +70,15 @@ export function routeOptionLabel(route: RouteFilterOption): string {
 interface AdminTrackingFiltersProps {
   agencies: AgencyFilterOption[];
   routes: RouteFilterOption[];
+  drivers: DriverFilterOption[];
   agencyFilter: SimpleFilterValue;
   statusFilter: StatusFilterValue;
   routeFilter: SimpleFilterValue;
+  driverFilter: SimpleFilterValue;
   onAgencyFilterChange: (value: SimpleFilterValue) => void;
   onStatusFilterChange: (value: StatusFilterValue) => void;
   onRouteFilterChange: (value: SimpleFilterValue) => void;
+  onDriverFilterChange: (value: SimpleFilterValue) => void;
   layers: MapLayersState;
   onLayerToggle: (layer: keyof MapLayersState) => void;
   hasActiveFilters: boolean;
@@ -77,12 +88,15 @@ interface AdminTrackingFiltersProps {
 export function AdminTrackingFilters({
   agencies,
   routes,
+  drivers,
   agencyFilter,
   statusFilter,
   routeFilter,
+  driverFilter,
   onAgencyFilterChange,
   onStatusFilterChange,
   onRouteFilterChange,
+  onDriverFilterChange,
   layers,
   onLayerToggle,
   hasActiveFilters,
@@ -103,7 +117,7 @@ export function AdminTrackingFilters({
     <div className="rounded-xl border bg-card p-3 shadow-sm">
       {/* --- Filtres (marqueurs + liste + cadrage) --- */}
       <div className="flex flex-col gap-2 lg:flex-row lg:items-end">
-        <div className="grid flex-1 grid-cols-1 gap-2 sm:grid-cols-3">
+        <div className="grid flex-1 grid-cols-1 gap-2 sm:grid-cols-3 lg:grid-cols-4">
           <div className="flex flex-col gap-1">
             <Label htmlFor="tracking-filter-agency" className="text-xs font-medium text-muted-foreground">
               <Filter className="mr-1 inline h-3 w-3" aria-hidden="true" />
@@ -168,6 +182,30 @@ export function AdminTrackingFilters({
                 {routes.map((route) => (
                   <SelectItem key={route.id} value={route.id}>
                     {routeOptionLabel(route)}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+
+          {/* V5 (§18) — filtre chauffeur */}
+          <div className="flex flex-col gap-1">
+            <Label htmlFor="tracking-filter-driver" className="text-xs font-medium text-muted-foreground">
+              Chauffeur
+            </Label>
+            <Select value={driverFilter} onValueChange={onDriverFilterChange}>
+              <SelectTrigger
+                id="tracking-filter-driver"
+                className="h-10 w-full"
+                aria-label="Filtrer par chauffeur"
+              >
+                <SelectValue placeholder="Tous les chauffeurs" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value={DRIVER_FILTER_ALL}>Tous les chauffeurs</SelectItem>
+                {drivers.map((driver) => (
+                  <SelectItem key={driver.id} value={driver.id}>
+                    {driver.name}
                   </SelectItem>
                 ))}
               </SelectContent>
