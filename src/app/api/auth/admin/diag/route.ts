@@ -55,7 +55,14 @@ export async function GET(req: NextRequest) {
     const userTable = [...new Set(columns.map((c) => c.table_name))].find(
       (t) =>
         columns.some((c) => c.table_name === t && c.column_name === "email") &&
-        columns.some((c) => c.table_name === t && c.column_name === "role")
+        columns.some((c) => c.table_name === t && c.column_name === "role") &&
+        // différencie « user » de « invitation » (email+role aussi) : la
+        // table utilisateurs possède une colonne de vérification d'e-mail.
+        columns.some(
+          (c) =>
+            c.table_name === t &&
+            (c.column_name.toLowerCase() === "emailverified" || c.column_name.toLowerCase() === "email_verified")
+        )
     );
 
     if (!userTable) {
