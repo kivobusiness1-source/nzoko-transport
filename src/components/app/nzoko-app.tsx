@@ -8,7 +8,7 @@
 
 import { useEffect, useCallback, useState, useMemo, lazy, Suspense, type ReactNode } from "react";
 import Link from "next/link";
-import { Bus, Bell, LogOut, Home, Ticket, Search, UserRound, ChevronDown, Menu, Loader2, Map as MapIcon } from "lucide-react";
+import { Bus, Bell, LogOut, Home, Ticket, Search, UserRound, ChevronDown, Menu, Loader2, Map as MapIcon, Settings } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
@@ -19,6 +19,7 @@ import {
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Toaster } from "@/components/ui/sonner";
 import { toast } from "sonner";
+import { AccountSettingsDialog } from "@/components/app/account-settings-dialog";
 import { useApp, restorePersistedView } from "@/lib/store";
 import { api } from "@/lib/api-client";
 import { installGlobalErrorReporting } from "@/lib/client-telemetry";
@@ -153,6 +154,7 @@ function NotificationsMenu() {
 
 function UserMenu() {
   const { session, logout, setView } = useApp();
+  const [settingsOpen, setSettingsOpen] = useState(false);
   if (!session) return null;
   return (
     <DropdownMenu>
@@ -183,6 +185,9 @@ function UserMenu() {
         <DropdownMenuItem onClick={() => setView("workspace")} className="min-h-[40px]">
           <Home className="mr-2 h-4 w-4" /> Mon espace
         </DropdownMenuItem>
+        <DropdownMenuItem onClick={() => setSettingsOpen(true)} className="min-h-[40px]">
+          <Settings className="mr-2 h-4 w-4" /> Paramètres du compte
+        </DropdownMenuItem>
         <DropdownMenuSeparator />
         <DropdownMenuItem
           onClick={async () => {
@@ -194,6 +199,7 @@ function UserMenu() {
           <LogOut className="mr-2 h-4 w-4" /> Se déconnecter
         </DropdownMenuItem>
       </DropdownMenuContent>
+      <AccountSettingsDialog open={settingsOpen} onOpenChange={setSettingsOpen} />
     </DropdownMenu>
   );
 }

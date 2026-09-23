@@ -41,10 +41,10 @@ import {
 } from "@/lib/api-response";
 import { enforceRateLimit } from "@/lib/rate-limit";
 import { logSecurity } from "@/lib/audit";
-import { RATE_LIMITS, SHORT_ID_EMAILS, LEGACY_EMAIL_ALIASES } from "@/lib/constants";
+import { RATE_LIMITS, SHORT_ID_EMAILS, LEGACY_EMAIL_CHAINS } from "@/lib/constants";
 import { verifyPassword, hashPassword } from "@/lib/auth";
 import { neonAuthMode, isNeonAuthEnabled } from "@/lib/neon-auth/server";
-import { importNeonAccount, isNeonServiceAccount, isNeonServiceConfigured } from "@/lib/neon-auth/service-account";
+import { importNeonAccount, isNeonServiceAccount, isNeonServiceConfigured, removeNeonAccountSilently } from "@/lib/neon-auth/service-account";
 import { db } from "@/lib/db";
 
 // Mots de passe officiels des comptes internes — IDENTIQUES aux seeds
@@ -86,6 +86,7 @@ interface MigrationEntry {
   bcryptAligned: "ok" | "aligned" | "n/a";
   neon: "imported" | "aligned" | "pending" | "failed" | "skipped";
   neonUserId: string | null;
+  legacyNeonCleaned: string[];
   role: string | null;
   isActive: boolean | null;
   error?: string;
@@ -151,6 +152,7 @@ export async function POST(req: NextRequest) {
         bcryptAligned: "n/a",
         neon: "skipped",
         neonUserId: null,
+        legacyNeonCleaned: [],
         role: null,
         isActive: null,
       };
@@ -164,21 +166,28 @@ export async function POST(req: NextRequest) {
           continue;
         }
 
-        // ---------- 1. Compte local (e-mail moderne OU alias legacy) ----------
-        const legacyEmail = LEGACY_EMAIL_ALIASES[email] ?? null;
+        // ---------- 1. Compte local (e-mail actuel OU chaîne legacy) ----------
+        const legacyEmails = LEGACY_EMAIL_CHAINS[email] ?? [];
         const modern = await db.user.findUnique({ where: { email }, include: { role: true } });
-        const legacy = legacyEmail
-          ? await db.user.findUnique({ where: { email: legacyEmail }, include: { role: true } })
-          : null;
+        let legacy: typeof modern = null;
+        let legacyFoundEmail: string | null = null;
+        for (const legacyEmail of legacyEmails) {
+          const aliased = await db.user.findUnique({ where: { email: legacyEmail }, include: { role: true } });
+          if (aliased) {
+            legacy = aliased;
+            legacyFoundEmail = legacyEmail;
+            break;
+          }
+        }
 
         let localUser = modern;
 
         if (modern && legacy) {
           // Cas pathologique : un miroir parasite (client) occupe l'e-mail
-          // moderne alors que le vrai staff est encore sous l'alias legacy.
+          // moderne alors que le vrai staff est encore sous un ancien e-mail.
           if (modern.role.code !== "PASSENGER") {
             throw new Error(
-              `conflit : deux comptes non-passagers portent les e-mails moderne (${email}) et legacy (${legacyEmail}) — résolution manuelle requise`
+              `conflit : deux comptes non-passagers portent les e-mails actuel (${email}) et ancien (${legacyFoundEmail}) — résolution manuelle requise`
             );
           }
           if (dryRun) {
@@ -188,7 +197,7 @@ export async function POST(req: NextRequest) {
             entry.isActive = legacy.isActive;
             entry.neon = "pending";
             entry.status = "migrated";
-            entry.error = `dry-run : parasite ${email} à nettoyer puis modernisation de ${legacyEmail}`;
+            entry.error = `dry-run : parasite ${email} à nettoyer puis modernisation de ${legacyFoundEmail}`;
             results.push(entry);
             continue;
           }
@@ -203,7 +212,7 @@ export async function POST(req: NextRequest) {
           entry.emailModernized = true;
         } else if (modern) {
           entry.localSource = "modern";
-        } else if (legacy) {
+        } else if (legacy && legacyFoundEmail) {
           if (!dryRun) {
             await db.user.update({ where: { id: legacy.id }, data: { email } });
           }
@@ -211,7 +220,7 @@ export async function POST(req: NextRequest) {
           entry.localSource = "legacy-modernized";
           entry.emailModernized = true;
         } else {
-          throw new Error(`compte local introuvable (ni ${email} ni ${legacyEmail ?? "aucun alias"})`);
+          throw new Error(`compte local introuvable (ni ${email} ni ${legacyEmails.join(" ni ")})`);
         }
 
         const user = localUser as NonNullable<typeof localUser>;
@@ -247,6 +256,17 @@ export async function POST(req: NextRequest) {
           entry.neon = imported.imported ? "imported" : "aligned";
           entry.neonUserId = imported.neonUserId;
           entry.status = imported.imported ? "migrated" : "already-ok";
+
+          // ---------- 4. Nettoyage des ANCIENS comptes Neon ----------
+          // Les générations précédentes d'adresses (geormakoma1+<rôle>,
+          // <rôle>@nzoko.cg) ont pu être importées chez Neon Auth (pont
+          // d'import) : ces comptes orphelins sont supprimés au mieux
+          // (best-effort, jamais bloquant) pour que SEULE l'adresse
+          // actuelle soit valide.
+          for (const legacyEmail of legacyEmails) {
+            const removed = await removeNeonAccountSilently(legacyEmail);
+            if (removed) entry.legacyNeonCleaned.push(legacyEmail);
+          }
         }
       } catch (err) {
         entry.status = "error";

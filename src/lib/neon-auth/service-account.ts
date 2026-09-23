@@ -28,6 +28,7 @@
 // ============================================================
 
 import { neonAuthBaseUrl, isNeonAuthEnabled } from "./server";
+import { db } from "@/lib/db";
 
 const SERVICE_EMAIL = (process.env.NEON_AUTH_SERVICE_EMAIL ?? "").trim().toLowerCase();
 const SERVICE_PASSWORD = process.env.NEON_AUTH_SERVICE_PASSWORD ?? "";
@@ -120,6 +121,57 @@ async function serviceFetch(path: string, body: unknown): Promise<{ ok: boolean;
 
 // ---------- Provisioning ----------
 
+/**
+ * Identifiant Better Auth d'un compte managé, lu DIRECTEMENT dans la table
+ * neon_auth."user" de la base applicative (le service Neon Auth persiste
+ * ses utilisateurs dans la base du projet — constaté : updatedAt frais,
+ * comptes créés via /admin/create-user visibles en lecture SQL).
+ * Remplace l'endpoint /admin/list-users, RETIRÉ du service managé
+ * (2026-09-23 : 404 — Neon Auth a restreint les routes admin à
+ * create-user / update-user / set-user-password / remove-user /
+ * ban-user / list-user-sessions).
+ * SQLite (sandbox) : la table n'existe pas → null (le provisioning Neon
+ * n'y tourne pas, mode local).
+ */
+export async function neonManagedUserId(email: string): Promise<string | null> {
+  const url = process.env.DATABASE_URL ?? "";
+  if (!/^postgres(ql)?:\/\//.test(url)) return null;
+  const normalized = email.trim().toLowerCase();
+  const rows = (await db.$queryRawUnsafe(
+    `SELECT "id" FROM neon_auth."user" WHERE lower("email") = $1 LIMIT 1`,
+    normalized
+  )) as Array<{ id: string }>;
+  return rows[0]?.id ?? null;
+}
+
+/** Identifiant Better Auth d'un compte managé portant ce numéro E.164. */
+export async function neonManagedUserIdByPhone(phoneE164: string): Promise<string | null> {
+  const url = process.env.DATABASE_URL ?? "";
+  if (!/^postgres(ql)?:\/\//.test(url)) return null;
+  const rows = (await db.$queryRawUnsafe(
+    `SELECT "id" FROM neon_auth."user" WHERE "phoneNumber" = $1 LIMIT 1`,
+    phoneE164
+  )) as Array<{ id: string }>;
+  return rows[0]?.id ?? null;
+}
+
+/**
+ * Suppression best-effort d'un compte managé (nettoyage des anciens
+ * comptes lors d'une migration d'identifiants). Aucune erreur remontée :
+ * un compte Neon orphelin restant est inoffensif (aucun e-mail local ne
+ * pointe vers lui après migration).
+ */
+export async function removeNeonAccountSilently(email: string): Promise<boolean> {
+  try {
+    const userId = await neonManagedUserId(email);
+    if (!userId) return false;
+    const res = await serviceFetch("/admin/remove-user", { userId });
+    return res.ok;
+  } catch {
+    return false;
+  }
+}
+
 /** E-mail synthétique déterministe d'un compte créé par téléphone. */
 export function phoneSyntheticEmail(phoneE164: string): string {
   return `${phoneE164}@phone.nzoko.cg`;
@@ -143,14 +195,11 @@ export async function ensureNeonPhoneUser(phoneE164: string): Promise<EnsurePhon
     throw new Error("Compte de service Neon non configuré (NEON_AUTH_SERVICE_EMAIL / NEON_AUTH_SERVICE_PASSWORD).");
   }
 
-  // 1. Utilisateur existant avec ce numéro ?
-  const listed = await serviceFetch("/admin/list-users", {
-    query: { filterField: "phoneNumber", filterValue: phoneE164, filterOperator: "eq", limit: 1 },
-  });
-  if (listed.ok) {
-    const users = (listed.json.users ?? []) as Array<{ id?: string; phoneNumber?: string }>;
-    const match = users.find((u) => u.phoneNumber === phoneE164 && u.id);
-    if (match?.id) return { provisioned: false, neonUserId: match.id };
+  // 1. Utilisateur existant avec ce numéro ? (lecture directe de la table
+  //    managée — /admin/list-users n'existe plus sur le service)
+  const existingId = await neonManagedUserIdByPhone(phoneE164);
+  if (existingId) {
+    return { provisioned: false, neonUserId: existingId };
   }
 
   // 2/3. Création (idempotente : l'e-mail synthétique est unique par numéro)
@@ -173,7 +222,8 @@ export async function ensureNeonPhoneUser(phoneE164: string): Promise<EnsurePhon
   const message = String(created.json.message ?? "");
   // Déjà existant (e-mail synthétique) → numéro déjà provisionné
   if (created.status === 400 && /already exists/i.test(message)) {
-    return { provisioned: false, neonUserId: null };
+    const syntheticId = await neonManagedUserId(synthetic);
+    return { provisioned: false, neonUserId: syntheticId };
   }
   throw new Error(`Provisioning téléphone impossible (${created.status} ${code} ${message}).`);
 }
@@ -220,16 +270,14 @@ export async function importNeonAccount(input: {
   if (created.status === 400 && /already exists/i.test(message)) {
     // Compte Neon déjà existant (ex. client inscrit par e-mail) :
     // on aligne son mot de passe sur l'identifiant local vérifié.
-    const listed = await serviceFetch("/admin/list-users", {
-      query: { searchField: "email", searchValue: email, searchOperator: "contains", limit: 5 },
-    });
-    const users = (listed.json.users ?? []) as Array<{ id?: string; email?: string }>;
-    const match = users.find((u) => (u.email ?? "").toLowerCase() === email && u.id);
-    if (!match?.id) {
+    // (L'identifiant est lu directement dans la table managée —
+    // /admin/list-users n'existe plus sur le service.)
+    const existingId = await neonManagedUserId(email);
+    if (!existingId) {
       throw new Error("Compte Neon existant introuvable pour l'alignement du mot de passe.");
     }
     const updated = await serviceFetch("/admin/set-user-password", {
-      userId: match.id,
+      userId: existingId,
       newPassword: input.password,
     });
     if (!updated.ok) {
@@ -241,10 +289,10 @@ export async function importNeonAccount(input: {
     // manquante, champ inconnu) est non bloquant, l'alignement du mot de
     // passe a déjà réussi.
     await serviceFetch("/admin/update-user", {
-      userId: match.id,
+      userId: existingId,
       data: { emailVerified: true },
     });
-    return { imported: true, neonUserId: match.id };
+    return { imported: true, neonUserId: existingId };
   }
   const code = String(created.json.code ?? "");
   throw new Error(`Import du compte vers Neon impossible (${created.status} ${code} ${message}).`);

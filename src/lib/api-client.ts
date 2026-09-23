@@ -87,6 +87,18 @@ export const api = {
   },
 
   // ============================================================
+  // COMPTE (paramètres) — identité de connexion
+  // ============================================================
+  account: {
+    /** Change l'e-mail de connexion (exige le mot de passe actuel). Révoque toutes les sessions. */
+    changeEmail: (newEmail: string, currentPassword: string) =>
+      request<{ email: string; signedOut: boolean }>("/account/email", {
+        method: "POST",
+        body: JSON.stringify({ newEmail, currentPassword }),
+      }),
+  },
+
+  // ============================================================
   // PUBLIC — villes, recherche, sièges, carte ouverte
   // ============================================================
   cities: () => request<CityDTO[]>("/cities"),

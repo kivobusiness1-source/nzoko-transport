@@ -313,45 +313,72 @@ export const OTP = {
 
 // ---------- IDENTIFIANTS COURTS → E-MAILS RÉELS ----------
 // Alias de saisie acceptés au login (« superadmin » au lieu de l'e-mail
-// complet). Toutes les adresses de démo utilisent le plus-addressing Gmail :
-// elles sont uniques en base mais atterrissent TOUTES dans la même boîte
-// (geormakoma1@gmail.com) — consultable pour tester les e-mails réels
-// (codes de vérification, notifications).
+// complet). Conventions 2026-09 : la boîte unique de l'administration
+// NZOKO est kivobusiness1@gmail.com — les comptes internes utilisent le
+// plus-addressing Gmail (kivobusiness1+<rôle>@gmail.com) : adresses
+// UNIQUES pour Neon Auth (l'e-mail est l'identité), mais TOUTES livrées
+// dans la MÊME boîte kivobusiness1@gmail.com. Chaque membre peut ensuite
+// remplacer son adresse technique par son adresse personnelle dans
+// Paramètres du compte.
 export const SHORT_ID_EMAILS: Record<string, string> = {
-  superadmin: "geormakoma1+superadmin@gmail.com",
-  admin: "geormakoma1+admin@gmail.com",
-  manager: "geormakoma1+manager@gmail.com",
-  "manager.pn": "geormakoma1+manager@gmail.com",
-  agent: "geormakoma1+agent@gmail.com",
-  "agent.pn": "geormakoma1+agent@gmail.com",
-  checker: "geormakoma1+checker@gmail.com",
-  "checker.pn": "geormakoma1+checker@gmail.com",
-  comptable: "geormakoma1+comptable@gmail.com",
-  chauffeur: "geormakoma1+chauffeur@gmail.com",
-  "chauffeur.jean": "geormakoma1+chauffeur@gmail.com",
-  support: "geormakoma1+support@gmail.com",
+  superadmin: "kivobusiness1+superadmin@gmail.com",
+  admin: "kivobusiness1+admin@gmail.com",
+  manager: "kivobusiness1+manager@gmail.com",
+  "manager.pn": "kivobusiness1+manager@gmail.com",
+  agent: "kivobusiness1+agent@gmail.com",
+  "agent.pn": "kivobusiness1+agent@gmail.com",
+  checker: "kivobusiness1+checker@gmail.com",
+  "checker.pn": "kivobusiness1+checker@gmail.com",
+  comptable: "kivobusiness1+comptable@gmail.com",
+  chauffeur: "kivobusiness1+chauffeur@gmail.com",
+  "chauffeur.jean": "kivobusiness1+chauffeur@gmail.com",
+  support: "kivobusiness1+support@gmail.com",
 } as const;
 
-// ---------- E-MAILS ACTUELS → ANCIENS E-MAILS (@nzoko.cg) ----------
-// Les comptes internes de la base de PRODUCTION (Neon PostgreSQL, migrée
-// avant le renommage des seeds) portent les ANCIENS e-mails @nzoko.cg.
-// Cet alias permet au pont d'import (/api/auth/login, mode Neon) de
-// retrouver le compte local quand l'utilisateur saisit la convention
-// ACTUELLE (geormakoma1+<role>@gmail.com) : le compte est importé vers
-// Neon Auth avec l'e-mail SAISI et son e-mail local est modernisé au
-// passage (renommage) — les deux conventions fonctionnent ensuite.
-// Carte FIXE et contrôlée serveur : aucune énumération possible (les
-// réponses d'échec restent génériques).
-export const LEGACY_EMAIL_ALIASES: Record<string, string> = {
-  "geormakoma1+superadmin@gmail.com": "superadmin@nzoko.cg",
-  "geormakoma1+admin@gmail.com": "admin@nzoko.cg",
-  "geormakoma1+manager@gmail.com": "manager.pn@nzoko.cg",
-  "geormakoma1+agent@gmail.com": "agent.pn@nzoko.cg",
-  "geormakoma1+checker@gmail.com": "checker.pn@nzoko.cg",
-  "geormakoma1+comptable@gmail.com": "comptable@nzoko.cg",
-  "geormakoma1+chauffeur@gmail.com": "chauffeur.jean@nzoko.cg",
-  "geormakoma1+support@gmail.com": "support@nzoko.cg",
+// ---------- E-MAILS ACTUELS → ANCIENS (chaînes de migration) ----------
+// Les bases existantes portent les adresses des conventions PASSÉES :
+//  1. geormakoma1+<rôle>@gmail.com (plus-addressing 2026-09-17 → 23) ;
+//  2. <rôle>@nzoko.cg (migration initiale de la production).
+// Cette carte donne, pour chaque e-mail ACTUEL (kivobusiness1), la liste
+// ORDONNÉE des anciennes adresses à essayer — le pont d'import
+// (/api/auth/login) et la migration (migrate-staff) retrouvent ainsi le
+// compte local quelle que soit la génération de la base, puis le
+// modernisent (renommage) à l'occasion.
+export const LEGACY_EMAIL_CHAINS: Record<string, string[]> = {
+  "kivobusiness1+superadmin@gmail.com": ["geormakoma1+superadmin@gmail.com", "superadmin@nzoko.cg"],
+  "kivobusiness1+admin@gmail.com": ["geormakoma1+admin@gmail.com", "admin@nzoko.cg"],
+  "kivobusiness1+manager@gmail.com": ["geormakoma1+manager@gmail.com", "manager.pn@nzoko.cg"],
+  "kivobusiness1+agent@gmail.com": ["geormakoma1+agent@gmail.com", "agent.pn@nzoko.cg"],
+  "kivobusiness1+checker@gmail.com": ["geormakoma1+checker@gmail.com", "checker.pn@nzoko.cg"],
+  "kivobusiness1+comptable@gmail.com": ["geormakoma1+comptable@gmail.com", "comptable@nzoko.cg"],
+  "kivobusiness1+chauffeur@gmail.com": ["geormakoma1+chauffeur@gmail.com", "chauffeur.jean@nzoko.cg"],
+  "kivobusiness1+support@gmail.com": ["geormakoma1+support@gmail.com", "support@nzoko.cg"],
 } as const;
+
+// Index inverse : N'IMPORTE QUELLE ancienne adresse (ou un alias court
+// historique) → l'e-mail canonique ACTUEL du compte. Permet à un membre
+// qui saisit une ANCIENNE adresse de retrouver son compte (le pont
+// canonise l'entrée avant toute recherche).
+const REVERSE_LEGACY_EMAILS: Map<string, string> = (() => {
+  const map = new Map<string, string>();
+  for (const [current, legacyList] of Object.entries(LEGACY_EMAIL_CHAINS)) {
+    for (const legacy of legacyList) {
+      if (!map.has(legacy)) map.set(legacy, current);
+    }
+  }
+  return map;
+})();
+
+/**
+ * Canonise une adresse saisie : renvoie l'e-mail ACTUEL du compte interne
+ * si l'adresse (ancienne génération) est connue, sinon null (adresse
+ * inconnue du référentiel staff — clients, etc.).
+ */
+export function canonicalStaffEmail(email: string): string | null {
+  const normalized = email.trim().toLowerCase();
+  if (LEGACY_EMAIL_CHAINS[normalized]) return normalized;
+  return REVERSE_LEGACY_EMAILS.get(normalized) ?? null;
+}
 
 // Client inactif (intelligence fidélisation) — seuil en jours
 export const INACTIVE_CLIENT_DAYS = 60;
