@@ -398,6 +398,9 @@ export const RATE_LIMITS = {
   // Maintenance GPS (watchdog + rétention) — scheduler mini-service 5 min +
   // cron Vercel : ~12/h en service, marge pour les reprises/manuels admin.
   trackingMaintenance: { limit: 30, windowMs: 60 * 60 * 1000 },
+  // Migration proactive des comptes internes vers Neon Auth (opération
+  // admin one-shot protégée par secret partagé — dry-run + exécutions).
+  staffMigration: { limit: 20, windowMs: 60 * 60 * 1000 },
 } as const;
 
 // ---------- SUIVI GPS TEMPS RÉEL (module tracking) ----------

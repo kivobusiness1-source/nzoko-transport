@@ -36,6 +36,7 @@ import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "
 import { Input } from "@/components/ui/input";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { api, ApiClientError } from "@/lib/api-client";
+import { SHORT_ID_EMAILS } from "@/lib/constants";
 import { neonAuthCall, neonAuthClient, neonAuthErrorMessage } from "@/lib/neon-auth/client";
 import { useApp } from "@/lib/store";
 import type { AuthProvidersDTO, RegisterResult, SessionUser } from "@/types";
@@ -231,12 +232,18 @@ export default function AuthScreen({ defaultTab = "login" }: { defaultTab?: "log
       }
 
       // ---- Mode Neon : session centralisée ----
-      // 1. Si l'identifiant est une adresse e-mail → tentative directe SDK.
-      //    (Identifiant court « superadmin » / téléphone → pont d'abord.)
-      if (identifier.includes("@")) {
+      // 1. Résolution de l'identifiant : adresse e-mail directe OU
+      //    identifiant court interne (« superadmin »…) complété vers
+      //    l'e-mail réel du compte — si le compte a déjà été migré vers
+      //    Neon Auth, la connexion est DIRECTE (aucun pont, aucun bcrypt
+      //    local : identité centralisée uniquement).
+      const isEmail = identifier.includes("@");
+      const shortEmail = !isEmail ? SHORT_ID_EMAILS[identifier.toLowerCase()] ?? null : null;
+      const neonEmail = isEmail ? identifier.toLowerCase() : shortEmail;
+      if (neonEmail) {
         const { error: sdkError } = await neonAuthCall(() =>
           neonAuthClient.signIn.email({
-            email: identifier.toLowerCase(),
+            email: neonEmail,
             password: values.password,
           })
         );
@@ -254,6 +261,7 @@ export default function AuthScreen({ defaultTab = "login" }: { defaultTab?: "log
 
       // 2. Pont d'import : le serveur vérifie l'ancien mot de passe local
       //    et crée/aligne le compte Neon avec ce même mot de passe.
+      //    (Téléphone, identifiant court inconnu, ou compte non migré.)
       const bridge = await api.auth.loginBridge(identifier, values.password);
 
       // 3. Connexion Neon avec l'e-mail résolu par le pont.

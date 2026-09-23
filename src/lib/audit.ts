@@ -45,7 +45,8 @@ export interface SecurityEvent {
     | "ACCESS_DENIED"
     | "SUSPICIOUS"
     | "VALIDATION_ERROR"
-    | "WEBHOOK_REJECTED";
+    | "WEBHOOK_REJECTED"
+    | "ADMIN_ACTION";
   ipAddress?: string | null;
   userAgent?: string | null;
   details?: Record<string, unknown>;
