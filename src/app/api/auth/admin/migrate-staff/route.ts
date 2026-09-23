@@ -247,6 +247,18 @@ export async function POST(req: NextRequest) {
           entry.neon = "pending";
           entry.status = "migrated";
         } else {
+          // ---------- 4. Nettoyage des ANCIENS comptes Neon (AVANT l'import) ----------
+          // Les générations précédentes d'adresses (geormakoma1+<rôle>,
+          // <rôle>@nzoko.cg) ont pu être importées chez Neon Auth (pont
+          // d'import). Elles sont supprimées d'abord : un ancien compte
+          // portant le MÊME numéro de téléphone ferait échouer la création
+          // du nouveau (conflit d'unicité phoneNumber → 500, constaté sur
+          // superadmin le 2026-09-23). Best-effort, jamais bloquant.
+          for (const legacyEmail of legacyEmails) {
+            const removed = await removeNeonAccountSilently(legacyEmail);
+            if (removed) entry.legacyNeonCleaned.push(legacyEmail);
+          }
+
           const imported = await importNeonAccount({
             email,
             password,
@@ -256,17 +268,6 @@ export async function POST(req: NextRequest) {
           entry.neon = imported.imported ? "imported" : "aligned";
           entry.neonUserId = imported.neonUserId;
           entry.status = imported.imported ? "migrated" : "already-ok";
-
-          // ---------- 4. Nettoyage des ANCIENS comptes Neon ----------
-          // Les générations précédentes d'adresses (geormakoma1+<rôle>,
-          // <rôle>@nzoko.cg) ont pu être importées chez Neon Auth (pont
-          // d'import) : ces comptes orphelins sont supprimés au mieux
-          // (best-effort, jamais bloquant) pour que SEULE l'adresse
-          // actuelle soit valide.
-          for (const legacyEmail of legacyEmails) {
-            const removed = await removeNeonAccountSilently(legacyEmail);
-            if (removed) entry.legacyNeonCleaned.push(legacyEmail);
-          }
         }
       } catch (err) {
         entry.status = "error";

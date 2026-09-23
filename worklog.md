@@ -1545,3 +1545,27 @@ Stage Summary:
 - **LA CONNEXION STAFF PRODUCTION EST RÉPARÉE ET VALIDÉE E2E** — les 3 verrous (exceptions SDK, e-mails legacy, compte de service non vérifié/admin) sont levés. L'auto-configuration demandée (« va et configure ça ce qu'il faut ») est effective : le compte de service est vérifié + admin SANS aucune action console manuelle.
 - Identifiants prod : les TROIS conventions fonctionnent désormais (geormakoma1+superadmin@gmail.com OU superadmin OU superadmin@nzoko.cg / Nzoko@2026! — première connexion importe et modernise le compte).
 - Carte publique prod : fonctionnelle (Task 40 + vérifs Task 41). Carte admin GPS : fonctionnelle. Restent cosmétiques : géométries OSRM (0/6 en prod — repli ville-à-ville propre) et flotte démo absente en prod (0 bus).
+
+---
+Task ID: 43
+Agent: main (Z.ai Code) — orchestrateur
+Task: REPRISE DE L'AUTHENTIFICATION DE ZÉRO (demande propriétaire) — boîte unique kivobusiness1@gmail.com, changement d'e-mail dans les paramètres, clients par e-mail + code de vérification. Question utilisateur en cours : « et je me connecte comment ? ».
+
+Work Log:
+- ENVIRONNEMENT : 5e rollback sandbox détecté (.env réduit à 1 ligne) → .env + mini-service/tracking-realtime/.env reconstruits (TRACKING_SECRET partagé régénéré), serveurs relancés.
+- INCIDENT NEON AUTH DÉCOUVERT ET RÉSOLU : le service managé a changé (2026-09-23) — /admin/list-users et /admin/get-user N'EXISTENT PLUS (404 null), codes d'erreur simplifiés (401 silencieux), et le rôle admin du compte de service avait été RÉINITIALISÉ (role user) entre-temps. Diagnostic : route /api/auth/admin/diag (lecture seule du schéma neon_auth, secret partagé) + sondages S2S. Découverte clé : la table neon_auth."user" de la base applicative EST le stockage du service (updatedAt frais, comptes créés visibles en SQL) → le garde-fou prod a re-promu le compte service admin (rôle revenu), et la lecture directe remplace list-users. Validé EMPIRIQUEMENT (scripts/test-neon-admin-contract.ts 5/5) : create-user, update-user AVEC CHANGEMENT D'E-MAIL (+emailVerified), sign-in avec le nouvel e-mail + ancien mot de passe, set-user-password, remove-user.
+- REFONTE DES IDENTIFIANTS STAFF (boîte unique kivobusiness1@gmail.com) : adresses techniques kivobusiness1+<rôle>@gmail.com (plus-addressing → toutes livrées dans la même boîte), SHORT_ID_EMAILS migrés, LEGACY_EMAIL_CHAINS (cascade kivobusiness1+<rôle> → geormakoma1+<rôle> → <rôle>@nzoko.cg) + canonicalStaffEmail() — une ancienne adresse saisie est canonisée vers l'actuelle (client + pont + migration).
+- PONT /api/auth/login : canonisation + cascade des générations d'adresses ; résolution des identifiants courts côté CLIENT (auth-screen) → connexion Neon DIRECTE (signIn.email + exchange) pour les comptes migrés, repli pont intact.
+- service-account.ts : list-users remplacé par lecture directe de la table managée (neonManagedUserId / neonManagedUserIdByPhone), removeNeonAccountSilently (nettoyage best-effort), ensureNeonPhoneUser et importNeonAccount adaptés.
+- PARAMÈTRES DU COMPTE (NOUVEAU, demande explicite) : POST /api/account/email — changement de l'e-mail de connexion (mot de passe actuel exigé : vérifié chez Neon en prod, bcrypt en sandbox ; unicités locale + managée ; emailVerified préservé ; révocation de toutes les sessions) + dialogue dans le menu utilisateur (account-settings-dialog.tsx) : adresse actuelle → nouvelle adresse → confirmation mot de passe → toast + déconnexion → reconnexion avec la nouvelle adresse.
+- Seed + emails d'agences alignés kivobusiness1 ; base sandbox renommée (scripts/rename-staff-emails-sandbox.ts, 8/8).
+- MIGRATION PROD EXÉCUTÉE : dry-run 8/8 (cascade legacy OK, bcrypt ok, rôles corrects) → réel : 7/8 puis incident superadmin (500 create-user : l'ANCIEN compte Neon geormakoma1+superadmin — importé Task 41-b avec le MÊME phoneNumber — entrait en conflit d'unicité) → ancien compte supprimé manuellement → relance : 8/8 MIGRÉS. Ordre de la route corrigé depuis (nettoyage AVANT import).
+- VALIDÉ E2E PROD (navigateur) : superadmin / Nzoko@2026! → sign-in Neon DIRECT 200 (aucun pont) → exchange 200 → dashboard « Aimé Directeur — Super Administrateur » ; agent / Agent@2026! → idem (« Bénédicte Guichet — Agent de guichet »). Zéro erreur console.
+- VALIDÉ E2E SANDBOX : connexion identifiant court, changement d'e-mail dans les DEUX sens (→ adresse perso → reconnexion → retour à l'adresse technique), déconnexion auto après changement.
+
+Stage Summary:
+- L'AUTHENTIFICATION EST REFAITE DE ZÉRO ET FONCTIONNE : les 8 comptes internes vivent chez Neon Auth (kivobusiness1+<rôle>@gmail.com, tous emailVerified), connexion DIRECTE par identifiant court + mot de passe officiel, échange de session, rôles/permissions conservés.
+- Chaque membre peut changer son adresse technique pour son adresse personnelle : menu utilisateur → Paramètres du compte (mot de passe exigé, reconnexion immédiate).
+- Clients : inscription par e-mail + code de vérification (flux signUp → code → verifyEmail déjà en place, livré par Neon Auth nativement).
+- Compte de service geormakoma1+service@gmail.com : admin + vérifié (outil de provisioning — n'est pas un compte utilisateur).
+- Anciennes adresses (geormakoma1+<rôle>, <rôle>@nzoko.cg) : toujours acceptées à la connexion (canonisation automatique).
