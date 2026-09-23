@@ -43,9 +43,14 @@ export async function GET(req: NextRequest) {
     }
 
     // 1. Introspection du schéma neon_auth : tables + colonnes de la table user
-    const columns: Array<{ table_name: string; column_name: string }> = await db.$queryRawUnsafe(
-      `SELECT table_name, column_name FROM information_schema.columns WHERE table_schema = 'neon_auth' ORDER BY table_name, ordinal_position`
-    );
+    let columns: Array<{ table_name: string; column_name: string }> = [];
+    try {
+      columns = await db.$queryRawUnsafe(
+        `SELECT table_name, column_name FROM information_schema.columns WHERE table_schema = 'neon_auth' ORDER BY table_name, ordinal_position`
+      );
+    } catch (err) {
+      return ok({ step: "introspection", error: (err instanceof Error ? err.message : String(err)).slice(0, 300) });
+    }
 
     const userTable = [...new Set(columns.map((c) => c.table_name))].find(
       (t) =>
@@ -68,11 +73,17 @@ export async function GET(req: NextRequest) {
     const createdAtCol = col("createdat");
 
     // 2. Lecture des comptes managés (e-mail, rôle, vérification, dates)
-    const users: Array<Record<string, unknown>> = await db.$queryRawUnsafe(
+    let users: Array<Record<string, unknown>> = [];
+    let usersError: string | null = null;
+    try {
+      users = await db.$queryRawUnsafe(
       `SELECT "${col("email")}" AS email, "${col("role")}" AS role, "${verifiedCol}" AS "emailVerified", ` +
         `"${col("id")}" AS id, "${createdAtCol}" AS "createdAt", "${updatedAtCol}" AS "updatedAt" ` +
         `FROM neon_auth."${userTable}" ORDER BY "${updatedAtCol}" DESC LIMIT 40`
-    );
+      );
+    } catch (err) {
+      usersError = (err instanceof Error ? err.message : String(err)).slice(0, 300);
+    }
 
     // 3. Sonde du service Auth (même origine S2S que le compte de service)
     let serviceProbe: Record<string, unknown> = { note: "sonde désactivée" };
@@ -97,6 +108,7 @@ export async function GET(req: NextRequest) {
       tables: [...new Set(columns.map((c) => c.table_name))],
       userColumns: columns.filter((c) => c.table_name === userTable).map((c) => c.column_name),
       users,
+      usersError,
       serviceProbe,
     });
   } catch (err) {
