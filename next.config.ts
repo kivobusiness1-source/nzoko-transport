@@ -7,9 +7,12 @@ import type { NextConfig } from "next";
 // + 'strict-dynamic') — elle ne doit JAMAIS figurer ici : deux
 // en-têtes CSP seraient tous deux appliqués par le navigateur.
 //
-// Permissions-Policy : camera=(self) — le scanner QR du CHECKER
-// (BarcodeDetector/getUserMedia) exige la caméra sur notre origine
-// (conflit détecté par l'audit d'architecture, point 18).
+// Permissions-Policy : camera=(self) pour le scanner QR du CHECKER
+// (BarcodeDetector/getUserMedia, audit d'architecture point 18) et
+// geolocation=(self) pour le suivi GPS chauffeur + « agences autour
+// de moi ». ⚠️ geolocation=() bloquait TOUTE géolocalisation au niveau
+// navigateur (popup d'autorisation jamais affichée, refus immédiat,
+// aucun réglage utilisateur ne pouvait l'outrepasser) — corrigé.
 //
 // HSTS actif (HTTPS obligatoire en production derrière le proxy).
 // ============================================================
@@ -18,7 +21,7 @@ const securityHeaders = [
   { key: "X-Frame-Options", value: "DENY" },
   { key: "X-Content-Type-Options", value: "nosniff" },
   { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },
-  { key: "Permissions-Policy", value: "camera=(self), microphone=(), geolocation=(), payment=()" },
+  { key: "Permissions-Policy", value: "camera=(self), microphone=(), geolocation=(self), payment=()" },
   { key: "X-XSS-Protection", value: "1; mode=block" },
   { key: "Cross-Origin-Opener-Policy", value: "same-origin" },
 ];

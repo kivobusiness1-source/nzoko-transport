@@ -147,6 +147,34 @@ export function DriverGpsPanel({ trips }: { trips: DriverTripDTO[] }) {
     };
   }, [loadingSession, session]);
 
+  // §44 — le compteur « Points enregistrés » vient de l'état serveur
+  // (pointsCount) : il est figé à sa valeur de démarrage tant qu'on ne
+  // le rafraîchit pas. Après CHAQUE envoi réussi (lastSentAt change),
+  // on relit la session (GET léger) et on remet à jour le compteur —
+  // et par la même occasion le statut (pause/reprise/fin côté serveur).
+  const lastSentRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (!gps.lastSentAt || gps.lastSentAt === lastSentRef.current) return;
+    lastSentRef.current = gps.lastSentAt;
+    const current = sessionRef.current;
+    if (!current || current.status !== "ACTIVE") return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const fresh = await api.tracking.session();
+        // La session serveur peut avoir changé (fin watchdog) : on ne
+        // remplace QUE la même session — le conflit éventuel est déjà
+        // géré par la voie normale (409/404 à l'envoi suivant).
+        if (!cancelled && fresh && fresh.id === current.id) setSession(fresh);
+      } catch {
+        // Best-effort : le compteur se rafraîchira au prochain envoi.
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [gps.lastSentAt]);
+
   // Diagnostic ACTIF du blocage localisation : celui mémorisé après un
   // clic refusé, sinon recalculé si le watch GPS a reçu un refus, ou si
   // la permission est connue comme refusée AU REPOS (guidance immédiate
