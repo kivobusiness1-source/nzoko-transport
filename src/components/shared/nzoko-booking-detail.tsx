@@ -5,7 +5,7 @@
 // Timeline : réservée → payée → billet émis → embarquée
 // ============================================================
 
-import { Bus, Calendar, Clock, CreditCard, Phone, Ticket as TicketIcon, User, XCircle } from "lucide-react";
+import { Bus, Calendar, Clock, CreditCard, MapPin, Phone, Ticket as TicketIcon, User, XCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 import { BookingStatusBadge, PaymentStatusBadge } from "@/components/shared/nzoko-badge";
@@ -138,6 +138,9 @@ export function NzokoBookingDetail({ detail, onCancel, cancelLoading, className 
         <InfoRow icon={User} label="Nom" value={`${detail.passenger.firstName} ${detail.passenger.lastName}`} />
         <InfoRow icon={Phone} label="Téléphone" value={detail.passenger.phone} />
         <InfoRow icon={TicketIcon} label="Siège" value={`${detail.seat.seatNumber} (${detail.seat.type === "VIP" ? "VIP" : "Standard"})`} />
+        {detail.dropOffNeighborhood && (
+          <InfoRow icon={MapPin} label="Arrêt demandé" value={`${detail.dropOffNeighborhood.name} (${detail.dropOffNeighborhood.cityName})`} />
+        )}
       </section>
 
       <Separator />

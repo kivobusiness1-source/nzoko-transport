@@ -5,7 +5,7 @@
 // ============================================================
 
 import { useState } from "react";
-import { ArrowRight, CheckCircle2, ChevronDown, ChevronUp, Hourglass } from "lucide-react";
+import { ArrowRight, CheckCircle2, ChevronDown, ChevronUp, Hourglass, MapPin } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
@@ -83,6 +83,13 @@ export function DriverTripCard({ trip }: { trip: DriverTripDTO }) {
                       <p className="font-mono text-[11px] text-muted-foreground">
                         {p.reference} · Siège {p.seatNumber}
                       </p>
+                      {/* Quartier d'arrêt choisi à la réservation — info
+                          chauffeur pour l'organisation de la descente. */}
+                      {p.dropOffNeighborhoodName && (
+                        <p className="mt-0.5 inline-flex items-center gap-1 rounded-full bg-primary/10 px-2 py-0.5 text-[10px] font-semibold text-primary">
+                          <MapPin className="size-3" aria-hidden /> Arrêt : {p.dropOffNeighborhoodName}
+                        </p>
+                      )}
                     </div>
                     {p.boarded ? (
                       <span className="flex shrink-0 items-center gap-1 text-xs font-semibold text-emerald-600">

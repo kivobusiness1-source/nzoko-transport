@@ -17,7 +17,7 @@ import type {
   FavoriteRouteDTO, FavoriteRouteInput, SpendingDTO, LoyaltyDTO, ComplaintDTO, ComplaintDetailDTO,
   ComplaintCreateInput, ComplaintReplyInput, AdminClientDTO, AdminComplaintDTO, AdminLoyaltyStatsDTO, CampaignInput,
   PromoCodeValidationDTO, RedemptionRequestDTO,
-  AgencyNearbyResultDTO, AgencyRecommendationDTO, NeighborhoodDTO, KnowledgeBaseDTO,
+  AgencyNearbyResultDTO, AgencyRecommendationDTO, NeighborhoodDTO, KnowledgeBaseDTO, PublicNeighborhoodDTO,
   AIQuestionLogDTO, AIQuestionsStatsDTO,
 } from "@/types";
 import type { ComplaintStatus, ExpenseCategory, PaymentProvider, PermissionCode, RewardKey, RoleCode } from "@/lib/constants";
@@ -103,6 +103,11 @@ export const api = {
   // ============================================================
   cities: () => request<CityDTO[]>("/cities"),
 
+  /** Quartiers d'arrêt ACTIFS d'une ville (configurés dans l'admin) —
+   *  liste publique légère pour le tunnel de réservation. */
+  neighborhoods: (cityId: string) =>
+    request<PublicNeighborhoodDTO[]>(`/neighborhoods?cityId=${encodeURIComponent(cityId)}`),
+
   /** V4 GPS — données de la carte publique (villes, agences, lignes + tracés, bus si activés). */
   mapPublic: () => request<MapPublicDTO>("/map/public"),
 
@@ -116,7 +121,7 @@ export const api = {
   // RÉSERVATIONS
   // ============================================================
   bookings: {
-    create: (input: { tripId: string; seatId: string; channel?: "WEB" | "AGENT"; promoCode?: string; passenger: { firstName: string; lastName: string; phone: string; email?: string; documentNumber?: string } }) =>
+    create: (input: { tripId: string; seatId: string; channel?: "WEB" | "AGENT"; promoCode?: string; dropOffNeighborhoodId?: string; passenger: { firstName: string; lastName: string; phone: string; email?: string; documentNumber?: string } }) =>
       request<BookingDTO>("/bookings", { method: "POST", body: JSON.stringify(input) }),
     validatePromo: (code: string, tripId: string) =>
       request<PromoCodeValidationDTO>("/bookings/promo/validate", { method: "POST", body: JSON.stringify({ code, tripId }) }),

@@ -3,20 +3,26 @@
 // ============================================================
 // NZOKO — Étape 4 : informations passager (react-hook-form + Zod)
 // La création de la réservation (verrou du siège) est déléguée au parent.
+// Inclut le choix OPTIONNEL du quartier d'arrêt à la destination
+// (quartiers configurés dans l'admin → Parc → Quartiers).
 // ============================================================
 
+import { useEffect, useState } from "react";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useForm } from "react-hook-form";
 import { z } from "zod";
-import { Bus, IdCard, Lock, Mail, Phone, Sparkles, User } from "lucide-react";
+import { Bus, IdCard, Lock, Mail, MapPin, Phone, Sparkles, User } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Skeleton } from "@/components/ui/skeleton";
+import { api } from "@/lib/api-client";
 import { formatMoney, formatTime } from "@/lib/format";
 import { formatPhone } from "@/lib/phone";
 import { useApp } from "@/lib/store";
-import type { PassengerInput, SeatMapDTO, TripSearchDTO } from "@/types";
+import type { PassengerInput, PublicNeighborhoodDTO, SeatMapDTO, TripSearchDTO } from "@/types";
 
 const passengerSchema = z.object({
   firstName: z.string().trim().min(2, "Le prénom est requis (2 caractères minimum)."),
@@ -46,7 +52,7 @@ interface PassengerStepProps {
   seatMap: SeatMapDTO;
   seatId: string | null;
   submitting: boolean;
-  onSubmit: (passenger: PassengerInput) => void;
+  onSubmit: (passenger: PassengerInput, dropOffNeighborhoodId?: string) => void;
 }
 
 export function PassengerStep({ trip, seatMap, seatId, submitting, onSubmit }: PassengerStepProps) {
@@ -54,6 +60,36 @@ export function PassengerStep({ trip, seatMap, seatId, submitting, onSubmit }: P
   const session = useApp((s) => s.session);
   // Client connecté : formulaire pré-rempli (éditable) depuis la session.
   const connectedClient = session?.role === "PASSENGER" ? session : null;
+
+  // Quartiers d'arrêt de la ville de DESTINATION (config admin). null =
+  // chargement en cours, [] = aucun quartier configuré (sélecteur caché).
+  const [neighborhoods, setNeighborhoods] = useState<PublicNeighborhoodDTO[] | null>(null);
+  const [neighborhoodId, setNeighborhoodId] = useState<string>("");
+
+  // Réinitialisation au changement de voyage — pattern React officiel
+  // « ajuster l'état pendant le rendu » (pas d'effet, pas de cascade).
+  const [lastCityId, setLastCityId] = useState(trip.destinationCityId);
+  if (lastCityId !== trip.destinationCityId) {
+    setLastCityId(trip.destinationCityId);
+    setNeighborhoods(null);
+    setNeighborhoodId("");
+  }
+
+  // Chargement des quartiers actifs de la ville de destination.
+  useEffect(() => {
+    let cancelled = false;
+    api
+      .neighborhoods(trip.destinationCityId)
+      .then((list) => {
+        if (!cancelled) setNeighborhoods(list);
+      })
+      .catch(() => {
+        if (!cancelled) setNeighborhoods([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [trip.destinationCityId]);
 
   const form = useForm<PassengerFormValues>({
     resolver: zodResolver(passengerSchema),
@@ -67,13 +103,16 @@ export function PassengerStep({ trip, seatMap, seatId, submitting, onSubmit }: P
   });
 
   const submit = (values: PassengerFormValues) => {
-    onSubmit({
-      firstName: values.firstName.trim(),
-      lastName: values.lastName.trim(),
-      phone: values.phone.replace(/[\s.-]/g, ""),
-      email: values.email?.trim() ? values.email.trim() : undefined,
-      documentNumber: values.documentNumber?.trim() ? values.documentNumber.trim() : undefined,
-    });
+    onSubmit(
+      {
+        firstName: values.firstName.trim(),
+        lastName: values.lastName.trim(),
+        phone: values.phone.replace(/[\s.-]/g, ""),
+        email: values.email?.trim() ? values.email.trim() : undefined,
+        documentNumber: values.documentNumber?.trim() ? values.documentNumber.trim() : undefined,
+      },
+      neighborhoodId || undefined
+    );
   };
 
   return (
@@ -220,6 +259,41 @@ export function PassengerStep({ trip, seatMap, seatId, submitting, onSubmit }: P
                   )}
                 />
               </div>
+
+              {/* Quartier d'arrêt à la destination — quartiers configurés
+                  dans l'admin (Parc → Quartiers). Optionnel : sans choix,
+                  le passager descend à l'arrêt principal. Caché si la
+                  ville n'a aucun quartier actif configuré. */}
+              {neighborhoods === null ? (
+                <Skeleton className="h-[76px] w-full rounded-lg" aria-label="Chargement des quartiers d'arrêt" />
+              ) : neighborhoods.length > 0 ? (
+                <div className="rounded-lg border bg-muted/30 p-3 sm:p-4">
+                  <label htmlFor="drop-off-neighborhood" className="flex items-center gap-1.5 text-sm font-medium">
+                    <MapPin className="size-4 shrink-0 text-primary" aria-hidden />
+                    Quartier d&apos;arrêt à {trip.destinationCityName}{" "}
+                    <span className="font-normal text-muted-foreground">(optionnel)</span>
+                  </label>
+                  <Select value={neighborhoodId || undefined} onValueChange={setNeighborhoodId}>
+                    <SelectTrigger
+                      id="drop-off-neighborhood"
+                      className="mt-2 h-11 w-full bg-background"
+                      aria-label={`Quartier d'arrêt à ${trip.destinationCityName}`}
+                    >
+                      <SelectValue placeholder="Arrêt principal (gare / agence)" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {neighborhoods.map((n) => (
+                        <SelectItem key={n.id} value={n.id} className="min-h-[40px]">
+                          {n.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <p className="mt-1.5 text-[11px] text-muted-foreground">
+                    Indiquez au chauffeur où vous souhaitez descendre à l&apos;arrivée.
+                  </p>
+                </div>
+              ) : null}
 
               <Button type="submit" size="lg" disabled={submitting} className="h-12 w-full">
                 <Lock className="h-4 w-4" aria-hidden />

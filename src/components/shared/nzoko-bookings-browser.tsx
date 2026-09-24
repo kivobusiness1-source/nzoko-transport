@@ -6,7 +6,7 @@
 // ============================================================
 
 import { useState } from "react";
-import { Search, Ticket } from "lucide-react";
+import { MapPin, Search, Ticket } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -164,6 +164,11 @@ export function NzokoBookingsBrowser({
                       {b.trip.originCityName} → {b.trip.destinationCityName} ·{" "}
                       {formatDateTime(b.trip.departureTime)}
                     </p>
+                    {b.dropOffNeighborhood && (
+                      <p className="mt-0.5 inline-flex items-center gap-1 rounded-full bg-primary/10 px-1.5 py-0.5 text-[10px] font-semibold text-primary">
+                        <MapPin className="size-2.5" aria-hidden /> Arrêt : {b.dropOffNeighborhood.name}
+                      </p>
+                    )}
                     <div className="flex items-center justify-between gap-2 text-xs">
                       <span className="font-semibold">{formatMoney(b.amount)}</span>
                       <span className="text-muted-foreground">
@@ -217,6 +222,11 @@ export function NzokoBookingsBrowser({
                       </TableCell>
                       <TableCell className="text-xs">
                         {b.trip.originCityName} → {b.trip.destinationCityName}
+                        {b.dropOffNeighborhood && (
+                          <span className="ml-1.5 inline-flex items-center gap-0.5 rounded-full bg-primary/10 px-1.5 py-0.5 text-[10px] font-semibold text-primary">
+                            <MapPin className="size-2.5" aria-hidden /> {b.dropOffNeighborhood.name}
+                          </span>
+                        )}
                       </TableCell>
                       <TableCell className="text-xs">{formatDateTime(b.trip.departureTime)}</TableCell>
                       <TableCell className="text-right text-sm font-semibold tabular-nums">

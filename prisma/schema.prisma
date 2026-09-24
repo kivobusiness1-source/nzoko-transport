@@ -170,6 +170,9 @@ model Neighborhood {
 
   agencies Agency[]
 
+  // Achat billet — quartier d'arrêt choisi par le passager (destination).
+  dropOffBookings Booking[] @relation("BookingDropOff")
+
   @@unique([cityId, slug])
   @@index([cityId, isActive])
   @@index([isActive])
@@ -533,6 +536,10 @@ model Booking {
   createdById      String? // agent utilisateur (si guichet)
   createdBy        User?     @relation("BookingCreator", fields: [createdById], references: [id])
   promoCode        String? // code fidélité/campagne appliqué (remise déjà déduite du montant)
+  // Achat billet — quartier d'arrêt (destination) choisi par le passager,
+  // configuré dans l'admin (Parc → Quartiers). null = arrêt principal.
+  dropOffNeighborhoodId String?
+  dropOffNeighborhood    Neighborhood? @relation("BookingDropOff", fields: [dropOffNeighborhoodId], references: [id])
   expiresAt        DateTime? // verrou 10 min quand PENDING
   createdAt        DateTime  @default(now())
   updatedAt        DateTime  @updatedAt

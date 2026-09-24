@@ -165,11 +165,11 @@ export default function BookingFlow({ channel }: { channel: "WEB" | "AGENT" }) {
   );
 
   const createBooking = useCallback(
-    async (passenger: PassengerInput) => {
+    async (passenger: PassengerInput, dropOffNeighborhoodId?: string) => {
       if (!trip || !seatId) return;
       setSubmitting(true);
       try {
-        const created = await api.bookings.create({ tripId: trip.id, seatId, passenger, channel });
+        const created = await api.bookings.create({ tripId: trip.id, seatId, passenger, channel, dropOffNeighborhoodId });
         setBooking(created);
         setSeatMap((prev) =>
           prev

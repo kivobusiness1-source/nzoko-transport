@@ -145,7 +145,9 @@ export interface TripSearchDTO {
   id: string;
   code: string;
   routeId: string;
+  originCityId: string;
   originCityName: string;
+  destinationCityId: string;
   destinationCityName: string;
   stops: { cityName: string; minutesFromStart: number }[];
   departureTime: string; // ISO
@@ -199,12 +201,20 @@ export interface PassengerInput {
   documentNumber?: string;
 }
 
+/** Quartier d'arrêt public (formulaire de réservation) — liste légère
+ *  des quartiers ACTIFS d'une ville, configurés dans l'admin. */
+export interface PublicNeighborhoodDTO {
+  id: string;
+  name: string;
+}
+
 export interface CreateBookingInput {
   tripId: string;
   seatId: string;
   passenger: PassengerInput;
   channel?: "WEB" | "AGENT";
   promoCode?: string; // code fidélité/campagne — remise appliquée au montant
+  dropOffNeighborhoodId?: string; // quartier d'arrêt à la destination (optionnel)
 }
 
 export interface BookingDTO {
@@ -229,6 +239,7 @@ export interface BookingDTO {
   };
   seat: { id: string; seatNumber: string; type: SeatType };
   passenger: { id: string; firstName: string; lastName: string; phone: string; documentNumber: string | null };
+  dropOffNeighborhood?: { id: string; name: string; cityName: string } | null;
   agencyName: string | null;
   createdByName: string | null;
 }
@@ -408,7 +419,7 @@ export interface DriverTripDTO {
   status: TripStatus;
   busRegistration: string;
   busModel: string;
-  passengers: { seatNumber: string; passengerName: string; boarded: boolean; reference: string }[];
+  passengers: { seatNumber: string; passengerName: string; boarded: boolean; reference: string; dropOffNeighborhoodName: string | null }[];
   boardedCount: number;
   soldCount: number;
 }

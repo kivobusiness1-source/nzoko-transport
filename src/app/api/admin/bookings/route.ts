@@ -54,6 +54,7 @@ export async function GET(req: NextRequest) {
           passenger: true,
           agency: true,
           createdBy: true,
+          dropOffNeighborhood: { select: { id: true, name: true, city: { select: { name: true } } } },
         },
         orderBy: { createdAt: "desc" },
         skip: (page - 1) * pageSize,

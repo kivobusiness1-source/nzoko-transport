@@ -29,6 +29,7 @@ const bookingSchema = z.object({
   passenger: passengerSchema,
   channel: z.enum(["WEB", "AGENT"]).optional(),
   promoCode: z.string().trim().min(3, "Code promo invalide.").max(40).optional(),
+  dropOffNeighborhoodId: z.string().trim().min(1).max(60).optional(),
 });
 
 export async function POST(req: NextRequest) {

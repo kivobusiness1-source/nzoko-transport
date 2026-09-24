@@ -1768,3 +1768,78 @@ Stage Summary:
 - Reste à vérifier : header geolocation=(self) sur le domaine Vercel
   après build (poll), puis procédure de test production à remettre
   à l'utilisateur (mobile : Autoriser à la popup).
+
+---
+Task ID: V8-quartier-arret-billet
+Agent: Orchestrateur principal (Z.ai Code)
+Task: Choix du quartier d'arrêt à l'achat du billet (après la destination),
+quartiers configurés dans l'admin — réutilisation du modèle Neighborhood (V3).
+
+Work Log:
+- CONSTAT : le modèle Neighborhood (cityId, name, slug, lat/lng, radius,
+  isActive) existe déjà (V3, détection GPS « Vous êtes probablement à ») AINSI
+  QUE l'admin complet (admin-neighborhoods.tsx, Parc & réseaux → Quartiers,
+  CRUD + API /api/admin/neighborhoods) — SEUL manquait le maillon réservation.
+- SCHÉMA (les 2 fichiers sqlite + postgres synchrones) : Booking +=
+  dropOffNeighborhoodId String? + relation dropOffNeighborhood
+  (BookingDropOff) ; Neighborhood += dropOffBookings Booking[]. db:push OK.
+- GARDES NEON (db-schema-guards.ts) : section V6 — ADD COLUMN IF NOT EXISTS
+  "Booking"."dropOffNeighborhoodId" TEXT + index + FK idempotente (DO $$ …
+  duplicate_object THEN NULL) — auto-réparation prod au cold start.
+- API PUBLIQUE : GET /api/neighborhoods?cityId=X (rate limit public 60/min/IP)
+  → [{id,name}] quartiers ACTIFS triés par nom ; 400 sans cityId.
+- TYPES : TripSearchDTO += originCityId/destinationCityId ; CreateBookingInput
+  += dropOffNeighborhoodId ; BookingDTO += dropOffNeighborhood
+  {id,name,cityName}|null ; PublicNeighborhoodDTO (léger public) ;
+  DriverTripDTO.passengers += dropOffNeighborhoodName.
+- SERVICE createBooking : validation serveur — quartier doit exister, être
+  ACTIF et appartenir à la ville de DESTINATION du voyage (jamais sur parole
+  du client, 400 BAD_REQUEST sinon) ; stockage dans la transaction ;
+  bookingInclude += dropOffNeighborhood{city} ; toBookingDTO mapping + type
+  BookingWithOptionalDropOff (tolérant pour includes partiels existants).
+- ROUTES : /api/bookings schema zod += dropOffNeighborhoodId optionnel ;
+  /api/driver/trips passengers += dropOffNeighborhoodName ;
+  admin/bookings + agency/bookings += include quartier.
+- CLIENT : api-client += neighborhoods(cityId) + dropOffNeighborhoodId dans
+  bookings.create.
+- UI RÉSERVATION (passenger-step.tsx, étape 4) : bloc « Quartier d'arrêt à
+  [ville] (optionnel) » — Select shadcn, placeholder « Arrêt principal
+  (gare / agence) », liste des quartiers actifs de la destination, aide
+  « Indiquez au chauffeur où vous souhaitez descendre » ; chargement via
+  api.neighborhoods(trip.destinationCityId) ; CACHÉ si la ville n'a aucun
+  quartier actif (Dolisie testé) ; skeleton pendant chargement ; reset au
+  changement de voyage (pattern React « ajuster au rendu », règle
+  set-state-in-effect satisfaite) ; Select value={x || undefined} (pattern
+  codebase — zéro warning controlled/uncontrolled vérifié console).
+- AFFICHAGES : ticket-card (badge « Arrêt : X » + ligne « Arrêt demandé » sur
+  le billet imprimable HTML), nzoko-booking-detail (Suivi billet public +
+  dialogue guichet : InfoRow « Arrêt demandé — Talangaï (Brazzaville) »),
+  manifeste chauffeur (badge « Arrêt : X » sous chaque passager), liste
+  admin/agence réservations (badge inline après le trajé, vue table + cards
+  mobile).
+- VALIDATION NAVIGATEUR COMPLÈTE : recherche PN→Brazzaville → 9 quartiers
+  proposés → sélection Talangaï → réservation NZK-2026-TREAZJ siège 06
+  (persistance DB vérifiée : quartier=Talangaï, ville=Brazzaville) →
+  paiement espèces confirmé via session agent (guichet) → Suivi billet :
+  « ARRÊT DEMANDÉ : Talangaï (Brazzaville) » + billet valide QR → manifeste
+  chauffeur (voyage temporairement réassigné puis RESTAURÉ) : « Arrêt :
+  Talangaï » sous Marie Nkouka → admin Réservations : badge Talangaï inline →
+  admin Parc & réseaux → Quartiers : CRUD complet intact → PN→Dolisie :
+  sélecteur absent (comportement attendu) → 0 erreur console, 0 warning
+  Select après fix, tsc EXIT 0, lint EXIT 0.
+- BUG RENCONTRÉ ET RÉSOLU : PrismaClientValidationError « Unknown argument
+  dropOffNeighborhoodId » — le dev serveur tournait avec le client Prisma
+  d'avant db:push → redémarrage (double-fork setsid, survit aux invocations).
+
+Stage Summary:
+- Fonctionnalité LIVRÉE de bout en bout : le passager choisit son quartier
+  d'arrêt à la destination pendant l'achat (optionnel, sans choix = arrêt
+  principal), l'info est validée serveur (ville destination + actif),
+  persistée, et visible partout : billet écran + imprimable, suivi public,
+  manifeste chauffeur, listes admin/guichet.
+- Les quartiers se configurent dans l'admin existant : Parc & réseaux →
+  Quartiers (CRUD géolocalisé, inchangé — aucune régression).
+- Aucune rupture : réservations existantes sans quartier = null partout
+  (champ optionnel), routes non modifiées dans leur contrat (champ accepté
+  et ignoré si absent).
+- Production : gardes Neon V6 auto-réparent le schéma au cold start.

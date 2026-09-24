@@ -132,7 +132,9 @@ export function toTripSearchDTO(trip: TripWithRelations, totalSeats: number, tak
     id: trip.id,
     code: trip.code,
     routeId: r.id,
+    originCityId: r.originCityId,
     originCityName: r.originCity.name,
+    destinationCityId: r.destinationCityId,
     destinationCityName: r.destinationCity.name,
     stops: r.stops
       .slice()
@@ -228,6 +230,7 @@ const bookingInclude = {
   passenger: true,
   agency: true,
   createdBy: true,
+  dropOffNeighborhood: { select: { id: true, name: true, city: { select: { name: true } } } },
 } satisfies Prisma.BookingInclude;
 
 export async function createBooking(input: CreateBookingInput, ctx: CreateBookingContext): Promise<BookingDTO> {
@@ -249,6 +252,24 @@ export async function createBooking(input: CreateBookingInput, ctx: CreateBookin
   }
   const seat = trip.bus.seatLayout.seats.find((s) => s.id === input.seatId);
   if (!seat) throw new ApiError(404, ERROR_CODES.NOT_FOUND, "Siège introuvable pour ce bus.");
+
+  // Quartier d'arrêt (optionnel) : il doit exister, être ACTIF et
+  // appartenir à la ville de DESTINATION du voyage — jamais sur parole
+  // du client (un quartier d'une autre ville est rejeté).
+  let dropOffNeighborhoodId: string | null = null;
+  if (input.dropOffNeighborhoodId) {
+    const hood = await db.neighborhood.findUnique({
+      where: { id: input.dropOffNeighborhoodId },
+    });
+    if (!hood || !hood.isActive || hood.cityId !== trip.route.destinationCityId) {
+      throw new ApiError(
+        400,
+        ERROR_CODES.BAD_REQUEST,
+        "Quartier d'arrêt invalide pour cette destination. Choisissez un quartier de la liste ou laissez vide."
+      );
+    }
+    dropOffNeighborhoodId = hood.id;
+  }
 
   const p = input.passenger;
 
@@ -324,6 +345,7 @@ export async function createBooking(input: CreateBookingInput, ctx: CreateBookin
           agencyId: ctx.channel === "AGENT" ? ctx.actorAgencyId : trip.agencyId,
           createdById: ctx.actorUserId ?? null,
           promoCode,
+          dropOffNeighborhoodId,
           expiresAt,
         },
       });
@@ -425,7 +447,14 @@ export async function cancelBooking(
 // ---------- Mappers ----------
 type BookingWithRelations = Prisma.BookingGetPayload<{ include: typeof bookingInclude }>;
 
-export function toBookingDTO(b: BookingWithRelations): BookingDTO {
+/** Le quartier d'arrêt est OPTIONNEL pour les appelants qui construisent
+ *  leur propre include (stats, listes partielles) : le mapper tolère
+ *  son absence (mappée à null dans le DTO). */
+export type BookingWithOptionalDropOff = Omit<BookingWithRelations, "dropOffNeighborhood"> & {
+  dropOffNeighborhood?: BookingWithRelations["dropOffNeighborhood"] | null;
+};
+
+export function toBookingDTO(b: BookingWithRelations | BookingWithOptionalDropOff): BookingDTO {
   return {
     id: b.id,
     bookingReference: b.bookingReference,
@@ -454,6 +483,9 @@ export function toBookingDTO(b: BookingWithRelations): BookingDTO {
       phone: b.passenger.phone,
       documentNumber: b.passenger.documentNumber,
     },
+    dropOffNeighborhood: b.dropOffNeighborhood
+      ? { id: b.dropOffNeighborhood.id, name: b.dropOffNeighborhood.name, cityName: b.dropOffNeighborhood.city.name }
+      : null,
     agencyName: b.agency?.name ?? null,
     createdByName: b.createdBy ? `${b.createdBy.firstName} ${b.createdBy.lastName}` : null,
   };

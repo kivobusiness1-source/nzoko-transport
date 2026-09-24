@@ -94,6 +94,25 @@ const V5_INDEXES: string[] = [
   `CREATE INDEX IF NOT EXISTS "TrackingEvent_agencyId_createdAt_idx" ON "TrackingEvent"("agencyId", "createdAt")`,
 ];
 
+// ============================================================
+// V6 ACHAT BILLET (2026-09-24) — quartier d'arrêt à la destination
+// choisi par le passager (configuré dans l'admin Parc → Quartiers).
+// Colonne additive + FK + index (idempotents).
+// ============================================================
+const V6_COLUMNS: MissingColumn[] = [
+  { table: "Booking", column: "dropOffNeighborhoodId", ddl: `ALTER TABLE "Booking" ADD COLUMN IF NOT EXISTS "dropOffNeighborhoodId" TEXT` },
+];
+
+const V6_STATEMENTS: string[] = [
+  `CREATE INDEX IF NOT EXISTS "Booking_dropOffNeighborhoodId_idx" ON "Booking"("dropOffNeighborhoodId")`,
+  // FK idempotente : PostgreSQL n'accepte pas ADD CONSTRAINT IF NOT EXISTS,
+  // on avale l'erreur duplicate_object (contrainte déjà présente).
+  `DO $$ BEGIN ` +
+    `ALTER TABLE "Booking" ADD CONSTRAINT "Booking_dropOffNeighborhoodId_fkey" ` +
+    `FOREIGN KEY ("dropOffNeighborhoodId") REFERENCES "Neighborhood"("id"); ` +
+    `EXCEPTION WHEN duplicate_object THEN NULL; END $$;`,
+];
+
 /** Garde mémoire : une vérification par instance de serveur. */
 let checked = false;
 
@@ -111,7 +130,7 @@ export async function ensureGpsV4Columns(): Promise<void> {
   if (!/^postgres(ql)?:\/\//.test(url)) return;
 
   try {
-    for (const { table, column, ddl } of [...V4_COLUMNS, ...V5_COLUMNS]) {
+    for (const { table, column, ddl } of [...V4_COLUMNS, ...V5_COLUMNS, ...V6_COLUMNS]) {
       // Identifiants constants (aucun risque d'injection) — SQL inliné
       // volontairement : compatible pooler PgBouncer (Neon) sans
       // recours aux requêtes préparées.
@@ -129,7 +148,7 @@ export async function ensureGpsV4Columns(): Promise<void> {
 
     // V5 — table d'événements + index (idempotents, toujours exécutés :
     // CREATE ... IF NOT EXISTS est un no-op quand tout existe déjà).
-    for (const ddl of [...V5_TABLES, ...V5_INDEXES]) {
+    for (const ddl of [...V5_TABLES, ...V5_INDEXES, ...V6_STATEMENTS]) {
       await db.$executeRawUnsafe(ddl);
     }
   } catch (err) {

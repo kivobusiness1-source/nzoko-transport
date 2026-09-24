@@ -71,6 +71,7 @@ export function TicketCard({ detail, channel, onNewBooking }: TicketCardProps) {
       <div class="row"><span>Arrivée estimée</span><b>${formatTime(detail.trip.estimatedArrivalTime)}</b></div>
       <div class="row"><span>Bus</span><b>${detail.trip.busRegistration} · ${detail.trip.agencyName}</b></div>
       <div class="row"><span>Passager</span><b>${detail.passenger.firstName} ${detail.passenger.lastName}</b></div>
+      ${detail.dropOffNeighborhood ? `<div class="row"><span>Arrêt demandé</span><b>${detail.dropOffNeighborhood.name} (${detail.trip.destinationCityName})</b></div>` : ""}
       <div class="seat">SIÈGE ${detail.seat.seatNumber}${detail.seat.type === "VIP" ? " · VIP" : ""}</div>
       ${qrDataUrl ? `<div class="qr"><img src="${qrDataUrl}" alt="QR"></div>` : ""}
       <div class="ref">${detail.bookingReference}</div>
@@ -160,6 +161,13 @@ export function TicketCard({ detail, channel, onNewBooking }: TicketCardProps) {
                 <MapPin className="size-3.5" aria-hidden /> {detail.trip.busRegistration}
               </span>
             </p>
+            {/* Quartier d'arrêt choisi à la réservation (optionnel) */}
+            {detail.dropOffNeighborhood && (
+              <p className="mt-2 inline-flex items-center gap-1.5 rounded-full bg-primary/10 px-3 py-1 text-xs font-semibold text-primary">
+                <MapPin className="size-3.5" aria-hidden />
+                Arrêt : {detail.dropOffNeighborhood.name}
+              </p>
+            )}
           </div>
 
           {/* Passager + siège */}

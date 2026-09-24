@@ -38,6 +38,7 @@ export async function GET(req: NextRequest) {
             seat: true,
             passenger: { select: { firstName: true, lastName: true } },
             ticket: { select: { status: true } },
+            dropOffNeighborhood: { select: { name: true } },
           },
           orderBy: { seat: { seatNumber: "asc" } },
         },
@@ -51,6 +52,7 @@ export async function GET(req: NextRequest) {
         passengerName: `${b.passenger.firstName} ${b.passenger.lastName}`,
         boarded: b.ticket?.status === "USED",
         reference: b.bookingReference,
+        dropOffNeighborhoodName: b.dropOffNeighborhood?.name ?? null,
       }));
       return {
         id: t.id,
