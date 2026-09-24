@@ -1632,3 +1632,83 @@ Stage Summary:
 - GPS V5 LIVRÉ ET VALIDÉ : idempotence, heartbeat, deviceId, anti-hors-ordre atomique, conflits bus/trajet, géofences arrêts avec dwell/hystérésis, machine à états, événements auditables, alertes admin, flotte sans N+1, temps réel enrichi, client offline idempotent — 66/66 tests fonctionnels + charge 100 bus sans erreur.
 - AUCUNE régression : réservations/paiements/QR/scanner/agences/rôles intacts (aucune route métier touchée) ; comportements V4 conservés (watchdog, rétention, anti-empilement temps réel, détection arrivée V4 via updateMany conditionnel).
 - Reste prod : déploiement Vercel (guards auto-réparent le schéma Neon au cold start), variables GPS_* optionnelles (défauts sensés), eventuelle définition RouteStop.radiusM par ligne.
+
+---
+Task ID: V6-geo-permissions
+Agent: Orchestrateur principal (Z.ai Code)
+Task: Correction « Localisation bloquée » — la popup d'autorisation GPS n'apparaissait
+jamais (desktop aperçu + mobile), message d'aide inadapté.
+
+Work Log:
+- DIAGNOSTIC des causes structurelles du blocage sans popup :
+  1. Origine NON SÉCURISÉE http:// (gateway Caddy :81 sans TLS, hors localhost) →
+     les navigateurs désactivent la géolocalisation d'office (permissions.query =
+     denied immédiat) et AUCUN réglage navigateur ne peut la réactiver ;
+  2. Aperçu intégré (iframe du panneau de prévisualisation) → popup interdite ;
+  3. Refus mémorisé → plus jamais de popup, chemins de réactivation différents
+     selon desktop/Android/iOS ;
+  4. Navigateurs intégrés (WhatsApp/Facebook…) → jamais de popup ;
+  5. BUG ANNEXE DÉCOUVERT : crash complet de la vue Connexion sur origine http
+     (TypeError: crypto.randomUUID is not a function — module-scope dans
+     @neondatabase/auth/adapter-core) → écran « Une erreur est survenue ».
+- Refonte `src/lib/geo-permissions.ts` :
+  - `readGeoEnvironment()` : secure (isSecureContext), embedded (self≠top),
+    inAppBrowser (UA webviews), platform (ios/android/desktop), origin ;
+  - `diagnoseGeoBlock()` : diagnostic SYNCHRONE ordonné insecure > embedded >
+    in-app > denied, avec titre + étapes numérotées ADAPTÉES À LA PLATEFORME
+    (Chrome desktop ⋮/🔒, Android Paramètres du site, iOS aA/Réglages du site web
+    + PWA) + canOpenNewTab ;
+  - `requestGeolocation()` : getCurrentPosition appelé AVANT tout await
+    (préserve le geste utilisateur — exigence Safari iOS), réessai timeout,
+    retour riche { granted, denied, block } ; remplace requestGpsPermission
+    (retour booléen, avec await queryGeoPermission AVANT l'appel → gesture perdu) ;
+  - `geoDeniedMessage()` conservé (rétrocompat) mais contextuel.
+- `src/lib/uuid-polyfill.ts` (NOUVEAU) : UUID v4 RFC 4122 sur
+  crypto.getRandomValues (disponible même en http), installé par defineProperty
+  si randomUUID absent ; importé EN PREMIER dans `src/lib/neon-auth/client.ts`
+  (avant @neondatabase/auth/next) + dans nzoko-app.tsx (ceinture/bretelles).
+- `src/hooks/use-driver-gps.ts` : suppression de requestGpsPermission locale
+  (remplacée par requestGeolocation de geo-permissions).
+- `src/features/driver/driver-gps-panel.tsx` :
+  - state deniedBlock: GeoBlockDiagnosis (au lieu de boolean) + permissionHint
+    (Permissions API au repos, sans popup, re-requêté au retour à l'écran start) ;
+  - bandeau diagnostic : titre + <ol> étapes + « Ouvrir dans un nouvel onglet »
+    (canOpenNewTab) + « Réessayer » ;
+  - ligne d'attente AVANT clic sous « Démarrer le suivi » : granted=✓ déjà
+    autorisée / prompt=« une popup va apparaître, choisissez Autoriser » /
+    denied=rappel + encadré ;
+  - correction bug UI : bandeau obsolète qui survivait à un démarrage réussi
+    (deniedBlock non nettoyé + permissionHint périmé) → setDeniedBlock(null) au
+    succès + activeBlock ne s'affiche plus hors session que si permissionHint
+    refusée ;
+  - beginSession extrait (start/retry sans double demande de permission).
+- `src/features/booking/agency-finder.tsx` : pre-check queryGeoPermission
+  supprimé (cassait le geste iOS) → locateOnce appelé directement au clic,
+  messages via geoDeniedMessage contextuel.
+
+Tests (agent-browser, port 3000) :
+- localhost (sécurisé) : login chauffeur kivobusiness1+chauffeur@gmail.com OK,
+  bandeau refus-adapté au clic Démarrer (headless deny), PAS de session créée ;
+- stub geolocation Brazzaville → Démarrer : toast « Suivi GPS démarré »,
+  lecture ±12m/60km/h, POST location+heartbeat 200, bandeau absent ;
+  rechargement pleine session → réconciliation OK puis bandeau denied (permission
+  réelle) ; « Réessayer » + stub → « Suivi GPS rétabli » SANS doublon de session
+  (1 seule en base, 18 points) ; Arrêter+confirmation → écran départ retrouvé ;
+- origine http://21.0.9.240:81 (insécure) : AVANT fix la vue Connexion crashe
+  (crypto.randomUUID) ; APRÈS polyfill login OK + diagnostic « Page non
+  sécurisée — localisation impossible » avec adresse affichée, sans bouton
+  nouvel onglet (inutile), session NON créée ;
+- mobile 375px : aucun débordement, bandeau + 2 boutons lisibles, footer poussé
+  naturellement ; aucune erreur console ; `bun run lint` EXIT 0.
+
+Stage Summary:
+- La demande d'autorisation ne peut pas s'afficher sur une origine http:// (règle
+  navigateur incontournable) : l'app l'EXPLIQUE désormais précisément (diagnostic
+  4 causes + étapes par plateforme) au lieu d'indiquer un réglage impossible.
+- Le crash de connexion sur origine non sécurisée est CORRIGÉ (polyfill
+  randomUUID) — impact production nul (HTTPS = API native inchangée).
+- La popup apparaîtra correctement : geste utilisateur préservé (getCurrentPosition
+  premier), utilisateur prévenu AVANT le clic, réessai sans doublon de session.
+- Fichiers touchés : geo-permissions.ts (refonte), uuid-polyfill.ts (nouveau),
+  neon-auth/client.ts, nzoko-app.tsx, use-driver-gps.ts, driver-gps-panel.tsx,
+  agency-finder.tsx. Aucune API/route serveur modifiée.

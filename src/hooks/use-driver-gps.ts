@@ -38,7 +38,6 @@ import { api } from "@/lib/api-client";
 import { getDeviceId } from "@/lib/device-id";
 import { enqueue, flushQueue, pendingCount } from "@/lib/gps-queue";
 import { TRACKING } from "@/lib/constants";
-import { queryGeoPermission } from "@/lib/geo-permissions";
 import type { GpsPointInput, TrackingConfigDTO } from "@/types";
 
 export type GpsStatus = "idle" | "requesting" | "active" | "denied" | "unavailable" | "stopped";
@@ -141,35 +140,13 @@ export interface UseDriverGpsOptions {
   onConflict?: (message: string) => void;
 }
 
-/** Demande la permission via getCurrentPosition — false SEULEMENT sur refus
- *  explicite (bloque le démarrage) ; indisponible/timeout → départ autorisé
- *  (le GPS peut revenir en route). Réessai automatique sur timeout (premier
- *  fix GPS, surtout en intérieur), état de permission connu à l'avance. */
-export async function requestGpsPermission(): Promise<boolean> {
-  if (typeof navigator === "undefined" || !navigator.geolocation) return false;
-  // Permission déjà refusée : le navigateur n'affichera plus de popup —
-  // inutile de tenter un fix qui échouera instantanément.
-  const permission = await queryGeoPermission();
-  if (permission === "denied") return false;
-  return new Promise((resolve) => {
-    let retried = false;
-    const attempt = (timeout: number) => {
-      navigator.geolocation.getCurrentPosition(
-        () => resolve(true),
-        (err) => {
-          if (err.code === err.TIMEOUT && !retried) {
-            retried = true;
-            attempt(30_000);
-            return;
-          }
-          resolve(err.code !== err.PERMISSION_DENIED);
-        },
-        { enableHighAccuracy: true, timeout, maximumAge: 30_000 }
-      );
-    };
-    attempt(15_000);
-  });
-}
+// RÉÉCRITURE V6 : la demande de permission vit désormais dans
+// @/lib/geo-permissions (requestGeolocation) — getCurrentPosition y est
+// appelé AVANT tout await : Safari iOS exige le lien direct avec le geste
+// utilisateur (le clic sur « Démarrer ») pour afficher la popup, un simple
+// await avant l'appel pouvait la faire rejeter en silence. Le retour est
+// enrichi d'un DIAGNOSTIC (cause exacte du blocage + étapes de dépannage
+// adaptées à la plateforme) exploité par le panneau chauffeur.
 
 export function useDriverGps({ sessionId, onConflict }: UseDriverGpsOptions) {
   const [state, setState] = useState<DriverGpsState>({

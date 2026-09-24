@@ -11,6 +11,12 @@
 // du catch-all /api/auth/[...path]).
 // ============================================================
 
+// POLYFILL AVANT TOUT — doit rester le PREMIER import : le SDK Neon
+// Auth appelle crypto.randomUUID() au chargement de son module, et
+// cette API n'existe pas sur les origines http:// (non sécurisées) —
+// sans ce repli, l'écran de connexion plantait intégralement sur
+// une adresse http (crash « Une erreur est survenue »).
+import "@/lib/uuid-polyfill";
 import { createAuthClient } from "@neondatabase/auth/next";
 
 export const neonAuthClient = createAuthClient();

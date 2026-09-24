@@ -8,7 +8,7 @@
 // ============================================================
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Battery, BatteryLow, BatteryWarning, BusFront, Gauge, Loader2, MapPin, Navigation, Pause, Play, Satellite, Signal, SignalHigh, SignalZero, Square, Wifi, WifiOff } from "lucide-react";
+import { Battery, BatteryLow, BatteryWarning, BusFront, CheckCircle2, ExternalLink, Gauge, Info, Loader2, MapPin, Navigation, Pause, Play, Satellite, ShieldAlert, Signal, SignalHigh, SignalZero, Square, Wifi, WifiOff } from "lucide-react";
 import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -22,8 +22,14 @@ import {
 import { api } from "@/lib/api-client";
 import { getDeviceId } from "@/lib/device-id";
 import { cn } from "@/lib/utils";
-import { useDriverGps, requestGpsPermission } from "@/hooks/use-driver-gps";
-import { geoDeniedMessage } from "@/lib/geo-permissions";
+import { useDriverGps } from "@/hooks/use-driver-gps";
+import {
+  diagnoseGeoBlock,
+  queryGeoPermission,
+  requestGeolocation,
+  type GeoBlockDiagnosis,
+  type GeoPermissionState,
+} from "@/lib/geo-permissions";
 import { todayCongoISO } from "@/components/shared/nzoko-format";
 import { formatTime } from "@/lib/format";
 import { TRACKING_STATUS_LABELS } from "@/lib/constants";
@@ -55,6 +61,18 @@ function batteryVisual(level: number): { level: number; icon: typeof Battery; to
   return { level, icon: Battery, tone: "" };
 }
 
+/** Diagnostic de repli quand le navigateur n'expose même pas l'API
+ *  geolocation (certains navigateurs intégrés / webviews anciens). */
+const GEO_UNAVAILABLE_BLOCK: GeoBlockDiagnosis = {
+  reason: "unsupported",
+  title: "Géolocalisation indisponible",
+  steps: [
+    "Ce navigateur n’expose pas l’API de géolocalisation — aucun site ne peut y obtenir votre position.",
+    "Ouvrez NZOKO depuis un Chrome ou Safari récent, puis redémarrez le suivi.",
+  ],
+  canOpenNewTab: false,
+};
+
 export function DriverGpsPanel({ trips }: { trips: DriverTripDTO[] }) {
   const [session, setSession] = useState<TrackingSessionDTO | null>(null);
   const [loadingSession, setLoadingSession] = useState(true);
@@ -62,9 +80,14 @@ export function DriverGpsPanel({ trips }: { trips: DriverTripDTO[] }) {
   const [busy, setBusy] = useState(false);
   /** V5 (§41) — le bouton TERMINER demande CONFIRMATION. */
   const [confirmStop, setConfirmStop] = useState(false);
-  /** Refus persistant de la permission au démarrage (le toast est
-   *  éphémère — le bandeau guide l'utilisateur jusqu'à ce qu'il agisse). */
-  const [permissionDenied, setPermissionDenied] = useState(false);
+  /** Refus persistant de la permission : on mémorise le DIAGNOSTIC
+   *  (cause exacte du blocage + étapes adaptées à la plateforme) — le
+   *  bandeau guide l'utilisateur jusqu'à ce qu'il agisse. */
+  const [deniedBlock, setDeniedBlock] = useState<GeoBlockDiagnosis | null>(null);
+  /** État de la permission AU REPOS (Permissions API, sans popup) :
+   *  dit à l'utilisateur à quoi s'attendre AVANT de cliquer — notamment
+   *  qu'une popup d'autorisation va apparaître au premier démarrage. */
+  const [permissionHint, setPermissionHint] = useState<GeoPermissionState | null>(null);
   const sessionRef = useRef<TrackingSessionDTO | null>(null);
   sessionRef.current = session;
 
@@ -103,41 +126,88 @@ export function DriverGpsPanel({ trips }: { trips: DriverTripDTO[] }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // État de la permission AU REPOS (lecture pure, JAMAIS de popup) :
+  //  - « déjà accordée » → le chauffeur est rassuré, zéro friction ;
+  //  - « à demander »   → on PRÉVIENT qu'une popup navigateur va
+  //    apparaître au démarrage (l'utilisateur comprend qu'il faut
+  //    choisir « Autoriser » et ne rate pas la demande) ;
+  //  - « refusée »       → le bandeau de guidance s'affiche d'office.
+  // Requête à chaque retour à l'écran de démarrage (après un arrêt de
+  // session, l'état peut avoir changé côté navigateur).
+  useEffect(() => {
+    if (loadingSession || session) return;
+    let cancelled = false;
+    queryGeoPermission()
+      .then((state) => {
+        if (!cancelled) setPermissionHint(state);
+      })
+      .catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
+  }, [loadingSession, session]);
+
+  // Diagnostic ACTIF du blocage localisation : celui mémorisé après un
+  // clic refusé, sinon recalculé si le watch GPS a reçu un refus, ou si
+  // la permission est connue comme refusée AU REPOS (guidance immédiate
+  // sans attendre le clic) — UNIQUEMENT hors session démarrée : une
+  // session active (permission accordée depuis) ne doit plus l'afficher.
+  const activeBlock = useMemo<GeoBlockDiagnosis | null>(() => {
+    if (deniedBlock) return deniedBlock;
+    // Refus reçu par le watch GPS (réconciliation auto au rechargement
+    // d'une session en cours, révocation en plein trajet…).
+    if (gps.status === "denied") return diagnoseGeoBlock();
+    if (!session && permissionHint === "denied") return diagnoseGeoBlock();
+    return null;
+  }, [deniedBlock, gps.status, session, permissionHint]);
+
   // Voyages du jour (rattachement du suivi).
   const todayTrips = useMemo(() => {
     const today = todayCongoISO();
     return trips.filter((t) => t.departureTime.slice(0, 10) === today);
   }, [trips]);
 
+  /** Création de la session + démarrage du watch (après autorisation). */
+  const beginSession = useCallback(async () => {
+    const created = await api.tracking.start({
+      tripId: tripId === "none" ? null : tripId,
+      // V5 (§6) — le téléphone est identifié par un UUID stable
+      // (localStorage), indépendant du compte chauffeur.
+      deviceId: getDeviceId(),
+    });
+    setSession(created);
+    gps.startWatching();
+    toast.success("Suivi GPS démarré. Bonne route !");
+  }, [tripId, gps]);
+
   const startSession = useCallback(async () => {
     setBusy(true);
     try {
-      const granted = await requestGpsPermission();
-      if (!granted) {
-        setPermissionDenied(true);
-        // Guidance précise au lieu d'un échec muet : l'utilisateur sait
-        // EXACTEMENT où cliquer pour autoriser la localisation.
-        toast.error("La localisation est refusée.", {
-          description: geoDeniedMessage(),
-          duration: 10000,
+      // V6 — requestGeolocation appelle getCurrentPosition AVANT tout
+      // await : le geste du clic reste actif (exigence Safari iOS pour
+      // afficher la popup d'autorisation).
+      const outcome = await requestGeolocation();
+      if (!outcome.granted) {
+        const block = outcome.block ?? GEO_UNAVAILABLE_BLOCK;
+        setDeniedBlock(block);
+        // Guidance précise et adaptée à la CAUSE (page http, aperçu,
+        // navigateur d'appli, refus mémorisé) au lieu d'un échec muet.
+        toast.error(block.title, {
+          description: block.steps.slice(0, 2).join(" "),
+          duration: 12000,
         });
         return;
       }
-      const created = await api.tracking.start({
-        tripId: tripId === "none" ? null : tripId,
-        // V5 (§6) — le téléphone est identifié par un UUID stable
-        // (localStorage), indépendant du compte chauffeur.
-        deviceId: getDeviceId(),
-      });
-      setSession(created);
-      gps.startWatching();
-      toast.success("Suivi GPS démarré. Bonne route !");
+      // Autorisation obtenue → tout diagnostic obsolète disparaît
+      // (l'ancien bandeau de refus ne doit pas survivre au démarrage).
+      setDeniedBlock(null);
+      await beginSession();
     } catch (error) {
       toast.error((error as Error).message ?? "Impossible de démarrer le suivi.");
     } finally {
       setBusy(false);
     }
-  }, [tripId, gps]);
+  }, [beginSession]);
 
   const pauseSession = useCallback(async () => {
     setBusy(true);
@@ -186,23 +256,38 @@ export function DriverGpsPanel({ trips }: { trips: DriverTripDTO[] }) {
   // la localisation dans le navigateur → on repart sans créer de doublon
   // (session existante = simple reprise du watch, sinon démarrage complet).
   const retryPermission = useCallback(async () => {
-    const granted = await requestGpsPermission();
-    if (!granted) {
-      setPermissionDenied(true);
-      toast.error("La localisation est toujours refusée.", {
-        description: geoDeniedMessage(),
-        duration: 10000,
-      });
-      return;
+    setBusy(true);
+    try {
+      const outcome = await requestGeolocation();
+      if (!outcome.granted) {
+        const block = outcome.block ?? GEO_UNAVAILABLE_BLOCK;
+        setDeniedBlock(block);
+        toast.error(block.title, {
+          description: block.steps.slice(0, 2).join(" "),
+          duration: 12000,
+        });
+        return;
+      }
+      setDeniedBlock(null);
+      if (sessionRef.current?.status === "ACTIVE") {
+        gps.startWatching();
+        toast.success("Suivi GPS rétabli.");
+      } else {
+        await beginSession();
+      }
+    } catch (error) {
+      toast.error((error as Error).message ?? "Action impossible.");
+    } finally {
+      setBusy(false);
     }
-    setPermissionDenied(false);
-    if (sessionRef.current?.status === "ACTIVE") {
-      gps.startWatching();
-      toast.success("Suivi GPS rétabli.");
-    } else {
-      await startSession();
-    }
-  }, [gps, startSession]);
+  }, [beginSession, gps]);
+
+  /** Ouvre la page HORS du cadre intégré (aperçu/iframe) : la popup
+   *  d'autorisation du navigateur ne s'affiche que dans une page
+   *  autonome de premier niveau. */
+  const openStandalone = useCallback(() => {
+    window.open(window.location.href, "_blank", "noopener,noreferrer");
+  }, []);
 
   const activeTrip = todayTrips.find((t) => t.id === tripId);
 
@@ -314,28 +399,51 @@ export function DriverGpsPanel({ trips }: { trips: DriverTripDTO[] }) {
           </p>
         )}
 
-        {/* Permission refusée / GPS indisponible → guidance pas-à-pas +
-            bouton Réessayer (le navigateur ne ré-affiche JAMAIS la popup
-            après un refus : il faut passer par ses réglages). */}
-        {(gps.status === "denied" || gps.status === "unavailable" || permissionDenied) && (
+        {/* Localisation bloquée → DIAGNOSTIC de la CAUSE (page http://
+            non sécurisée, aperçu intégré, navigateur d'appli, refus
+            mémorisé) + étapes numérotées ADAPTÉES à la plateforme
+            (desktop / Android / iOS) + actions concrètes. Le navigateur
+            ne ré-affiche JAMAIS la popup après un refus mémorisé ni dans
+            un cadre intégré — sans ce diagnostic, l'utilisateur est
+            bloqué sans comprendre pourquoi. */}
+        {(gps.status === "unavailable" || activeBlock) && (
           <div className="mt-3 rounded-lg border border-red-200 bg-red-50 px-3 py-3 dark:border-red-900 dark:bg-red-950/40" role="alert">
-            <p className="text-xs font-semibold text-red-800 dark:text-red-300">
-              {gps.status === "unavailable" ? "GPS indisponible" : "Localisation bloquée"}
+            <p className="flex items-start gap-1.5 text-xs font-semibold text-red-800 dark:text-red-300">
+              <ShieldAlert className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
+              {activeBlock ? activeBlock.title : "GPS indisponible"}
             </p>
-            <p className="mt-1 text-xs text-red-700 dark:text-red-300">
-              {gps.status === "unavailable"
-                ? "Vérifiez que le GPS de votre appareil est activé, puis réessayez."
-                : geoDeniedMessage()}
-            </p>
-            <Button
-              onClick={() => void retryPermission()}
-              disabled={busy}
-              variant="outline"
-              className="mt-2 min-h-[40px] h-9 w-full text-xs"
-            >
-              {busy ? <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" aria-hidden="true" /> : <Satellite className="mr-1.5 h-3.5 w-3.5" aria-hidden="true" />}
-              Réessayer la localisation
-            </Button>
+            {activeBlock ? (
+              <ol className="mt-2 list-decimal space-y-1.5 pl-5 text-xs leading-relaxed text-red-700 dark:text-red-300">
+                {activeBlock.steps.map((step, index) => (
+                  <li key={index}>{step}</li>
+                ))}
+              </ol>
+            ) : (
+              <p className="mt-1 text-xs text-red-700 dark:text-red-300">
+                Vérifiez que le GPS de votre appareil est activé, puis réessayez.
+              </p>
+            )}
+            <div className={cn("mt-3 grid gap-2", activeBlock?.canOpenNewTab ? "sm:grid-cols-2" : "")}>
+              {activeBlock?.canOpenNewTab && (
+                <Button
+                  onClick={openStandalone}
+                  variant="outline"
+                  className="min-h-[40px] h-9 w-full text-xs"
+                >
+                  <ExternalLink className="mr-1.5 h-3.5 w-3.5" aria-hidden="true" />
+                  Ouvrir dans un nouvel onglet
+                </Button>
+              )}
+              <Button
+                onClick={() => void retryPermission()}
+                disabled={busy}
+                variant="outline"
+                className="min-h-[40px] h-9 w-full text-xs"
+              >
+                {busy ? <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" aria-hidden="true" /> : <Satellite className="mr-1.5 h-3.5 w-3.5" aria-hidden="true" />}
+                Réessayer la localisation
+              </Button>
+            </div>
           </div>
         )}
 
@@ -402,6 +510,29 @@ export function DriverGpsPanel({ trips }: { trips: DriverTripDTO[] }) {
               {busy ? <Loader2 className="mr-2 h-4 w-4 animate-spin" aria-hidden="true" /> : <Play className="mr-2 h-4 w-4" aria-hidden="true" />}
               Démarrer le suivi
             </Button>
+            {/* Attente AVANT le clic : l'utilisateur sait ce qui va se
+                passer (popup navigateur à autoriser / déjà autorisé /
+                refus mémorisé à réactiver) — il ne rate plus la demande. */}
+            {permissionHint === "granted" && (
+              <p className="flex items-center gap-1.5 text-xs text-emerald-700 dark:text-emerald-400" role="status">
+                <CheckCircle2 className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+                Localisation déjà autorisée sur ce navigateur — le suivi démarrera directement.
+              </p>
+            )}
+            {permissionHint === "prompt" && (
+              <p className="flex items-start gap-1.5 text-xs text-muted-foreground" role="status">
+                <Info className="mt-0.5 h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+                Au premier démarrage, votre navigateur demandera l&apos;autorisation de localisation : gardez cette page
+                ouverte et choisissez « Autoriser ».
+              </p>
+            )}
+            {permissionHint === "denied" && (
+              <p className="flex items-start gap-1.5 text-xs text-red-700 dark:text-red-400" role="status">
+                <ShieldAlert className="mt-0.5 h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+                Localisation actuellement refusée — suivez les étapes de l&apos;encadré ci-dessus pour la réactiver, puis
+                « Réessayer la localisation ».
+              </p>
+            )}
           </div>
         )}
 

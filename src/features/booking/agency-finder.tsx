@@ -39,7 +39,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Skeleton } from "@/components/ui/skeleton";
 import { api, ApiClientError } from "@/lib/api-client";
 import { formatMoney, formatTime } from "@/lib/format";
-import { locateOnce, queryGeoPermission, geoDeniedMessage } from "@/lib/geo-permissions";
+import { locateOnce, geoDeniedMessage } from "@/lib/geo-permissions";
 import type {
   AgencyNearbyResultDTO,
   AgencyRecommendationDTO,
@@ -324,22 +324,17 @@ export function AgencyFinder({
     }
   };
 
-  // Demande de localisation : état de permission connu à l'avance (déjà
-  // accordée = zéro clic ; bloquée = guidance précise immédiate), puis fix
-  // GPS avec réessai automatique sur timeout (premier fix en intérieur).
+  // Demande de localisation : locateOnce est appelé DIRECTEMENT après
+  // le clic (aucun await intermédiaire — Safari iOS exige le lien avec le
+  // geste utilisateur pour afficher la popup d'autorisation). En cas de
+  // refus, geoDeniedMessage() explique la CAUSE réelle du blocage (page
+  // http non sécurisée, aperçu intégré, navigateur d'appli, refus
+  // mémorisé) avec les étapes adaptées à la plateforme.
   const handleLocate = async () => {
     if (locating || loading) return;
     setError(null);
     if (typeof navigator === "undefined" || !("geolocation" in navigator)) {
       toast.info("La géolocalisation n'est pas disponible sur cet appareil. Choisissez votre ville ci-dessous.");
-      setOpen(true);
-      return;
-    }
-    const permission = await queryGeoPermission();
-    if (permission === "denied") {
-      // Permission déjà refusée : le navigateur n'affichera PLUS de popup —
-      // on guide l'utilisateur au lieu d'échouer en silence.
-      toast.warning(geoDeniedMessage(), { duration: 9000 });
       setOpen(true);
       return;
     }

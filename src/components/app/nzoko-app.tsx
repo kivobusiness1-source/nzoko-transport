@@ -8,6 +8,10 @@
 
 import { useEffect, useCallback, useState, useMemo, lazy, Suspense, type ReactNode } from "react";
 import Link from "next/link";
+// Polyfill crypto.randomUUID AVANT tout le reste : absent des origines
+// http:// (non sécurisées), il fait planter les SDK tiers (Neon Auth)
+// dès le chargement de leur module — installé ici pour TOUTE vue paresseuse.
+import "@/lib/uuid-polyfill";
 import { Bus, Bell, LogOut, Home, Ticket, Search, UserRound, ChevronDown, Menu, Loader2, Map as MapIcon, Settings } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
