@@ -1712,3 +1712,59 @@ Stage Summary:
 - Fichiers touchés : geo-permissions.ts (refonte), uuid-polyfill.ts (nouveau),
   neon-auth/client.ts, nzoko-app.tsx, use-driver-gps.ts, driver-gps-panel.tsx,
   agency-finder.tsx. Aucune API/route serveur modifiée.
+
+---
+Task ID: V7-geo-permissions-policy
+Agent: Orchestrateur principal (Z.ai Code)
+Task: Utilisateur signale « donc là tout fonctionne » — vérification complète
+avant confirmation. Découverte : le fix V6 n'était JAMAIS poussé sur GitHub
+(production encore sur le code V5) ET cause racine production trouvée :
+l'en-tête Permissions-Policy: geolocation=() bloquait toute géolocalisation.
+
+Work Log:
+- DIAGNOSTIC : origin/main = 42f1c12 (V5) ; commit V6 15095ba resté local
+  (1 ahead) → production sans le fix UX ; curl production → header
+  « permissions-policy: camera=(self), microphone=(), geolocation=(), payment=() »
+  → le navigateur bloque la géolocalisation d'office (popup JAMAIS affichée,
+  refus immédiat, aucun réglage ne l'outrepasse) — c'est LA cause du
+  « Localisation bloquée » vu sur mobile en production.
+- FIX next.config.ts : geolocation=() → geolocation=(self) (suivi GPS
+  chauffeur + « agences autour de moi ») ; camera=(self) inchangé.
+- FIX ANNEXE driver-gps-panel.tsx : compteur « Points enregistrés »
+  (session.pointsCount) figé à sa valeur de démarrage → effect sur
+  gps.lastSentAt : relecture GET session après chaque envoi réussi,
+  remplacement UNIQUEMENT si même id (conflits gérés par la voie 409/404
+  existante) — compteur désormais en direct (20→23 observé).
+- REDÉMARRAGE dev server : processus tués à la fin de chaque invocation
+  outil (kill arborescence) + OOM killer historique (next-server 2,5 Go à
+  07:33) → double-fork ( setsid nohup ... & ) avec reparentage PID 1
+  immédiat : serveur survit aux invocations (PID 6239/6252 stables).
+- VALIDATION NAVIGATEUR (localhost:3000, stub navigator.geolocation car
+  permission headless réellement denied) : login chauffeur
+  kivobusiness1+chauffeur@gmail.com → onglet Suivi GPS → écran départ V6
+  (avertissement popup AVANT clic, mention adaptation vitesse/offline)
+  → Démarrer → bandeau refus adaptatif (permission réelle denied du
+  headless — comportement correct) → stub → Réessayer → session ACTIVE
+  (201), POST location 200 ×N, heartbeat 200, voyants GPS Actif 🟢 /
+  Internet Connecté / Position Synchronisée (double horodatage sync+lien
+  serveur), pointsCount serveur 4 puis 20 puis 23 (compteur en direct),
+  arrêter → AlertDialog « Terminer le suivi GPS ? » → Oui, terminer →
+  « Suivi arrêté », retour écran départ ; AUCUNE erreur console ;
+  tsc --noEmit EXIT 0 ; bun run lint EXIT 0.
+- EN-TÊTE vérifié en local : « Permissions-Policy: camera=(self),
+  microphone=(), geolocation=(self), payment=() ».
+- COMMIT fcd7e42 + PUSH origin/main (42f1c12..fcd7e42) — embarque AUSSI
+  le commit V6 15095ba jamais déployé → Vercel redéploie automatiquement.
+- Mini-services intacts : tracking-realtime port 3003 up (bun --hot),
+  jamais touchés pendant les redémarrages.
+
+Stage Summary:
+- Cause racine production CORRIGÉE : l'en-tête serveur interdisait la
+  géolocalisation — aucun code client ne pouvait y remédier. La popup
+  d'autorisation pourra désormais apparaître en production HTTPS.
+- Fix V6 (diagnostic par plateforme, geste utilisateur, retry) enfin
+  déployé avec ce push.
+- Compteur « Points enregistrés » live pendant la session.
+- Reste à vérifier : header geolocation=(self) sur le domaine Vercel
+  après build (poll), puis procédure de test production à remettre
+  à l'utilisateur (mobile : Autoriser à la popup).
