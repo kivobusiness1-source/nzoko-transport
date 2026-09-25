@@ -15,7 +15,9 @@
 //    au premier échec (« identifiants inconnus »), PONT D'IMPORT :
 //    le serveur vérifie l'ancien mot de passe local bcrypt et crée le
 //    compte Neon avec ce même mot de passe (migration transparente) ;
-//  - Inscription : SDK signUp.email → code de vérification par e-mail.
+//  - Inscription : SDK signUp.email → sendVerificationOtp (envoi EXPLICITE
+//    du code — la config Neon sendVerificationEmailOnSignUp=false laisse
+//    l'envoi au client) → saisie du code → compte activé.
 //
 // Mode LOCAL (sandbox/dev) : mêmes écrans, moteur local (bcrypt + OTP).
 // ============================================================
@@ -171,6 +173,25 @@ export default function AuthScreen({ defaultTab = "login" }: { defaultTab?: "log
 
   // Vérification d'adresse e-mail (inscription Neon)
   const [pendingEmail, setPendingEmail] = useState<string | null>(null);
+  // Renvoi du code e-mail : anti-spam client (60 s) + état d'envoi.
+  const [verifyResendIn, setVerifyResendIn] = useState(0);
+  const [verifyResending, setVerifyResending] = useState(false);
+
+  useEffect(() => {
+    if (verifyResendIn <= 0) return;
+    const t = setTimeout(() => setVerifyResendIn((s) => s - 1), 1000);
+    return () => clearTimeout(t);
+  }, [verifyResendIn]);
+
+  /** Envoi du code de vérification e-mail (Neon Auth, SMTP partagé). */
+  const sendVerifyOtp = async (email: string) => {
+    const { error: sendError } = await neonAuthCall(() =>
+      neonAuthClient.emailOtp.sendVerificationOtp({ email, type: "email-verification" })
+    );
+    if (sendError) {
+      throw new Error(neonAuthErrorMessage(sendError));
+    }
+  };
 
   // Réinitialisation de mot de passe oublié (onglet e-mail)
   const [resetStep, setResetStep] = useState<"idle" | "request" | "code">("idle");
@@ -310,11 +331,25 @@ export default function AuthScreen({ defaultTab = "login" }: { defaultTab?: "log
           onSession(await exchangeNeonSessionWithPendingPhone());
           return;
         }
+        const rawMessage = neonAuthErrorMessage(sdkError);
+        // « E-mail non vérifié » (sendVerificationEmailOnSignIn=false) :
+        // on envoie le code et on bascule sur l'étape de vérification au
+        // lieu d'une erreur sèche — même pipeline que l'inscription.
+        const notVerified = /not verified|non vérifi/i.test(rawMessage);
+        if (notVerified && neonEmail) {
+          await sendVerifyOtp(neonEmail);
+          setPendingEmail(neonEmail);
+          setVerifyResendIn(60);
+          toast.info("E-mail non vérifié — code envoyé", {
+            description: `Vérifiez la boîte ${neonEmail} — pensez aux spams.`,
+          });
+          return;
+        }
         // « Identifiants incorrects » → peut-être un compte interne pas
         // encore importé : pont d'import (bcrypt local → compte Neon).
-        const credentialsIssue = /identifiants incorrects/i.test(neonAuthErrorMessage(sdkError));
+        const credentialsIssue = /identifiants incorrects/i.test(rawMessage);
         if (!credentialsIssue) {
-          throw new Error(neonAuthErrorMessage(sdkError));
+          throw new Error(rawMessage);
         }
       }
 
@@ -392,11 +427,19 @@ export default function AuthScreen({ defaultTab = "login" }: { defaultTab?: "log
       if (!data?.token) {
         // token null = vérification d'e-mail exigée par la configuration
         // Neon Auth : aucune session tant que le code n'a pas été confirmé.
-        // Le téléphone saisi est mémorisé et sera lié au compte pendant
-        // l'échange de session de la première connexion qui suit la
-        // vérification (pendingPhoneRef — consommé une seule fois).
+        // IMPORTANT : avec sendVerificationEmailOnSignUp=false, Neon n'envoie
+        // RIEN automatiquement — c'est au client de déclencher l'envoi du
+        // code (sendVerificationOtp). Sans cet appel, l'utilisateur attendait
+        // un code jamais généré (« code jamais reçu »). Échec d'envoi =
+        // erreur EXPLICITE, jamais une attente silencieuse.
         pendingPhoneRef.current = values.phone.trim();
-        setPendingEmail(values.email.trim());
+        const email = values.email.trim();
+        await sendVerifyOtp(email);
+        setPendingEmail(email);
+        setVerifyResendIn(60);
+        toast.success("Code envoyé par e-mail", {
+          description: `Vérifiez la boîte ${email} — pensez aux spams et promotions.`,
+        });
         return;
       }
       // Session immédiate : le téléphone est normalisé puis lié côté
@@ -444,6 +487,26 @@ export default function AuthScreen({ defaultTab = "login" }: { defaultTab?: "log
       const message = err instanceof Error ? err.message : "Connexion Google impossible. Réessayez.";
       setError(message);
       toast.error(message);
+    }
+  };
+
+  /** Renvoi du code de vérification e-mail (anti-spam 60 s côté client). */
+  const onResendVerifyCode = async () => {
+    if (!pendingEmail || verifyResending || verifyResendIn > 0) return;
+    setVerifyResending(true);
+    setError(null);
+    try {
+      await sendVerifyOtp(pendingEmail);
+      setVerifyResendIn(60);
+      toast.success("Nouveau code envoyé", {
+        description: `Vérifiez la boîte ${pendingEmail} — pensez aux spams et promotions.`,
+      });
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Envoi impossible. Réessayez.";
+      setError(message);
+      toast.error(message);
+    } finally {
+      setVerifyResending(false);
     }
   };
 
@@ -660,7 +723,16 @@ export default function AuthScreen({ defaultTab = "login" }: { defaultTab?: "log
             {pendingEmail ? (
               // ---------- Vérification d'adresse e-mail (code reçu) ----------
               <motion.div initial={{ opacity: 0, scale: 0.98 }} animate={{ opacity: 1, scale: 1 }} className="space-y-4 py-2 text-center">
-                {providers.emailDelivery === "log" && (
+                {neon ? (
+                  <p
+                    className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2.5 text-left text-xs leading-relaxed text-emerald-900 dark:border-emerald-900 dark:bg-emerald-950/40 dark:text-emerald-200"
+                    role="status"
+                  >
+                    Le code est envoyé par <strong className="font-semibold">Neon Auth</strong> (expéditeur{" "}
+                    <span className="font-mono">auth@mail.myneon.app</span>) — pensez à vérifier vos dossiers
+                    <span className="font-semibold"> spams / promotions</span>.
+                  </p>
+                ) : providers.emailDelivery === "log" ? (
                   <p
                     className="rounded-lg border border-amber-300 bg-amber-50 px-3 py-2.5 text-left text-xs leading-relaxed text-amber-900 dark:border-amber-800 dark:bg-amber-950/50 dark:text-amber-200"
                     role="alert"
@@ -669,7 +741,7 @@ export default function AuthScreen({ defaultTab = "login" }: { defaultTab?: "log
                     {" "}Aucun fournisseur d&apos;e-mail n&apos;est configuré ici : ce code ne peut pas vous être délivré.
                     Contactez l&apos;exploitant (configurer EMAIL_PROVIDER) ou utilisez la connexion par téléphone.
                   </p>
-                )}
+                ) : null}
                 <span className="mx-auto flex size-16 items-center justify-center rounded-full bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300">
                   <Mail className="size-8" aria-hidden />
                 </span>
@@ -715,6 +787,18 @@ export default function AuthScreen({ defaultTab = "login" }: { defaultTab?: "log
                     </Button>
                   </form>
                 </Form>
+                <button
+                  type="button"
+                  className="w-full text-center text-sm text-muted-foreground transition-colors hover:text-foreground disabled:cursor-not-allowed disabled:opacity-50"
+                  disabled={verifyResendIn > 0 || verifyResending}
+                  onClick={onResendVerifyCode}
+                >
+                  {verifyResending
+                    ? "Envoi en cours…"
+                    : verifyResendIn > 0
+                      ? `Nouveau code possible dans ${verifyResendIn} s`
+                      : "Je n&apos;ai rien reçu — renvoyer le code"}
+                </button>
                 <Button
                   variant="ghost"
                   size="sm"
