@@ -2021,3 +2021,26 @@ Stage Summary:
 - GOOGLE : déjà actif chez Neon (isShared) + bouton livré — aucun réglage supplémentaire requis en production.
 - Pour l'exploitant : le SMTP partagé Neon envoie depuis auth@mail.myneon.app — vérifier spams/promotions ; si l'adresse geormakoma1@gmail.com n'a pas reçu le code « mot de passe oublié » de 08:59 UTC, réessayer après redéploiement.
 - SÉCURITÉ : la connection string Neon (mot de passe npg_…) a circulé dans le chat → la ROTER (Neon console → Reset password) ; idem jeton GitHub (toujours valide à ce jour !).
+
+---
+Task ID: 52-sms-phone-tab-ux
+Agent: Z.ai Code (session principale)
+Task: Retour utilisateur — « configurer la livraison des codes SMS sur le formulaire (onglet numéro de téléphone), faire en sorte que ça fonctionne ».
+
+Work Log:
+- CONSTAT PRODUCTION (agent-browser + network) : l'onglet Téléphone appelle POST /api/auth/otp (200) puis POST /api/auth/phone-number/send-otp → 400 : Neon refuse car webhook_config.enabled=FALSE (vérifié en base la Task 51). Le toast + la boîte role=alert s'affichent (« La livraison des codes par SMS n'est pas encore configurée… ») mais l'onglet est un cul-de-sac.
+- POURQUOI ON NE PEUT PAS « ACTIVER » SMS IMMÉDIATEMENT : (a) Neon Auth n'a PAS de passerelle SMS partagée (contrairement au SMTP e-mail partagé) — la livraison SMS est TOUJOURS déléguée au webhook ; (b) l'URL+secret du webhook vivent dans le plan de contrôle Neon (console), pas dans project_config (vérifié : SELECT * sur la ligne) — impossible à activer proprement par SQL direct sans risque ; (c) il faut de toute façon un compte fournisseur SMS (clés API) que seul l'exploitant peut créer.
+- LIVRABLE CODE (d093c99) :
+  * Bandeau proactif amber sur l'onglet Téléphone (mode Neon + smsDelivery=log + étape téléphone) : « Codes SMS pas encore activés… votre compte fonctionne déjà avec Google ou par e-mail — même compte, mêmes billets » + bouton « Utiliser E-mail / Google » (bascule d'onglet) ;
+  * neonAuthErrorMessage(WEBHOOK_NOT_CONFIGURED) réécrit : orientation immédiate vers Google/e-mail au lieu de « Contactez l'exploitant » ;
+  * tsc 0, lint 0 ; sandbox : bandeau/Google masqués en mode local (intact) ; push 2393268..d093c99 main.
+- ROUTE WEBHOOK DÉJÀ PRÊTE (sessions précédentes, vérifiée à nouveau) : /api/webhooks/neon-auth — signature EdDSA Ed25519 via JWKS du projet (X-Neon-Signature/KID/timestamp, anti-rejeu 5 min, idempotence X-Neon-Event-Id, code OTP jamais journalisé) ; delivery.ts : SMS_PROVIDER=africastalking|twilio (les deux implémentés), EMAIL_PROVIDER=smtp|resend.
+
+Stage Summary:
+- ACTIVATION SMS — PROCÉDURE EXPLOITANT (la seule voie) :
+  1. Console Neon → Auth → Webhooks → activer, URL = https://nzoko-transport-eight.vercel.app/api/webhooks/neon-auth, événements send.otp (+ phone_number.verified).
+  2. ⚠️ Dès que le webhook est actif, Neon ne livre PLUS les e-mails lui-même → configurer SIMULTANÉMENT EMAIL_PROVIDER (resend ou smtp) dans Vercel, sinon les codes e-mail cassent.
+  3. Vercel env : SMS_PROVIDER=africastalking + AFRICASTALKING_API_KEY + AFRICASTALKING_USERNAME (+ AFRICASTALKING_SENDER_ID optionnel) OU twilio (TWILIO_ACCOUNT_SID/TWILIO_AUTH_TOKEN/TWILIO_FROM_NUMBER) ; + EMAIL_PROVIDER/RESEND_API_KEY/RESEND_FROM.
+  4. Redeploy. Test : connexion téléphone → code SMS réel.
+  5. Alternative « tout déléguer » : fournir une NEON_API_KEY + clés SMS/Vercel à l'agent qui configure alors le webhook via l'API Neon et les env vars via l'API Vercel.
+- UX en attendant : l'utilisateur est guidé vers Google (fonctionnel, Task 51) et l'e-mail (fonctionnel depuis da9c7cb).
