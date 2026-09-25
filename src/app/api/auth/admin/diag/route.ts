@@ -5,8 +5,10 @@
 // la configuration (rôles admin, vérification des e-mails, synchro).
 //
 // Protégé par le même secret partagé que la migration (x-migration-key =
-// NEON_AUTH_SERVICE_PASSWORD, comparaison en temps constant) — en-tête
-// d'URL ?key=… accepté pour un GET praticable, jamais journalisé.
+// NEON_AUTH_SERVICE_PASSWORD, comparaison en temps constant).
+// ⚠️ EN-TÊTE UNIQUEMENT : le secret en paramètre d'URL est REFUSÉ — une
+// URL contenant un secret fuit (journaux serveur, historique navigateur,
+// Referer). (OWASP Secrets Management)
 //
 // Lecture seule : AUCUNE écriture. Données exposées : e-mail, rôle,
 // vérification, dates des comptes du schéma managé (aucun secret, aucun
@@ -15,6 +17,8 @@
 import { NextRequest } from "next/server";
 import { timingSafeEqual } from "crypto";
 import { ok, routeError, ApiError, ERROR_CODES, getClientIp } from "@/lib/api-response";
+import { enforceRateLimit } from "@/lib/rate-limit";
+import { RATE_LIMITS } from "@/lib/constants";
 import { logSecurity } from "@/lib/audit";
 import { neonAuthBaseUrl } from "@/lib/neon-auth/server";
 import { db } from "@/lib/db";
@@ -32,7 +36,8 @@ function migrationKeyOk(provided: string): boolean {
 export async function GET(req: NextRequest) {
   try {
     const ip = getClientIp(req);
-    const key = req.nextUrl.searchParams.get("key") ?? req.headers.get("x-migration-key") ?? "";
+    enforceRateLimit(`auth-diag:${ip}`, RATE_LIMITS.public.limit, RATE_LIMITS.public.windowMs);
+    const key = req.headers.get("x-migration-key") ?? "";
     if (!migrationKeyOk(key)) {
       throw new ApiError(403, ERROR_CODES.FORBIDDEN, "Clé de diagnostic invalide ou absente.");
     }

@@ -6,7 +6,8 @@ import { NextRequest } from "next/server";
 import { ok, routeError, ApiError, ERROR_CODES, getClientIp, assertSameOriginPost } from "@/lib/api-response";
 import { getAuth } from "@/lib/auth";
 import { logAudit } from "@/lib/audit";
-import { GLOBAL_ROLES } from "@/lib/constants";
+import { enforceRateLimit } from "@/lib/rate-limit";
+import { GLOBAL_ROLES, RATE_LIMITS } from "@/lib/constants";
 import { cancelBooking } from "@/services/booking";
 import { db } from "@/lib/db";
 
@@ -16,6 +17,10 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     const { idOrRef } = await params;
     const key = decodeURIComponent(idOrRef);
     const ip = getClientIp(req);
+    // Garde-fou anti-énumération (OWASP REST Security / Denial of Service) :
+    // la référence EST l'autorisation du chemin passager — plafonner les
+    // tentatives par IP rend la force brute de références inintéressable.
+    enforceRateLimit(`booking-cancel:${ip}`, RATE_LIMITS.booking.limit, RATE_LIMITS.booking.windowMs);
     const auth = await getAuth(req);
 
     if (auth && auth.permissions.includes("booking:manage")) {

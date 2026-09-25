@@ -77,9 +77,26 @@ export function routeError(err: unknown, context = "Erreur"): NextResponse {
   return fail(500, ERROR_CODES.INTERNAL, `Une erreur interne est survenue.${ref} Veuillez réessayer.`);
 }
 
+/**
+ * IP client pour les limites de débit et l'audit.
+ *
+ * ⚠️ Le PREMIER élément de X-Forwarded-For est contrôlé par le client :
+ * lui faire confiance permet la ROTATION d'adresses et contourne toutes
+ * les limites « par IP ». On retient la valeur la PLUS À DROITE (celle
+ * ajoutée par NOTRE infrastructure) ; sur Vercel, le header est écrasé
+ * par la plateforme avec l'IP réelle — comportement identique.
+ * (OWASP REST Security / Denial of Service : ne jamais faire confiance
+ * à un en-tête fourni par le client pour une décision de sécurité.)
+ */
 export function getClientIp(req: Request): string {
   const fwd = req.headers.get("x-forwarded-for");
-  if (fwd) return fwd.split(",")[0].trim();
+  if (fwd) {
+    const entries = fwd.split(",").map((s) => s.trim()).filter(Boolean);
+    const candidate = entries[entries.length - 1] ?? "";
+    // Dégarnit un port IPv4 éventuel (« 1.2.3.4:5678 » → « 1.2.3.4 »)
+    const ip = candidate.replace(/^(\d{1,3}(?:\.\d{1,3}){3}):\d+$/, "$1");
+    if (ip) return ip;
+  }
   return req.headers.get("x-real-ip") ?? "unknown";
 }
 

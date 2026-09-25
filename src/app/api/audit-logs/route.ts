@@ -2,13 +2,21 @@
 
 import { NextRequest } from "next/server";
 import { ok, routeError } from "@/lib/api-response";
-import { getAuth, assertAuthenticated, assertPermission } from "@/lib/auth";
+import { getAuth, assertAuthenticated, assertPermission, resolveAgencyScope } from "@/lib/auth";
 import { buildPaginated, parsePagination, queryString } from "@/lib/api-helpers";
 import { db } from "@/lib/db";
 
 export async function GET(req: NextRequest) {
   try {
-    assertPermission(assertAuthenticated(await getAuth(req)), "audit:read");
+    const auth = assertPermission(assertAuthenticated(await getAuth(req)), "audit:read");
+
+    // Scope multi-agences (OWASP Access Control — moindre privilège) : les
+    // rôles non globaux ne voient que les entrées ACTÉES par le personnel de
+    // leur agence. ACCOUNTANT (lecture financière globale, cf. stats:global)
+    // voit tout. Les événements sans acteur (passagers anonymes) ne sont pas
+    // rattachés à une agence dans le schéma actuel — hors scope par défaut
+    // (évolution possible : colonne AuditLog.agencyId).
+    const agencyId = resolveAgencyScope(auth, null, ["ACCOUNTANT"]);
 
     const { page, pageSize } = parsePagination(req.nextUrl, 20);
     const entity = queryString(req.nextUrl, "entity");
@@ -17,6 +25,7 @@ export async function GET(req: NextRequest) {
     const where = {
       ...(entity ? { entity } : {}),
       ...(userId ? { userId } : {}),
+      ...(agencyId ? { user: { agencyId } } : {}),
     };
 
     const [total, logs] = await Promise.all([
