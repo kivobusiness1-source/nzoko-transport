@@ -1871,3 +1871,71 @@ Stage Summary:
 - Sécurité : anti-énumération, rate limits, code hashé, usage unique, révocation sessions, audit — cohérent avec le reste de la plateforme.
 - Aucune régression : tsc 0, lint 0, aucune route métier touchée ; le proxy public n'expose AUCUN nouvel endpoint.
 - Reste : validation E2E en production après déploiement (livraison e-mail réelle via webhook Neon) ; option future = réinitialisation par SMS pour les comptes téléphone (plugin phone-number, non prévu par Neon pour forget-password à ce jour).
+
+---
+Task ID: 46-b-mdp-oublie-clarte-sandbox
+Agent: Z.ai Code (session principale)
+Task: Diagnostic « le code de réinitialisation ne vient pas dans ma boîte mail » (retour utilisateur après test) + corrections UX.
+
+Work Log:
+- DIAGNOSTIC (causes factuelles, toutes vérifiées) :
+  * Le commit 8e53fa8 (mot de passe oublié) n'est PAS déployé : origin/main "ahead 1" (PAT lecture seule, push 403 vérifié à nouveau) → l'utilisateur a testé l'APERÇU SANDBOX (dev.log : POST /api/auth/password-reset 200 + 401).
+  * Sandbox = NEON_AUTH_MODE=local + EMAIL_PROVIDER=log (défaut) → sendEmail() journalise SEULEMENT : preuve dans dev.log « [email:log] (non livré — EMAIL_PROVIDER=log) → kivobusiness1+support@gmail.com : « … (code 072339) » ». AUCUN e-mail réel ne peut partir d'un aperçu sans fournisseur configuré.
+  * La base sandbox ne contient que les 8 comptes internes kivobusiness1+<rôle>@gmail.com ; toute autre adresse (ex : kivobusiness1@gmail.com sans suffixe) tombait dans l'anti-énumération → succès générique SANS devCode → l'encadré orange minuscule n'apparaissait même pas. Comportement déroutant = cause du signalement.
+- CORRECTIONS (commit ed5f253) :
+  * API password-reset (handleRequestLocal) : si OTP_DEBUG=true ET adresse inconnue → réponse +demoUnknown:true (SANDBOX UNIQUEMENT ; la production ne renvoie JAMAIS cette info, anti-énumération stricte conservée).
+  * types PasswordResetRequestDTO += demoUnknown?: boolean (api-client : cast JSON, rien à changer).
+  * UI auth-screen : bannière démo PROMINENTE (bordure ambre 2px, Info icon) « Environnement de démonstration : aucun e-mail n'est envoyé depuis cet aperçu. » + code en 3xl tracking-large + bouton « Utiliser ce code » (pré-remplit le champ, shouldValidate) ; label champ « Code de vérification (affiché ci-dessus) » en mode démo ; toasts différenciés (démo vs e-mail réel) ; nouvelle alerte rouge à l'étape 1 si demoUnknown : « Aucun compte actif avec <adresse> dans cet environnement de démonstration. Comptes de test : superadmin, admin, manager, agent, checker, comptable, chauffeur, support. » (reste à l'étape 1) ; reset du flag sur sortie d'étape/changement d'onglet (5 points de mutation identifiés) ; import lucide Info.
+- VALIDATION E2E NAVIGATEUR (agent-browser, 390 px et desktop) :
+  * Adresse inconnue → alerte rouge + retour étape 1 ✓ ; support → bannière + code 072339 → « Utiliser ce code » pré-remplit ✓ → nouveau mdp Temp@2026! → succès → CONNEXION avec le nouveau mot de passe OK (Léa Assistance, Espace agence) ✓.
+  * Cycle inverse : même flux → mdp restauré Support@2026! → reconnexion OK ✓ (état seed intact).
+  * 0 erreur console ; captures agent-ctx/capture-reset-demo-{mobile}.png (desktop dans l'historique) ; tsc EXIT 0, lint EXIT 0.
+- PUSH : 403 toujours (PAT lecture seule) → 2 commits en attente (8e53fa8 + ed5f253).
+
+Stage Summary:
+- LE COMPORTEMENT ÉTAIT ATTENDU : un aperçu sandbox n'envoie jamais d'e-mails réels (fournisseur log). Désormais l'écran le dit clairement et le code est affiché en grand avec un bouton « Utiliser ce code » — le flux complet est testable dans l'aperçu.
+- Pour un VRAI e-mail : (1) DÉPLOYER les 2 commits en attente (push 403 — exiger PAT Contents: Read and write ou push manuel) ; (2) configurer dans Vercel EMAIL_PROVIDER=resend|smtp + clés (RESEND_API_KEY/RESEND_FROM ou SMTP_*) — le webhook send.otp Neon route déjà l'e-mail vers notre app ; (3) alternative sandbox : fournir des identifiants SMTP/Resend pour .env sandbox.
+
+---
+Task ID: 47-push-production
+Agent: Z.ai Code (session principale)
+Task: Déploiement des commits en attente (mot de passe oublié + clarté sandbox) — jeton GitHub en écriture.
+
+Work Log:
+- JETONS : le dépôt est PUBLIC → 3 fine-grained PAT successifs restés en lecture seule (radio « Public repositories (read-only) » verrouille tout ; piégé confirmé par sonde d'écriture 403 « Resource not accessible by personal access token »). Sonde : POST /git/refs branche _probe_ecriture (créée puis supprimée). Jeton CLASSIQUE ghp_… fourni par l'utilisateur → autorisation OK (422 object-not-exist = validation objet, pas autorisation).
+- PUSH réussi : d9b45e3..ed5f253 main -> main (8e53fa8 mot de passe oublié + ed5f253 clarté sandbox) ; origin/main == local == ed5f253.
+- Déploiement Vercel automatique déclenché par le push (intégration GitHub) — statut à surveiller via API deployments/commit status.
+
+Stage Summary:
+- LA PRODUCTION VA RECEVOIR LE MOT DE PASSE OUBLIÉ au prochain déploiement Vercel.
+- PRÉREQUIS PRODUCTION RESTANTS (blocant l'envoi réel des e-mails) : Vercel env — EMAIL_PROVIDER=resend|smtp + clés (RESEND_API_KEY/RESEND_FROM ou SMTP_HOST/PORT/USER/PASSWORD/FROM) + NEON_SERVICE_ORIGIN=https://<domaine-prod>, puis redeploy. Sans cela : « Code envoyé » affiché mais aucun e-mail envoyé (même symptôme que sandbox).
+- Nettoyage sécurité conseillé : révoquer les 3 fine-grained PAT précédents.
+
+---
+Task ID: 48-gouvernance-docs-securite
+Agent: Z.ai Code (session principale)
+Task: Directive utilisateur — sources de référence officielles pour tout le code et les diagnostics de sécurité.
+
+POLITIQUE PERMANENTE (appliquée à toutes les sessions futures, y compris la revue cron) :
+- SOURCES DE RÉFÉRENCE EXCLUSIVES (documentation officielle, jamais de règle inventée) :
+  * OWASP Cheat Sheet Series — https://cheatsheetseries.owasp.org/index.html
+  * Documentation officielle Next.js — https://nextjs.org/docs
+- GÉNÉRATION DE CODE : appliquer les bonnes pratiques de ces deux sources.
+- DIAGNOSTIC DE VULNÉRABILITÉ : toujours citer la feuille OWASP exacte (nom canonique vérifié sur l'index) et/ou la page Next.js qui justifie le diagnostic.
+- FEUILLES OWASP VÉRIFIÉES SUR L'INDEX (2026-09-25, pertinentes NZOKO) : Forgot Password, Password Storage, Authentication, Session Management, Input Validation, Injection Prevention, Cross-Site Request Forgery Prevention, Access Control, REST Security, Logging, Secrets Management, Cryptographic Storage, Denial of Service, Mass Assignment, File Upload, Error Handling, Transaction Authorization, Content Security Policy.
+
+Work Log:
+- Vérification en direct de l'index OWASP (curl) — seuls les noms canoniques ci-dessus peuvent être cités.
+- Audit de conformité du code NZOKO existant mappé sur les feuilles officielles (voir réponse utilisateur) :
+  * Forgot Password : code 6 chiffres TTL 15 min usage unique 5 tentatives, anti-énumération, rate limits, révocation sessions — conforme.
+  * Password Storage : bcrypt cost 12 (recommandation ≥10), jamais de stockage clair — conforme.
+  * Session Management : révocation de TOUTES les sessions après changement de mot de passe — conforme.
+  * Input Validation / Injection Prevention : zod côté API + requêtes Prisma paramétrées (pas de SQL concaténé) — conforme.
+  * CSRF Prevention : assertSameOriginPost sur les routes d'auth sensibles — conforme.
+  * Logging : logSecurity() sans secrets (e-mails tronqués côté détail, pas de mots de passe) — conforme.
+  * Secrets Management : secrets uniquement côté serveur (env Vercel), SDK IA jamais côté client — conforme.
+  * Next.js : App Router, headers de sécurité (Permissions-Policy V7), 'use client' discipliné — conforme.
+
+Stage Summary:
+- Gouvernance documentaire ADOPTÉE et enregistrée. Toute nouvelle règle de sécurité citée proviendra exclusivement de ces deux sources ; tout diagnostic de vulnérabilité référencera la feuille/page exacte.
+- Constat : l'existant est déjà aligné sur les feuilles OWASP pertinentes (détail remis à l'utilisateur).
