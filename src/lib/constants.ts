@@ -311,6 +311,15 @@ export const OTP = {
   maxAttempts: 5,
 } as const;
 
+// Réinitialisation de mot de passe oublié (mode local/sandbox — en mode
+// Neon, le plugin Email OTP du service managé délivre et vérifie le code ;
+// TTL 15 min aligné sur la durée des liens de réinitialisation Neon).
+export const PASSWORD_RESET = {
+  codeLength: 6,
+  ttlMinutes: 15,
+  maxAttempts: 5,
+} as const;
+
 // ---------- IDENTIFIANTS COURTS → E-MAILS RÉELS ----------
 // Alias de saisie acceptés au login (« superadmin » au lieu de l'e-mail
 // complet). Conventions 2026-09 : la boîte unique de l'administration

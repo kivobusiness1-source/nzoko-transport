@@ -179,3 +179,27 @@ export function otpEmailContent(input: { code: string; otpType: string; expiresI
 export function shortEventId(): string {
   return randomUUID().slice(0, 8);
 }
+
+// ------------------------------------------------------------
+// Réinitialisation de mot de passe oublié (e-mail)
+// ------------------------------------------------------------
+
+/** Contenu de l'e-mail « mot de passe oublié » : code de réinitialisation à 6 chiffres. */
+export function passwordResetEmailContent(input: { code: string; expiresInMinutes: number }): { subject: string; text: string; html: string } {
+  const subject = `NZOKO Transport — réinitialisation de votre mot de passe (code ${input.code})`;
+  const text =
+    `Vous avez demandé la réinitialisation du mot de passe de votre compte NZOKO Transport. ` +
+    `Votre code de vérification est ${input.code}. Il expire dans ${input.expiresInMinutes} minutes. ` +
+    `Si vous n'êtes pas à l'origine de cette demande, ignorez simplement cet e-mail : votre mot de passe actuel reste valable.`;
+  const html = `
+  <div style="font-family:Arial,Helvetica,sans-serif;max-width:520px;margin:0 auto;border:1px solid #e5e7eb;border-radius:12px;overflow:hidden">
+    <div style="background:#16a34a;color:#fff;padding:20px 24px;font-size:18px;font-weight:bold">NZOKO TRANSPORT</div>
+    <div style="padding:24px">
+      <p style="margin:0 0 12px">Vous avez demandé la <strong>réinitialisation de votre mot de passe</strong>. Voici votre code de vérification :</p>
+      <p style="font-size:32px;letter-spacing:8px;font-weight:bold;margin:0 0 12px;color:#16a34a">${input.code}</p>
+      <p style="color:#6b7280;font-size:13px;margin:0 0 16px">Ce code expire dans ${input.expiresInMinutes} minutes. Il n'est valable que pour une seule utilisation.</p>
+      <p style="color:#6b7280;font-size:12px;margin:0">Si vous n'êtes pas à l'origine de cette demande, ignorez cet e-mail : votre mot de passe actuel reste valable. Ne partagez jamais ce code.</p>
+    </div>
+  </div>`;
+  return { subject, text, html };
+}

@@ -1843,3 +1843,31 @@ Stage Summary:
   (champ optionnel), routes non modifiées dans leur contrat (champ accepté
   et ignoré si absent).
 - Production : gardes Neon V6 auto-réparent le schéma au cold start.
+
+---
+Task ID: 46-mdp-oublie
+Agent: Z.ai Code (session externe — accès dépôt via PAT lecture seule)
+Task: Réinitialisation « mot de passe oublié » — code à 6 chiffres par e-mail, double moteur (Neon Auth production / local sandbox), sur la base de la doc Neon (guides/password-reset + plugin Email OTP).
+
+Work Log:
+- ANALYSE : infra déjà préparée pour ce flux (webhook send.otp livre déjà les e-mails OTP, otpEmailContent anticipait otpType "forget-password", proxy [...path] whitelistait forget-password + reset-password/) — la lacune était le bout en bout (UI + API + canonisation).
+- SCHÉMA (les 2 fichiers synchrones + db:push sandbox) : NOUVEAU model PasswordResetCode (email canonique, codeHash SHA-256, expiresAt 15 min aligné Neon, attempts max 5, consumedAt usage unique, index [email,createdAt] + [expiresAt]). Utilisé UNIQUEMENT en mode local ; en Neon le plugin Email OTP du service managé porte le code.
+- CONSTANTES : PASSWORD_RESET { codeLength 6, ttlMinutes 15, maxAttempts 5 } (ALIGNÉ durée des liens Neon).
+- DELIVERY : passwordResetEmailContent({ code, expiresInMinutes }) — e-mail FR bilingue style NZOKO (bannière verte, code 32 px, mentions anti-hameçonnage, « mot de passe actuel reste valable » si demande non sollicitée).
+- API NOUVELLE POST /api/auth/password-reset (route statique prioritaire sur le catch-all, jamais exposée au proxy public) : UN pipeline, DEUX moteurs —
+  * mode NEON (prod) : action "request" → POST {Neon}/email-otp/send-verification-otp { email, type: "forget-password" } (le webhook Neon → livraison e-mail NZOKO existante) ; action "verify" → POST {Neon}/email-otp/reset-password { email, otp, password } ; mapping d'erreurs FR (code expiré / mot de passe faible / service indisponible) ; révocation des sessions NZOKO du compte après succès.
+  * mode LOCAL (sandbox) : code 6 chiffres hashé SHA-256 → PasswordResetCode ; verify → transaction Prisma (code consommé + bcrypt cost 12 + db.session.deleteMany du compte) ; devCode retourné uniquement si OTP_DEBUG=true ET compte existant.
+  * Canonisation des identifiants (même logique que le pont /api/auth/login) : SHORT_ID_EMAILS (« superadmin » → kivobusiness1+superadmin@gmail.com) + canonicalStaffEmail (chaînes legacy geormakoma1+… / <rôle>@nzoko.cg → adresse actuelle).
+  * Sécurité : assertSameOriginPost (CSRF), rate limit request 3/15 min par e-mail + 10/15 min par IP, verify 5/15 min (RATE_LIMITS.otpRequest/otpVerify), anti-énumération (succès générique pour adresse inconnue, SANS devCode), audit PASSWORD_CHANGED (demande / complétion) + LOGIN_FAILED (code invalide) + SUSPICIOUS (échec technique Neon).
+- CLIENT : api-client auth.passwordResetRequest(identifier) / passwordResetVerify(email, code, password) ; types PasswordResetRequestDTO / PasswordResetResultDTO.
+- UI auth-screen.tsx (onglet E-mail) : lien « Mot de passe oublié ? » sous le champ mot de passe (les 2 modes, local inclus) → sous-flux 2 étapes (state resetStep idle/request/code, réinitialisé au changement d'onglet) : étape 1 = e-mail OU identifiant court + note « comptes téléphone → connexion SMS » ; étape 2 = code 6 chiffres (autoFocus, tracking large) + nouveau mot de passe + confirmation (yeux show/hide), box « Code envoyé à <email canonisé> » + bouton Modifier, renvoi de code (onResendResetCode avec l'identifiant déjà validé), retour connexion. Toasts succès/erreur, transitions framer-motion, styles nzoko existants.
+- ENVIRONNEMENT : sandbox rollback détecté à la prise de poste → re-clone du dépôt (HEAD avait avancé : V6-geo-permissions, V7-geo-permissions-policy, V8-quartier-arret-billet — intégration sans conflit), .env sandbox reconstruit (NEON_AUTH_MODE=local, DATABASE_URL file:/home/z/nzoko-transport/db/custom.db, OTP_DEBUG, PAYMENTS_SIMULATION, TRACKING_SECRET), bun install + db:push + prisma/seed.ts (comptes kivobusiness1+<rôle>@gmail.com).
+- VALIDATIONS : bunx tsc --noEmit EXIT 0 ; bun run lint 0 erreur/0 warning ; API — cycle complet superadmin@nzoko.cg (canonisé kivobusiness1+superadmin@gmail.com) : request → devCode → verify ok → ANCIEN mot de passe rejeté 401 → NOUVEAU accepté (session créée) ; anti-énumération (inconnu@ → succès générique sans devCode) ; code 000000 rejeté ; usage unique (re-validation rejetée) ; navigateur (agent-browser) — lien visible onglet E-mail, étape 1 (placeholder « vous@exemple.cg ou superadmin »), envoi → toast « Code envoyé … kivobusiness1+superadmin@gmail.com » → étape 2 complète → succès → retour formulaire connexion, captures agent-ctx/capture-reset-request-{desktop,mobile}.png, AUCUNE erreur console, responsive mobile (390 px) + desktop vérifiés. Mots de passe seed restaurés après tests (Nzoko@2026! / Agent@2026!).
+- Production : AUCUNE migration requise (PasswordResetCode = mode local uniquement) ; le flux Neon utilise les endpoints existants du service managé — à valider E2E après déploiement (envoi réel du code via webhook send.otp → EMAIL_PROVIDER smtp/resend).
+
+Stage Summary:
+- « MOT DE PASSE OUBLIÉ » LIVRÉ de bout en bout : e-mail ou identifiant court → code 6 chiffres par e-mail (15 min, usage unique, 5 tentatives) → nouveau mot de passe → sessions révoquées → reconnexion.
+- Double moteur sans divergence d'interface : Neon Auth (plugin Email OTP, type forget-password) en production, moteur local bcrypt en sandbox — mêmes écrans, même contrat /api/auth/password-reset.
+- Sécurité : anti-énumération, rate limits, code hashé, usage unique, révocation sessions, audit — cohérent avec le reste de la plateforme.
+- Aucune régression : tsc 0, lint 0, aucune route métier touchée ; le proxy public n'expose AUCUN nouvel endpoint.
+- Reste : validation E2E en production après déploiement (livraison e-mail réelle via webhook Neon) ; option future = réinitialisation par SMS pour les comptes téléphone (plugin phone-number, non prévu par Neon pour forget-password à ce jour).

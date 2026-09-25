@@ -27,7 +27,7 @@ import { z } from "zod";
 import { toast } from "sonner";
 import { motion } from "framer-motion";
 import {
-  ArrowLeft, ArrowRight, Bell, Bus, CheckCircle2, Eye, EyeOff, Loader2, Lock, LogIn, Mail,
+  ArrowLeft, ArrowRight, Bell, Bus, CheckCircle2, Eye, EyeOff, KeyRound, Loader2, Lock, LogIn, Mail,
   MessageSquareText, Phone, ShieldCheck, Star, Ticket, UserPlus, UserRound,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -99,6 +99,25 @@ const verifyEmailSchema = z.object({
 });
 type VerifyEmailValues = z.infer<typeof verifyEmailSchema>;
 
+// Mot de passe oublié — étape 1 : demande du code (e-mail OU identifiant court)
+const resetRequestSchema = z.object({
+  identifier: z.string().trim().min(3, "Renseignez votre e-mail ou votre identifiant."),
+});
+type ResetRequestValues = z.infer<typeof resetRequestSchema>;
+
+// Mot de passe oublié — étape 2 : code + nouveau mot de passe
+const resetVerifySchema = z
+  .object({
+    code: z.string().trim().regex(/^\d{6}$/, "Code à 6 chiffres requis."),
+    password: z.string().min(8, "Mot de passe : 8 caractères minimum."),
+    confirmPassword: z.string().min(8, "Confirmez le mot de passe."),
+  })
+  .refine((v) => v.password === v.confirmPassword, {
+    message: "Les deux mots de passe ne correspondent pas.",
+    path: ["confirmPassword"],
+  });
+type ResetVerifyValues = z.infer<typeof resetVerifySchema>;
+
 // ---------- Avantages (panneau de marque) ----------
 
 const BENEFITS = [
@@ -131,6 +150,12 @@ export default function AuthScreen({ defaultTab = "login" }: { defaultTab?: "log
 
   // Vérification d'adresse e-mail (inscription Neon)
   const [pendingEmail, setPendingEmail] = useState<string | null>(null);
+
+  // Réinitialisation de mot de passe oublié (onglet e-mail)
+  const [resetStep, setResetStep] = useState<"idle" | "request" | "code">("idle");
+  const [resetEmail, setResetEmail] = useState("");
+  const [resetIdentifier, setResetIdentifier] = useState("");
+  const [resetDevCode, setResetDevCode] = useState<string | null>(null);
 
   useEffect(() => {
     api.auth
@@ -376,6 +401,87 @@ export default function AuthScreen({ defaultTab = "login" }: { defaultTab?: "log
     }
   };
 
+  // ---------- Mot de passe oublié : demande du code ----------
+  const resetRequestForm = useForm<ResetRequestValues>({
+    resolver: zodResolver(resetRequestSchema),
+    defaultValues: { identifier: "" },
+  });
+
+  const onRequestReset = async (values: ResetRequestValues) => {
+    setError(null);
+    try {
+      const res = await api.auth.passwordResetRequest(values.identifier.trim());
+      setResetIdentifier(values.identifier.trim());
+      setResetEmail(res.email);
+      setResetDevCode(res.devCode ?? null);
+      setResetStep("code");
+      toast.success("Code envoyé par e-mail", {
+        description: `Vérifiez la boîte ${res.email} — le code expire dans 15 minutes.`,
+      });
+    } catch (err) {
+      const message =
+        err instanceof ApiClientError || err instanceof Error
+          ? err.message
+          : "Envoi du code impossible. Vérifiez votre réseau.";
+      setError(message);
+      toast.error(message);
+    }
+  };
+
+  // ---------- Mot de passe oublié : code + nouveau mot de passe ----------
+  const resetVerifyForm = useForm<ResetVerifyValues>({
+    resolver: zodResolver(resetVerifySchema),
+    defaultValues: { code: "", password: "", confirmPassword: "" },
+  });
+
+  const onResetVerify = async (values: ResetVerifyValues) => {
+    setError(null);
+    try {
+      await api.auth.passwordResetVerify(resetEmail, values.code.trim(), values.password);
+      toast.success("Mot de passe réinitialisé !", { description: "Connectez-vous avec votre nouveau mot de passe." });
+      setResetStep("idle");
+      setResetEmail("");
+      setResetIdentifier("");
+      setResetDevCode(null);
+      resetVerifyForm.reset();
+      resetRequestForm.reset();
+      setEmailMode("signin");
+    } catch (err) {
+      const message =
+        err instanceof ApiClientError || err instanceof Error
+          ? err.message
+          : "Réinitialisation impossible. Réessayez.";
+      setError(message);
+      toast.error(message);
+    }
+  };
+
+  /** Renvoi du code de réinitialisation avec l'identifiant déjà validé. */
+  const onResendResetCode = async () => {
+    if (!resetIdentifier) return;
+    setError(null);
+    try {
+      const res = await api.auth.passwordResetRequest(resetIdentifier);
+      setResetEmail(res.email);
+      setResetDevCode(res.devCode ?? null);
+      toast.success("Nouveau code envoyé par e-mail", { description: `Vérifiez la boîte ${res.email}.` });
+    } catch (err) {
+      const message =
+        err instanceof ApiClientError || err instanceof Error
+          ? err.message
+          : "Envoi du code impossible. Vérifiez votre réseau.";
+      setError(message);
+      toast.error(message);
+    }
+  };
+
+  const exitResetFlow = () => {
+    setResetStep("idle");
+    setResetEmail("");
+    setResetDevCode(null);
+    setError(null);
+  };
+
   const errBox = (message: string) => (
     <p role="alert" className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700 dark:border-red-900 dark:bg-red-950/40 dark:text-red-300">
       {message}
@@ -519,7 +625,7 @@ export default function AuthScreen({ defaultTab = "login" }: { defaultTab?: "log
                 </Button>
               </motion.div>
             ) : (
-              <Tabs value={tab} onValueChange={(v) => { setTab(v as AuthTab); setError(null); setOtpStep("phone"); }}>
+              <Tabs value={tab} onValueChange={(v) => { setTab(v as AuthTab); setError(null); setOtpStep("phone"); setResetStep("idle"); }}>
                 <TabsList className="grid h-12 w-full grid-cols-2">
                   <TabsTrigger value="phone" className="gap-1.5 text-sm">
                     <Phone className="size-4" aria-hidden /> Téléphone
@@ -647,8 +753,184 @@ export default function AuthScreen({ defaultTab = "login" }: { defaultTab?: "log
                 <TabsContent value="email" className="mt-5 space-y-4">
                   {error && errBox(error)}
 
-                  {/* Bascule connexion / inscription */}
-                  <div className="grid grid-cols-2 gap-1 rounded-lg bg-muted p-1" role="group" aria-label="Mode E-mail">
+                  {resetStep === "request" ? (
+                    /* ---------- Mot de passe oublié : demande du code ---------- */
+                    <motion.div initial={{ opacity: 0, x: 8 }} animate={{ opacity: 1, x: 0 }} className="space-y-4">
+                      <div className="flex items-center gap-3">
+                        <span className="flex size-11 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary">
+                          <KeyRound className="size-5" aria-hidden />
+                        </span>
+                        <div>
+                          <h3 className="text-base font-bold">Mot de passe oublié ?</h3>
+                          <p className="text-xs text-muted-foreground">
+                            Nous vous enverrons un code à 6 chiffres pour définir un nouveau mot de passe.
+                          </p>
+                        </div>
+                      </div>
+                      <Form {...resetRequestForm}>
+                        <form onSubmit={resetRequestForm.handleSubmit(onRequestReset)} noValidate className="space-y-4">
+                          <FormField
+                            control={resetRequestForm.control}
+                            name="identifier"
+                            render={({ field }) => (
+                              <FormItem>
+                                <FormLabel>E-mail ou identifiant du compte</FormLabel>
+                                <FormControl>
+                                  <div className="relative">
+                                    <Mail className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" aria-hidden />
+                                    <Input
+                                      {...field}
+                                      type="text"
+                                      autoComplete="username"
+                                      className="h-11 pl-9"
+                                      placeholder="vous@exemple.cg ou superadmin"
+                                      autoFocus
+                                    />
+                                  </div>
+                                </FormControl>
+                                <FormMessage />
+                              </FormItem>
+                            )}
+                          />
+                          <p className="flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800 dark:border-amber-900 dark:bg-amber-950/40 dark:text-amber-300" role="status">
+                            <MessageSquareText className="mt-0.5 size-4 shrink-0" aria-hidden />
+                            <span>
+                              Les comptes créés par <strong>téléphone</strong> se connectent par SMS (onglet Téléphone) —
+                              ils n&apos;ont pas de mot de passe à réinitialiser.
+                            </span>
+                          </p>
+                          <Button type="submit" size="lg" disabled={resetRequestForm.formState.isSubmitting} className="h-12 w-full">
+                            {resetRequestForm.formState.isSubmitting ? (
+                              <Loader2 className="size-5 animate-spin" aria-hidden />
+                            ) : (
+                              <KeyRound className="size-5" aria-hidden />
+                            )}
+                            {resetRequestForm.formState.isSubmitting ? "Envoi du code…" : "Envoyer le code de réinitialisation"}
+                          </Button>
+                          <Button type="button" variant="ghost" className="h-11 w-full gap-1.5" onClick={exitResetFlow}>
+                            <ArrowLeft className="size-4" aria-hidden /> Retour à la connexion
+                          </Button>
+                        </form>
+                      </Form>
+                    </motion.div>
+                  ) : resetStep === "code" ? (
+                    /* ---------- Mot de passe oublié : code + nouveau mot de passe ---------- */
+                    <motion.div initial={{ opacity: 0, x: 8 }} animate={{ opacity: 1, x: 0 }} className="space-y-4">
+                      <div className="flex items-center justify-between gap-2 rounded-lg border bg-muted/40 px-3 py-2 text-sm">
+                        <span className="flex min-w-0 items-center gap-2 text-muted-foreground">
+                          <Mail className="size-4 shrink-0" aria-hidden /> Code envoyé à
+                          <strong className="break-all text-foreground">{resetEmail}</strong>
+                        </span>
+                        <button
+                          type="button"
+                          className="shrink-0 font-medium text-primary hover:underline"
+                          onClick={() => { setResetStep("request"); setError(null); }}
+                        >
+                          Modifier
+                        </button>
+                      </div>
+
+                      {resetDevCode && (
+                        <p className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800 dark:border-amber-900 dark:bg-amber-950/40 dark:text-amber-300" role="status">
+                          Mode développement : code <strong className="tracking-widest">{resetDevCode}</strong>
+                        </p>
+                      )}
+
+                      <Form {...resetVerifyForm}>
+                        <form onSubmit={resetVerifyForm.handleSubmit(onResetVerify)} noValidate className="space-y-4">
+                          <FormField
+                            control={resetVerifyForm.control}
+                            name="code"
+                            render={({ field }) => (
+                              <FormItem>
+                                <FormLabel>Code reçu par e-mail</FormLabel>
+                                <FormControl>
+                                  <Input
+                                    {...field}
+                                    inputMode="numeric"
+                                    autoComplete="one-time-code"
+                                    maxLength={6}
+                                    className="h-12 text-center text-lg tracking-[0.5em]"
+                                    placeholder="••••••"
+                                    autoFocus
+                                  />
+                                </FormControl>
+                                <FormMessage />
+                              </FormItem>
+                            )}
+                          />
+                          <FormField
+                            control={resetVerifyForm.control}
+                            name="password"
+                            render={({ field }) => (
+                              <FormItem>
+                                <FormLabel>Nouveau mot de passe</FormLabel>
+                                <FormControl>
+                                  <div className="relative">
+                                    <Lock className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" aria-hidden />
+                                    <Input
+                                      {...field}
+                                      type={showPassword ? "text" : "password"}
+                                      autoComplete="new-password"
+                                      className="h-11 pl-9 pr-11"
+                                      placeholder="8 caractères min."
+                                    />
+                                    {passwordAdornment(showPassword, () => setShowPassword((v) => !v), "le mot de passe")}
+                                  </div>
+                                </FormControl>
+                                <FormMessage />
+                              </FormItem>
+                            )}
+                          />
+                          <FormField
+                            control={resetVerifyForm.control}
+                            name="confirmPassword"
+                            render={({ field }) => (
+                              <FormItem>
+                                <FormLabel>Confirmation</FormLabel>
+                                <FormControl>
+                                  <div className="relative">
+                                    <Lock className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" aria-hidden />
+                                    <Input
+                                      {...field}
+                                      type={showConfirm ? "text" : "password"}
+                                      autoComplete="new-password"
+                                      className="h-11 pl-9 pr-11"
+                                      placeholder="••••••••"
+                                    />
+                                    {passwordAdornment(showConfirm, () => setShowConfirm((v) => !v), "la confirmation")}
+                                  </div>
+                                </FormControl>
+                                <FormMessage />
+                              </FormItem>
+                            )}
+                          />
+                          <Button type="submit" size="lg" disabled={resetVerifyForm.formState.isSubmitting} className="h-12 w-full">
+                            {resetVerifyForm.formState.isSubmitting ? (
+                              <Loader2 className="size-5 animate-spin" aria-hidden />
+                            ) : (
+                              <CheckCircle2 className="size-5" aria-hidden />
+                            )}
+                            {resetVerifyForm.formState.isSubmitting ? "Réinitialisation…" : "Réinitialiser mon mot de passe"}
+                          </Button>
+                          <button
+                            type="button"
+                            className="w-full text-center text-sm text-muted-foreground hover:text-foreground disabled:opacity-60"
+                            onClick={onResendResetCode}
+                            disabled={resetVerifyForm.formState.isSubmitting}
+                          >
+                            Je n&apos;ai rien reçu — renvoyer le code
+                          </button>
+                          <Button type="button" variant="ghost" className="h-11 w-full gap-1.5" onClick={exitResetFlow}>
+                            <ArrowLeft className="size-4" aria-hidden /> Retour à la connexion
+                          </Button>
+                        </form>
+                      </Form>
+                    </motion.div>
+                  ) : (
+                    <>
+                      {/* Bascule connexion / inscription */}
+                      <div className="grid grid-cols-2 gap-1 rounded-lg bg-muted p-1" role="group" aria-label="Mode E-mail">
                     <Button
                       type="button"
                       variant={emailMode === "signin" ? "default" : "ghost"}
@@ -714,6 +996,13 @@ export default function AuthScreen({ defaultTab = "login" }: { defaultTab?: "log
                             </FormItem>
                           )}
                         />
+                        <button
+                          type="button"
+                          className="self-end text-sm font-medium text-primary hover:underline"
+                          onClick={() => { setResetStep("request"); setError(null); }}
+                        >
+                          Mot de passe oublié ?
+                        </button>
                         {neon && (
                           <p className="flex items-start gap-2 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs text-emerald-800 dark:border-emerald-900 dark:bg-emerald-950/40 dark:text-emerald-300" role="status">
                             <ShieldCheck className="mt-0.5 size-4 shrink-0" aria-hidden />
@@ -919,6 +1208,8 @@ export default function AuthScreen({ defaultTab = "login" }: { defaultTab?: "log
                         </Button>
                       </form>
                     </Form>
+                  )}
+                    </>
                   )}
                 </TabsContent>
               </Tabs>

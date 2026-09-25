@@ -1000,6 +1000,25 @@ export interface OtpVerifyInput {
   code: string; // 6 chiffres
 }
 
+// ---------- RÉINITIALISATION DE MOT DE PASSE (mot de passe oublié) ----------
+
+/** Réponse de la demande de réinitialisation (POST /api/auth/password-reset, action "request"). */
+export interface PasswordResetRequestDTO {
+  mode: "neon" | "local";
+  /** Adresse e-mail canonisée effectivement utilisée (identifiants courts résolus). */
+  email: string;
+  /** Durée de validité du code en secondes (15 min, aligné Neon). */
+  expiresInSec: number;
+  // Uniquement si OTP_DEBUG=true (sandbox) :
+  devCode?: string;
+}
+
+/** Réponse de la validation du code + nouveau mot de passe (action "verify"). */
+export interface PasswordResetResultDTO {
+  mode: "neon" | "local";
+  ok: true;
+}
+
 /** Modes d'authentification actifs (GET /api/auth/providers). */
 export interface AuthProvidersDTO {
   supabase: boolean;

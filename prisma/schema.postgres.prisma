@@ -726,6 +726,29 @@ model OtpCode {
   @@index([expiresAt])
 }
 
+// ============================================================
+// RÉINITIALISATION DE MOT DE PASSE (mode local / sandbox)
+// ============================================================
+// En mode Neon (production), la réinitialisation « mot de passe oublié »
+// passe par le plugin Email OTP du service managé (webhook send.otp →
+// livraison e-mail NZOKO, puis /email-otp/reset-password) : cette table
+// n'est utilisée qu'en mode local (développement). Elle reste synchronisée
+// dans les 2 schémas (convention du projet).
+// TTL 15 min (aligné sur la durée des liens Neon), 5 tentatives max,
+// usage unique — mêmes garde-fous que OtpCode.
+model PasswordResetCode {
+  id         String    @id @default(cuid())
+  email      String // e-mail canonique (lowercase)
+  codeHash   String // SHA-256 du code — jamais en clair
+  expiresAt  DateTime // 15 min
+  attempts   Int       @default(0) // anti brute-force : 5 essais max
+  consumedAt DateTime?
+  createdAt  DateTime  @default(now())
+
+  @@index([email, createdAt])
+  @@index([expiresAt])
+}
+
 // Compte fidélité : 1 voyage payé = 100 points. Paliers sur les points
 // cumulés (lifetime) : BRONZE 0+ | SILVER 1 000+ | GOLD 5 000+ | VIP 15 000+.
 model LoyaltyAccount {

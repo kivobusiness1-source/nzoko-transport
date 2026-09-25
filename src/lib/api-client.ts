@@ -13,7 +13,7 @@ import type {
   MomoOverviewDTO, NotificationDTO, Paginated, PaymentDTO, RefundMode, ReportDTO, RoleDTO, RouteDTO, ScanResultDTO,
   SeatLayoutDTO, SeatMapDTO, SecurityLogDTO, SessionUser, TransactionDTO, TripContactsDTO, TripSearchDTO, UserDTO,
   RegisterInput, OtpRequestDTO, OtpVerifyInput, RegisterResult, ClientProfileDTO, ClientStatsDTO, ClientTripDTO, TripRatingInput,
-  AuthProvidersDTO, MigrationBridgeDTO,
+  AuthProvidersDTO, MigrationBridgeDTO, PasswordResetRequestDTO, PasswordResetResultDTO,
   FavoriteRouteDTO, FavoriteRouteInput, SpendingDTO, LoyaltyDTO, ComplaintDTO, ComplaintDetailDTO,
   ComplaintCreateInput, ComplaintReplyInput, AdminClientDTO, AdminComplaintDTO, AdminLoyaltyStatsDTO, CampaignInput,
   PromoCodeValidationDTO, RedemptionRequestDTO,
@@ -82,6 +82,19 @@ export const api = {
       request<OtpRequestDTO>("/auth/otp", { method: "POST", body: JSON.stringify({ phone, action: "request" }) }),
     otpVerify: (input: OtpVerifyInput) =>
       request<SessionUser>("/auth/otp", { method: "POST", body: JSON.stringify({ ...input, action: "verify" }) }),
+    // Mot de passe oublié — demande d'un code de réinitialisation par e-mail
+    // (accepte un e-mail OU un identifiant court interne ; canonisation serveur).
+    passwordResetRequest: (identifier: string) =>
+      request<PasswordResetRequestDTO>("/auth/password-reset", {
+        method: "POST",
+        body: JSON.stringify({ action: "request", email: identifier }),
+      }),
+    // Mot de passe oublié — validation du code + définition du nouveau mot de passe.
+    passwordResetVerify: (email: string, code: string, password: string) =>
+      request<PasswordResetResultDTO>("/auth/password-reset", {
+        method: "POST",
+        body: JSON.stringify({ action: "verify", email, code, password }),
+      }),
     logout: () => request<true>("/auth/logout", { method: "POST" }),
     me: () => request<SessionUser | null>("/auth/me"),
   },
