@@ -824,6 +824,29 @@ export default function AuthScreen({ defaultTab = "login" }: { defaultTab?: "log
 
                 {/* ================= TÉLÉPHONE + OTP ================= */}
                 <TabsContent value="phone" className="mt-5 space-y-4">
+                  {neon && providers.smsDelivery === "log" && otpStep === "phone" ? (
+                    <div
+                      className="rounded-lg border border-amber-300 bg-amber-50 p-3 text-left text-xs leading-relaxed text-amber-900 dark:border-amber-800 dark:bg-amber-950/50 dark:text-amber-200"
+                      role="status"
+                    >
+                      <p className="flex items-start gap-2">
+                        <MessageSquareText className="mt-0.5 size-4 shrink-0" aria-hidden />
+                        <span>
+                          <strong className="font-semibold">Codes SMS pas encore activés.</strong> La livraison
+                          SMS doit être branchée côté Neon Auth (webhook + fournisseur). En attendant, votre
+                          compte fonctionne déjà avec <strong>Google</strong> ou par <strong>e-mail</strong> —
+                          même compte, mêmes billets.
+                        </span>
+                      </p>
+                      <button
+                        type="button"
+                        onClick={() => setTab("email")}
+                        className="mt-2 inline-flex items-center gap-1.5 rounded-md border border-amber-400 bg-white/60 px-2.5 py-1.5 text-xs font-semibold text-amber-900 transition-colors hover:bg-amber-100 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-amber-500 dark:border-amber-700 dark:bg-amber-900/40 dark:text-amber-200 dark:hover:bg-amber-900/60"
+                      >
+                        <Mail className="size-3.5" aria-hidden /> Utiliser E-mail / Google
+                      </button>
+                    </div>
+                  ) : null}
                   {error && errBox(error)}
 
                   {otpStep === "phone" ? (

@@ -55,7 +55,7 @@ export function neonAuthErrorMessage(err: { message?: string; code?: string; sta
   const message = (err?.message ?? "").toLowerCase();
   const code = (err?.code ?? "").toUpperCase();
   if (code === "WEBHOOK_NOT_CONFIGURED" || /webhook.*send\.otp|webhook.*must be configured/.test(message)) {
-    return "La livraison des codes par SMS n'est pas encore configurée (webhook Neon Auth). Contactez l'exploitant NZOKO.";
+    return "Les codes SMS ne sont pas encore activés (livraison Neon Auth en cours de configuration). En attendant, connectez-vous avec Google ou par e-mail (onglet E-mail) — même compte, mêmes billets.";
   }
   if (/otp.*(not found|invalid)|invalid otp|otp_not_found/.test(message) || code === "OTP_NOT_FOUND") {
     return "Code incorrect ou expiré. Demandez un nouveau code.";
