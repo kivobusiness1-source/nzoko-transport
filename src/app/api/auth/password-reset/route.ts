@@ -198,6 +198,12 @@ async function handleRequestLocal(email: string, ip: string, req: NextRequest) {
       userAgent: getUserAgent(req),
       details: { reason: "mot de passe oublié — demande pour une adresse inconnue (ignorée)" },
     });
+    // Sandbox uniquement (OTP_DEBUG) : on signale à l'écran que l'adresse
+    // n'existe pas dans cet environnement de démonstration — la production
+    // NE renvoie JAMAIS cette information (anti-énumération stricte).
+    if (process.env.OTP_DEBUG === "true") {
+      return ok({ mode: "local", email, expiresInSec: PASSWORD_RESET.ttlMinutes * 60, demoUnknown: true });
+    }
     return ok({ mode: "local", email, expiresInSec: PASSWORD_RESET.ttlMinutes * 60 });
   }
 

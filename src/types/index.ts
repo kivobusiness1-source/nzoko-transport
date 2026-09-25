@@ -1011,6 +1011,8 @@ export interface PasswordResetRequestDTO {
   expiresInSec: number;
   // Uniquement si OTP_DEBUG=true (sandbox) :
   devCode?: string;
+  /** Sandbox uniquement (OTP_DEBUG) : adresse inconnue dans cet environnement de démonstration. */
+  demoUnknown?: boolean;
 }
 
 /** Réponse de la validation du code + nouveau mot de passe (action "verify"). */

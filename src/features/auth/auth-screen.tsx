@@ -27,7 +27,7 @@ import { z } from "zod";
 import { toast } from "sonner";
 import { motion } from "framer-motion";
 import {
-  ArrowLeft, ArrowRight, Bell, Bus, CheckCircle2, Eye, EyeOff, KeyRound, Loader2, Lock, LogIn, Mail,
+  ArrowLeft, ArrowRight, Bell, Bus, CheckCircle2, Eye, EyeOff, Info, KeyRound, Loader2, Lock, LogIn, Mail,
   MessageSquareText, Phone, ShieldCheck, Star, Ticket, UserPlus, UserRound,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -156,6 +156,8 @@ export default function AuthScreen({ defaultTab = "login" }: { defaultTab?: "log
   const [resetEmail, setResetEmail] = useState("");
   const [resetIdentifier, setResetIdentifier] = useState("");
   const [resetDevCode, setResetDevCode] = useState<string | null>(null);
+  // Sandbox uniquement (OTP_DEBUG) : l'adresse saisie n'existe pas dans cet environnement.
+  const [resetDemoUnknown, setResetDemoUnknown] = useState(false);
 
   useEffect(() => {
     api.auth
@@ -412,11 +414,23 @@ export default function AuthScreen({ defaultTab = "login" }: { defaultTab?: "log
     try {
       const res = await api.auth.passwordResetRequest(values.identifier.trim());
       setResetIdentifier(values.identifier.trim());
+      if (res.demoUnknown) {
+        // Sandbox (OTP_DEBUG) : adresse inconnue ici — on reste à l'étape 1
+        // avec un message explicite (la production répond un succès générique).
+        setResetDemoUnknown(true);
+        setResetDevCode(null);
+        setResetEmail("");
+        toast.error("Adresse inconnue dans cet environnement de démonstration.");
+        return;
+      }
+      setResetDemoUnknown(false);
       setResetEmail(res.email);
       setResetDevCode(res.devCode ?? null);
       setResetStep("code");
-      toast.success("Code envoyé par e-mail", {
-        description: `Vérifiez la boîte ${res.email} — le code expire dans 15 minutes.`,
+      toast.success(res.devCode ? "Code de démonstration généré" : "Code envoyé par e-mail", {
+        description: res.devCode
+          ? "L'aperçu n'envoie pas d'e-mails réels — utilisez le code affiché à l'écran."
+          : `Vérifiez la boîte ${res.email} — le code expire dans 15 minutes.`,
       });
     } catch (err) {
       const message =
@@ -443,6 +457,7 @@ export default function AuthScreen({ defaultTab = "login" }: { defaultTab?: "log
       setResetEmail("");
       setResetIdentifier("");
       setResetDevCode(null);
+      setResetDemoUnknown(false);
       resetVerifyForm.reset();
       resetRequestForm.reset();
       setEmailMode("signin");
@@ -462,9 +477,18 @@ export default function AuthScreen({ defaultTab = "login" }: { defaultTab?: "log
     setError(null);
     try {
       const res = await api.auth.passwordResetRequest(resetIdentifier);
+      if (res.demoUnknown) {
+        setResetDemoUnknown(true);
+        setResetStep("request");
+        toast.error("Adresse inconnue dans cet environnement de démonstration.");
+        return;
+      }
+      setResetDemoUnknown(false);
       setResetEmail(res.email);
       setResetDevCode(res.devCode ?? null);
-      toast.success("Nouveau code envoyé par e-mail", { description: `Vérifiez la boîte ${res.email}.` });
+      toast.success(res.devCode ? "Nouveau code de démonstration affiché" : "Nouveau code envoyé par e-mail", {
+        description: res.devCode ? "Utilisez le code affiché à l'écran." : `Vérifiez la boîte ${res.email}.`,
+      });
     } catch (err) {
       const message =
         err instanceof ApiClientError || err instanceof Error
@@ -479,6 +503,7 @@ export default function AuthScreen({ defaultTab = "login" }: { defaultTab?: "log
     setResetStep("idle");
     setResetEmail("");
     setResetDevCode(null);
+    setResetDemoUnknown(false);
     setError(null);
   };
 
@@ -625,7 +650,7 @@ export default function AuthScreen({ defaultTab = "login" }: { defaultTab?: "log
                 </Button>
               </motion.div>
             ) : (
-              <Tabs value={tab} onValueChange={(v) => { setTab(v as AuthTab); setError(null); setOtpStep("phone"); setResetStep("idle"); }}>
+              <Tabs value={tab} onValueChange={(v) => { setTab(v as AuthTab); setError(null); setOtpStep("phone"); setResetStep("idle"); setResetDemoUnknown(false); }}>
                 <TabsList className="grid h-12 w-full grid-cols-2">
                   <TabsTrigger value="phone" className="gap-1.5 text-sm">
                     <Phone className="size-4" aria-hidden /> Téléphone
@@ -767,6 +792,16 @@ export default function AuthScreen({ defaultTab = "login" }: { defaultTab?: "log
                           </p>
                         </div>
                       </div>
+                      {resetDemoUnknown && (
+                        <p className="flex items-start gap-2 rounded-lg border border-red-300 bg-red-50 px-3 py-2 text-xs text-red-800 dark:border-red-900 dark:bg-red-950/40 dark:text-red-300" role="alert">
+                          <Info className="mt-0.5 size-4 shrink-0" aria-hidden />
+                          <span>
+                            Aucun compte actif avec <strong className="break-all">{resetIdentifier}</strong> dans cet
+                            environnement de démonstration. Comptes de test :{" "}
+                            <strong>superadmin, admin, manager, agent, checker, comptable, chauffeur, support</strong>.
+                          </span>
+                        </p>
+                      )}
                       <Form {...resetRequestForm}>
                         <form onSubmit={resetRequestForm.handleSubmit(onRequestReset)} noValidate className="space-y-4">
                           <FormField
@@ -824,16 +859,34 @@ export default function AuthScreen({ defaultTab = "login" }: { defaultTab?: "log
                         <button
                           type="button"
                           className="shrink-0 font-medium text-primary hover:underline"
-                          onClick={() => { setResetStep("request"); setError(null); }}
+                          onClick={() => { setResetStep("request"); setError(null); setResetDemoUnknown(false); }}
                         >
                           Modifier
                         </button>
                       </div>
 
                       {resetDevCode && (
-                        <p className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800 dark:border-amber-900 dark:bg-amber-950/40 dark:text-amber-300" role="status">
-                          Mode développement : code <strong className="tracking-widest">{resetDevCode}</strong>
-                        </p>
+                        <div className="rounded-lg border-2 border-amber-400 bg-amber-50 p-4 dark:border-amber-700 dark:bg-amber-950/40" role="status">
+                          <p className="flex items-start gap-2 text-sm font-semibold text-amber-900 dark:text-amber-200">
+                            <Info className="mt-0.5 size-4 shrink-0" aria-hidden />
+                            Environnement de démonstration : aucun e-mail n&apos;est envoyé depuis cet aperçu.
+                          </p>
+                          <div className="mt-3 flex flex-wrap items-center justify-between gap-3">
+                            <div>
+                              <p className="text-xs text-amber-800 dark:text-amber-300">Votre code de test :</p>
+                              <p className="text-3xl font-bold tracking-[0.3em] text-amber-900 dark:text-amber-100">{resetDevCode}</p>
+                            </div>
+                            <Button
+                              type="button"
+                              size="sm"
+                              variant="outline"
+                              className="border-amber-400 text-amber-900 hover:bg-amber-100 dark:border-amber-700 dark:text-amber-200 dark:hover:bg-amber-900/40"
+                              onClick={() => resetVerifyForm.setValue("code", resetDevCode, { shouldValidate: true, shouldDirty: true })}
+                            >
+                              Utiliser ce code
+                            </Button>
+                          </div>
+                        </div>
                       )}
 
                       <Form {...resetVerifyForm}>
@@ -843,7 +896,7 @@ export default function AuthScreen({ defaultTab = "login" }: { defaultTab?: "log
                             name="code"
                             render={({ field }) => (
                               <FormItem>
-                                <FormLabel>Code reçu par e-mail</FormLabel>
+                                <FormLabel>{resetDevCode ? "Code de vérification (affiché ci-dessus)" : "Code reçu par e-mail"}</FormLabel>
                                 <FormControl>
                                   <Input
                                     {...field}
@@ -999,7 +1052,7 @@ export default function AuthScreen({ defaultTab = "login" }: { defaultTab?: "log
                         <button
                           type="button"
                           className="self-end text-sm font-medium text-primary hover:underline"
-                          onClick={() => { setResetStep("request"); setError(null); }}
+                          onClick={() => { setResetStep("request"); setError(null); setResetDemoUnknown(false); }}
                         >
                           Mot de passe oublié ?
                         </button>
