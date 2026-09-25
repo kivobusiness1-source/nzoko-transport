@@ -21,6 +21,7 @@ type Ctx = { params: Promise<{ path: string[] }> };
 
 const ALLOWED_POST_PREFIXES = [
   "sign-in/email", // connexion e-mail + mot de passe (SDK)
+  "sign-in/social", // OAuth social (Google/GitHub/Vercel — plugin Managed Auth)
   "sign-up/email", // inscription e-mail (SDK)
   "sign-out", // déconnexion session Neon
   "phone-number/send-otp", // OTP téléphone (plugin Phone Number)

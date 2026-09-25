@@ -22,11 +22,19 @@ export async function GET(_req: NextRequest) {
     // la route exécute sa propre copie du garde-fou pour un diagnostic
     // exact (2 requêtes information_schema légères au premier appel).
     await ensureNeonServiceAccountReady();
+    // Fournisseurs de LIVRAISON (noms uniquement — aucune clé, aucun
+    // secret : Secrets Management) : permet à l'interface d'afficher un
+    // avertissement honnête quand les e-mails/SMS ne peuvent pas partir
+    // (fin du « code jamais reçu » silencieux en production).
+    const emailProvider = (process.env.EMAIL_PROVIDER ?? "log").trim().toLowerCase();
+    const smsProvider = (process.env.SMS_PROVIDER ?? "log").trim().toLowerCase();
     return ok({
       supabase: isSupabaseEnabled,
       neon: isNeonAuthEnabled,
       mode: neonAuthMode,
       neonService: isNeonServiceConfigured,
+      emailDelivery: emailProvider,
+      smsDelivery: smsProvider,
       // Diagnostic d'infrastructure (noms de tables managées uniquement —
       // aucune donnée utilisateur, aucun secret) : état de l'auto-
       // configuration du compte de service.

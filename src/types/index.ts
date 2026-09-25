@@ -1029,6 +1029,10 @@ export interface AuthProvidersDTO {
   mode: "local" | "neon";
   /** Compte de service Neon configuré (provisioning téléphone + pont d'import). */
   neonService: boolean;
+  /** Fournisseur de livraison e-mail actif (NOM uniquement, aucun secret). "log" = aucune livraison réelle. */
+  emailDelivery?: string;
+  /** Fournisseur de livraison SMS actif (NOM uniquement, aucun secret). "log" = aucune livraison réelle. */
+  smsDelivery?: string;
 }
 
 /** Réponse du pont d'import (POST /api/auth/login en mode Neon). */

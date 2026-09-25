@@ -138,6 +138,18 @@ const BENEFITS = [
 
 type AuthTab = "phone" | "email";
 
+/** Marque Google (G multicolore officiel) — SVG inline, pas de dépendance. */
+function GoogleIcon({ className }: { className?: string }) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" aria-hidden focusable="false">
+      <path fill="#4285F4" d="M23.49 12.27c0-.79-.07-1.54-.19-2.27H12v4.51h6.47c-.29 1.48-1.14 2.73-2.4 3.58v3h3.86c2.26-2.09 3.56-5.17 3.56-8.82z" />
+      <path fill="#34A853" d="M12 24c3.24 0 5.95-1.08 7.93-2.91l-3.86-3c-1.08.72-2.45 1.16-4.07 1.16-3.13 0-5.78-2.11-6.73-4.96H1.29v3.09C3.26 21.3 7.31 24 12 24z" />
+      <path fill="#FBBC05" d="M5.27 14.29c-.25-.72-.38-1.49-.38-2.29s.14-1.57.38-2.29V6.62H1.29C.47 8.24 0 10.06 0 12s.47 3.76 1.29 5.38l3.98-3.09z" />
+      <path fill="#EA4335" d="M12 4.75c1.77 0 3.35.61 4.6 1.8l3.42-3.42C17.95 1.19 15.24 0 12 0 7.31 0 3.26 2.7 1.29 6.62l3.98 3.09C6.22 6.86 8.87 4.75 12 4.75z" />
+    </svg>
+  );
+}
+
 export default function AuthScreen({ defaultTab = "login" }: { defaultTab?: "login" | "register" }) {
   const setSession = useApp((s) => s.setSession);
   const setView = useApp((s) => s.setView);
@@ -406,6 +418,35 @@ export default function AuthScreen({ defaultTab = "login" }: { defaultTab?: "log
     defaultValues: { otp: "" },
   });
 
+  // ---------- Connexion sociale Google (Neon Auth Managed) ----------
+  // Le SDK managé gère lui-même la popup/redirect OAuth et le vérificateur
+  // de session (neon_auth_session_verifier). Au retour sur l'origine, le
+  // shell applicatif détecte la session Neon et l'échange contre la
+  // session NZOKO (bootstrap NzokoApp — cf. src/components/app/nzoko-app.tsx).
+  // Docs : https://neon.com/docs/auth/guides/setup-oauth — identifiants
+  // partagés Neon = développement ; production = application OAuth Google
+  // propre (redirect {NEON_AUTH_BASE_URL}/callback/google) + domaines de
+  // confiance (neon neon-auth domain add <origine>).
+  const onGoogleSignIn = async () => {
+    setError(null);
+    try {
+      const { error: sdkError } = await neonAuthCall(() =>
+        neonAuthClient.signIn.social({
+          provider: "google",
+          callbackURL: window.location.origin,
+        })
+      );
+      if (sdkError) {
+        throw new Error(neonAuthErrorMessage(sdkError));
+      }
+      // La redirection pleine page vers Google suit automatiquement.
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Connexion Google impossible. Réessayez.";
+      setError(message);
+      toast.error(message);
+    }
+  };
+
   const onVerifyEmail = async (values: VerifyEmailValues) => {
     setError(null);
     try {
@@ -619,6 +660,16 @@ export default function AuthScreen({ defaultTab = "login" }: { defaultTab?: "log
             {pendingEmail ? (
               // ---------- Vérification d'adresse e-mail (code reçu) ----------
               <motion.div initial={{ opacity: 0, scale: 0.98 }} animate={{ opacity: 1, scale: 1 }} className="space-y-4 py-2 text-center">
+                {providers.emailDelivery === "log" && (
+                  <p
+                    className="rounded-lg border border-amber-300 bg-amber-50 px-3 py-2.5 text-left text-xs leading-relaxed text-amber-900 dark:border-amber-800 dark:bg-amber-950/50 dark:text-amber-200"
+                    role="alert"
+                  >
+                    <strong className="font-semibold">Environnement sans envoi d&apos;e-mails réel.</strong>
+                    {" "}Aucun fournisseur d&apos;e-mail n&apos;est configuré ici : ce code ne peut pas vous être délivré.
+                    Contactez l&apos;exploitant (configurer EMAIL_PROVIDER) ou utilisez la connexion par téléphone.
+                  </p>
+                )}
                 <span className="mx-auto flex size-16 items-center justify-center rounded-full bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300">
                   <Mail className="size-8" aria-hidden />
                 </span>
@@ -1038,6 +1089,29 @@ export default function AuthScreen({ defaultTab = "login" }: { defaultTab?: "log
                       <UserPlus className="size-4" aria-hidden /> Créer un compte
                     </Button>
                   </div>
+
+                  {neon && (
+                    <>
+                      {/* Connexion sociale (Neon Managed Auth — Google) :
+                          identifiants partagés Neon en développement ; en
+                          production, application OAuth Google propre. */}
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="lg"
+                        className="h-12 w-full gap-3 bg-card"
+                        onClick={onGoogleSignIn}
+                      >
+                        <GoogleIcon className="size-5" />
+                        Continuer avec Google
+                      </Button>
+                      <p className="flex items-center gap-2 text-center text-[11px] text-muted-foreground" role="separator">
+                        <span className="h-px flex-1 bg-border" aria-hidden />
+                        ou avec vos identifiants
+                        <span className="h-px flex-1 bg-border" aria-hidden />
+                      </p>
+                    </>
+                  )}
 
                   {emailMode === "signin" ? (
                     <Form key="email-signin" {...loginForm}>

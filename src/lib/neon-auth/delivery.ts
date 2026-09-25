@@ -85,7 +85,17 @@ export async function sendSms(to: string, message: string): Promise<DeliveryResu
   } catch (err) {
     return { delivered: false, provider, error: err instanceof Error ? err.message.slice(0, 180) : String(err).slice(0, 180) };
   }
-  // Mode « log » : sandbox/développement (aucune livraison réelle)
+  if (provider === "log" && process.env.OTP_DEBUG !== "true") {
+    // PRODUCTION sans fournisseur configuré : échec EXPLICITE. Renvoyer
+    // « delivered: true » masquerait une livraison impossible (l'attente
+    // d'un SMS qui ne partira jamais) — le webhook informe Neon via 502.
+    return {
+      delivered: false,
+      provider: "log",
+      error: "Aucun fournisseur SMS configuré (SMS_PROVIDER) — envoi impossible.",
+    };
+  }
+  // Mode « log » : sandbox/développement (OTP_DEBUG) — aucune livraison réelle
   // eslint-disable-next-line no-console -- journal serveur volontaire (traçabilité livraison)
   console.log(`[sms:${provider}] (non livré — SMS_PROVIDER=log) → ${to} : « ${message} »`);
   return { delivered: true, provider: "log" };
@@ -139,6 +149,17 @@ export async function sendEmail(to: string, subject: string, text: string, html?
     if (provider === "resend") return await sendEmailResend(to, subject, text, html);
   } catch (err) {
     return { delivered: false, provider, error: err instanceof Error ? err.message.slice(0, 180) : String(err).slice(0, 180) };
+  }
+  if (provider === "log" && process.env.OTP_DEBUG !== "true") {
+    // PRODUCTION sans fournisseur configuré : échec EXPLICITE (fin du
+    // « code jamais reçu » silencieux — cf. signalement utilisateur). Le
+    // webhook renvoie 502 au service Neon, qui journalise l'échec ; le
+    // sandbox (OTP_DEBUG) conserve le mode log pour les flux de démo.
+    return {
+      delivered: false,
+      provider: "log",
+      error: "Aucun fournisseur d'e-mail configuré (EMAIL_PROVIDER) — envoi impossible.",
+    };
   }
   // eslint-disable-next-line no-console -- journal serveur volontaire (traçabilité livraison)
   console.log(`[email:${provider}] (non livré — EMAIL_PROVIDER=log) → ${to} : « ${subject} »`);

@@ -364,6 +364,38 @@ export default function NzokoApp() {
     // eslint-disable-next-line react-hooks/exhaustive-deps -- montage unique
   }, []);
 
+  // Retour OAuth social (Google — Neon Auth Managed) : après la redirection
+  // Google → Neon → notre origine, le cookie de session Neon est posé mais
+  // la session NZOKO applicative n'existe pas encore. Si une session Neon
+  // est détectée (et qu'aucune session NZOKO ne vit déjà), on l'échange via
+  // POST /api/neon-auth/exchange — le même pont que la connexion e-mail.
+  // Best-effort et silencieux : aucun appel en mode local (sandbox), aucun
+  // effet pour un visiteur sans session Neon.
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const providers = await api.auth.providers();
+        if (cancelled || providers.mode !== "neon" || !providers.neonService) return;
+        if (useApp.getState().session) return; // déjà connecté NZOKO
+        const { neonAuthCall, neonAuthClient } = await import("@/lib/neon-auth/client");
+        const { data } = await neonAuthCall(() => neonAuthClient.getSession());
+        if (cancelled || !data?.user) return; // pas de session Neon (visiteur simple)
+        const user = await api.auth.exchangeNeonSession();
+        if (cancelled) return;
+        useApp.getState().setSession(user);
+        toast.success(`Bienvenue ${user.firstName} !`, { description: user.roleLabel });
+      } catch {
+        // Pas de session Neon valide, échange refusé (compte sans miroir
+        // NZOKO actif) ou réseau indisponible : l'utilisateur passe par
+        // l'écran de connexion classique — aucun blocage, aucun bruit.
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
   // Télémétrie globale : erreurs non capturées + promesses rejetées
   // (posées une seule fois, nettoyées au démontage HMR).
   useEffect(() => installGlobalErrorReporting(), []);
