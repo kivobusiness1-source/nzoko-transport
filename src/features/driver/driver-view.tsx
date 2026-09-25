@@ -100,7 +100,7 @@ export default function DriverView() {
                     {section.trips.length}
                   </span>
                 </h2>
-                <div className="grid gap-3 md:grid-cols-2">
+                <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
                   {section.trips.map((t) => (
                     <DriverTripCard key={t.id} trip={t} />
                   ))}

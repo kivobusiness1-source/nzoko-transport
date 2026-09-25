@@ -122,7 +122,7 @@ export function ClientFavorites({ refreshKey }: { refreshKey?: number }) {
           }
         />
       ) : (
-        <div className="grid gap-3 md:grid-cols-2">
+        <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
           {favorites.map((fav) => (
             <Card key={fav.id} className="nzoko-fade-up overflow-hidden py-0">
               <CardContent className="p-4">

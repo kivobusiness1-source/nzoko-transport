@@ -76,8 +76,14 @@ export const api = {
       request<RegisterResult>("/auth/register", { method: "POST", body: JSON.stringify(input) }),
     // Modes d'authentification actifs (adaptation de l'écran de connexion)
     providers: () => request<AuthProvidersDTO>("/auth/providers"),
-    // Pont Neon Auth → session NZOKO (après signIn/signUp/OTP réussis côté SDK)
-    exchangeNeonSession: () => request<SessionUser>("/neon-auth/exchange", { method: "POST" }),
+    // Pont Neon Auth → session NZOKO (après signIn/signUp/OTP réussis côté SDK).
+    // `input.phone` (facultatif) : téléphone saisi à l'inscription e-mail —
+    // normalisé + lié au compte par le serveur si libre (sinon 409 clair).
+    exchangeNeonSession: (input?: { phone?: string }) =>
+      request<SessionUser>("/neon-auth/exchange", {
+        method: "POST",
+        ...(input?.phone ? { body: JSON.stringify({ phone: input.phone }) } : {}),
+      }),
     otpRequest: (phone: string) =>
       request<OtpRequestDTO>("/auth/otp", { method: "POST", body: JSON.stringify({ phone, action: "request" }) }),
     otpVerify: (input: OtpVerifyInput) =>

@@ -108,7 +108,7 @@ export function AdminTrips({ refreshKey }: { refreshKey?: number }) {
 
   return (
     <div>
-      <div className="grid gap-3 sm:grid-cols-[auto_auto_1fr]">
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-[auto_auto_1fr]">
         <Input
           type="date"
           value={date}

@@ -39,7 +39,7 @@ export function AgencyDepartures({ refreshKey }: { refreshKey?: number }) {
         />
       )}
       {!loading && !error && departures.length > 0 && (
-        <div className="grid gap-3 md:grid-cols-2">
+        <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
           {departures.map((t) => {
             const sold = t.totalSeats - t.availableSeats;
             const soldPct = t.totalSeats > 0 ? Math.round((sold / t.totalSeats) * 100) : 0;

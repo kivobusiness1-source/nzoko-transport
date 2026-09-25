@@ -28,6 +28,7 @@ import { logSecurity } from "@/lib/audit";
 import { RATE_LIMITS } from "@/lib/constants";
 import { isNeonAuthEnabled, neonAuth } from "@/lib/neon-auth/server";
 import { isNeonServiceAccount } from "@/lib/neon-auth/service-account";
+import { normalizePhone } from "@/lib/phone";
 import { upsertNeonUserMirror } from "@/services/neon-auth-mirror";
 import { db } from "@/lib/db";
 import type { PermissionCode, RoleCode } from "@/lib/constants";
@@ -44,6 +45,32 @@ export async function POST(req: NextRequest) {
     // Anti-abus : l'appel exige un cookie Neon valide, on garde une
     // garde simple par IP (l'amont est le service managé Neon).
     enforceRateLimit(`neon-exchange:${ip}`, RATE_LIMITS.login.limit, RATE_LIMITS.login.windowMs);
+
+    // Corps facultatif : { phone } — téléphone saisi à l'inscription e-mail.
+    // Normalisé E.164 local (242…) ; un format invalide est refusé tôt,
+    // un corps absent/illéisible est simplement ignoré (aucun téléphone).
+    let requestedPhone: string | null = null;
+    try {
+      const body: unknown = await req.json();
+      const raw =
+        body && typeof body === "object" && typeof (body as { phone?: unknown }).phone === "string"
+          ? ((body as { phone: string }).phone ?? "").trim()
+          : "";
+      if (raw) {
+        requestedPhone = normalizePhone(raw);
+        if (!requestedPhone) {
+          throw new ApiError(
+            400,
+            ERROR_CODES.VALIDATION_ERROR,
+            "Numéro de téléphone invalide (format attendu : 06 123 45 67)."
+          );
+        }
+      }
+    } catch (err) {
+      // JSON absent/malformé → pas de téléphone demandé ; les ApiError
+      // (validation) restent propagées.
+      if (err instanceof ApiError) throw err;
+    }
 
     // 1. Session Neon Auth (lecture du cookie signé, rafraîchie au besoin)
     const { data: neonSession } = await neonAuth().getSession();
@@ -84,6 +111,27 @@ export async function POST(req: NextRequest) {
 
     if (!mirror.isActive) {
       throw new ApiError(401, ERROR_CODES.UNAUTHORIZED, "Compte indisponible.");
+    }
+
+    // 3-bis. Liaison du téléphone demandé à l'inscription e-mail —
+    // unicité garantie : un numéro déjà pris par un AUTRE compte actif
+    // refuse l'échange avec une erreur claire (jamais de vol de numéro,
+    // jamais de mélange de comptes). Même compte → no-op.
+    if (requestedPhone) {
+      const owner = await db.user.findFirst({
+        where: { phone: requestedPhone },
+        select: { id: true },
+      });
+      if (owner && owner.id !== mirror.id) {
+        throw new ApiError(
+          409,
+          ERROR_CODES.VALIDATION_ERROR,
+          "Ce numéro de téléphone est déjà lié à un autre compte NZOKO. Connectez-vous avec ce numéro ou choisissez-en un autre."
+        );
+      }
+      if (!owner) {
+        await db.user.update({ where: { id: mirror.id }, data: { phone: requestedPhone } });
+      }
     }
 
     // 4. Session applicative NZOKO (cookie opaque HttpOnly habituel)

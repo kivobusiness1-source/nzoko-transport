@@ -205,7 +205,7 @@ export function ClientOverview({ refreshKey, onTab }: { refreshKey?: number; onT
 
           {/* --- Trajet préféré + offre personnalisée --- */}
           {(stats.favoriteRoute || stats.personalizedOffer) && (
-            <div className="grid gap-3 md:grid-cols-2">
+            <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
               {stats.favoriteRoute && (
                 <Card className="nzoko-fade-up border-primary/30">
                   <CardContent className="p-4">

@@ -27,7 +27,7 @@ export function NzokoKpiSkeletons({ count = 6 }: { count?: number }) {
 
 export function NzokoListSkeleton({ count = 4 }: { count?: number }) {
   return (
-    <div className="grid gap-3 md:grid-cols-2">
+    <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
       {Array.from({ length: count }).map((_, i) => (
         <Card key={i} className="gap-3 p-4">
           <div className="flex items-center justify-between gap-3">

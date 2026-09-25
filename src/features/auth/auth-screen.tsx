@@ -20,7 +20,7 @@
 // Mode LOCAL (sandbox/dev) : mêmes écrans, moteur local (bcrypt + OTP).
 // ============================================================
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
@@ -86,8 +86,17 @@ const registerSchema = z
 type RegisterValues = z.infer<typeof registerSchema>;
 
 // E-mail (mode Neon) — inscription
+// NB téléphone : clé de compte au Congo (connexion SMS, rétro-liage des
+// billets) — obligatoire comme dans le formulaire local ; il est normalisé
+// puis lié au compte côté serveur au moment de l'échange de session
+// (POST /api/neon-auth/exchange), Neon Auth ne gérant ici que l'e-mail.
 const emailSignupSchema = z.object({
   name: z.string().trim().min(2, "Nom complet requis (2 caractères minimum).").max(80, "Nom trop long (80 caractères max)."),
+  phone: z
+    .string()
+    .trim()
+    .min(6, "Numéro de téléphone requis.")
+    .refine((v) => /^(\+?242)?0?[\d\s().-]{8,16}$/.test(v), "Numéro invalide. Ex : 06 123 45 67 ou +242 06 123 45 67."),
   email: z.email("Adresse e-mail invalide (ex : vous@exemple.cg)."),
   password: z.string().min(8, "Mot de passe : 8 caractères minimum."),
 });
@@ -244,6 +253,17 @@ export default function AuthScreen({ defaultTab = "login" }: { defaultTab?: "log
   };
 
   // ---------- E-mail : connexion (pont d'import en mode Neon) ----------
+  // Téléphone saisi à l'inscription en attente de liaison (après vérification
+  // d'e-mail, la première connexion finalise le lien via l'échange).
+  const pendingPhoneRef = useRef<string | null>(null);
+
+  /** Consomme (une seule fois) le téléphone en attente et échange la session. */
+  const exchangeNeonSessionWithPendingPhone = async () => {
+    const phone = pendingPhoneRef.current;
+    pendingPhoneRef.current = null;
+    return api.auth.exchangeNeonSession(phone ? { phone } : undefined);
+  };
+
   const loginForm = useForm<LoginValues>({
     resolver: zodResolver(loginSchema),
     defaultValues: { identifier: "", password: "" },
@@ -275,7 +295,7 @@ export default function AuthScreen({ defaultTab = "login" }: { defaultTab?: "log
           })
         );
         if (!sdkError) {
-          onSession(await api.auth.exchangeNeonSession());
+          onSession(await exchangeNeonSessionWithPendingPhone());
           return;
         }
         // « Identifiants incorrects » → peut-être un compte interne pas
@@ -301,7 +321,7 @@ export default function AuthScreen({ defaultTab = "login" }: { defaultTab?: "log
       if (retryError) {
         throw new Error(neonAuthErrorMessage(retryError));
       }
-      onSession(await api.auth.exchangeNeonSession());
+      onSession(await exchangeNeonSessionWithPendingPhone());
     } catch (err) {
       const message =
         err instanceof ApiClientError || err instanceof Error
@@ -319,7 +339,7 @@ export default function AuthScreen({ defaultTab = "login" }: { defaultTab?: "log
   });
   const emailSignupForm = useForm<EmailSignupValues>({
     resolver: zodResolver(emailSignupSchema),
-    defaultValues: { name: "", email: "", password: "" },
+    defaultValues: { name: "", phone: "", email: "", password: "" },
   });
 
   const onRegister = async (values: RegisterValues) => {
@@ -360,10 +380,16 @@ export default function AuthScreen({ defaultTab = "login" }: { defaultTab?: "log
       if (!data?.token) {
         // token null = vérification d'e-mail exigée par la configuration
         // Neon Auth : aucune session tant que le code n'a pas été confirmé.
+        // Le téléphone saisi est mémorisé et sera lié au compte pendant
+        // l'échange de session de la première connexion qui suit la
+        // vérification (pendingPhoneRef — consommé une seule fois).
+        pendingPhoneRef.current = values.phone.trim();
         setPendingEmail(values.email.trim());
         return;
       }
-      onSession(await api.auth.exchangeNeonSession());
+      // Session immédiate : le téléphone est normalisé puis lié côté
+      // serveur (unicité vérifiée) pendant l'échange Neon → NZOKO.
+      onSession(await api.auth.exchangeNeonSession({ phone: values.phone.trim() }));
     } catch (err) {
       const message =
         err instanceof ApiClientError || err instanceof Error
@@ -530,7 +556,7 @@ export default function AuthScreen({ defaultTab = "login" }: { defaultTab?: "log
         initial={{ opacity: 0, y: 12 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.35 }}
-        className="grid gap-6 lg:grid-cols-[1.05fr_1fr] lg:gap-0"
+        className="grid grid-cols-1 gap-6 lg:grid-cols-[1.05fr_1fr] lg:gap-0"
       >
         {/* ---------- Panneau de marque (desktop) ---------- */}
         <div className="relative hidden overflow-hidden rounded-l-2xl nzoko-hero p-8 lg:flex lg:flex-col lg:justify-between">
@@ -604,7 +630,7 @@ export default function AuthScreen({ defaultTab = "login" }: { defaultTab?: "log
                     Saisissez-le pour activer votre compte.
                   </p>
                 </div>
-                <Form {...verifyEmailForm}>
+                <Form key="verify-email" {...verifyEmailForm}>
                   <form onSubmit={verifyEmailForm.handleSubmit(onVerifyEmail)} noValidate className="space-y-4">
                     {error && errBox(error)}
                     <FormField
@@ -616,6 +642,7 @@ export default function AuthScreen({ defaultTab = "login" }: { defaultTab?: "log
                           <FormControl>
                             <Input
                               {...field}
+                              onChange={(e) => field.onChange(e.target.value.replace(/\D/g, "").slice(0, 6))}
                               inputMode="numeric"
                               autoComplete="one-time-code"
                               maxLength={6}
@@ -665,7 +692,13 @@ export default function AuthScreen({ defaultTab = "login" }: { defaultTab?: "log
                   {error && errBox(error)}
 
                   {otpStep === "phone" ? (
-                    <Form {...phoneForm}>
+                    // ⚠️ key unique : React réutilise les fibres de Controller
+                    // entre formulaires positionnés au même endroit — le réf
+                    // interne _registerProps de react-hook-form resterait alors
+                    // branché sur l'ANCIEN useForm (frappes perdues, champs qui
+                    // « refusent » la saisie). Une key distincte force le
+                    // remontage propre de chaque formulaire.
+                    <Form key="phone-request" {...phoneForm}>
                       <form onSubmit={phoneForm.handleSubmit(onPhoneRequest)} noValidate className="space-y-4">
                         <FormField
                           control={phoneForm.control}
@@ -729,7 +762,7 @@ export default function AuthScreen({ defaultTab = "login" }: { defaultTab?: "log
                         </p>
                       )}
 
-                      <Form {...codeForm}>
+                      <Form key="phone-code" {...codeForm}>
                         <form onSubmit={codeForm.handleSubmit(onPhoneVerify)} noValidate className="space-y-4">
                           <FormField
                             control={codeForm.control}
@@ -740,6 +773,7 @@ export default function AuthScreen({ defaultTab = "login" }: { defaultTab?: "log
                                 <FormControl>
                                   <Input
                                     {...field}
+                                    onChange={(e) => field.onChange(e.target.value.replace(/\D/g, "").slice(0, 6))}
                                     inputMode="numeric"
                                     autoComplete="one-time-code"
                                     maxLength={6}
@@ -802,7 +836,7 @@ export default function AuthScreen({ defaultTab = "login" }: { defaultTab?: "log
                           </span>
                         </p>
                       )}
-                      <Form {...resetRequestForm}>
+                      <Form key="reset-request" {...resetRequestForm}>
                         <form onSubmit={resetRequestForm.handleSubmit(onRequestReset)} noValidate className="space-y-4">
                           <FormField
                             control={resetRequestForm.control}
@@ -889,7 +923,7 @@ export default function AuthScreen({ defaultTab = "login" }: { defaultTab?: "log
                         </div>
                       )}
 
-                      <Form {...resetVerifyForm}>
+                      <Form key="reset-verify" {...resetVerifyForm}>
                         <form onSubmit={resetVerifyForm.handleSubmit(onResetVerify)} noValidate className="space-y-4">
                           <FormField
                             control={resetVerifyForm.control}
@@ -900,6 +934,7 @@ export default function AuthScreen({ defaultTab = "login" }: { defaultTab?: "log
                                 <FormControl>
                                   <Input
                                     {...field}
+                                    onChange={(e) => field.onChange(e.target.value.replace(/\D/g, "").slice(0, 6))}
                                     inputMode="numeric"
                                     autoComplete="one-time-code"
                                     maxLength={6}
@@ -1005,7 +1040,7 @@ export default function AuthScreen({ defaultTab = "login" }: { defaultTab?: "log
                   </div>
 
                   {emailMode === "signin" ? (
-                    <Form {...loginForm}>
+                    <Form key="email-signin" {...loginForm}>
                       <form onSubmit={loginForm.handleSubmit(onEmailLogin)} noValidate className="space-y-4">
                         <FormField
                           control={loginForm.control}
@@ -1077,7 +1112,7 @@ export default function AuthScreen({ defaultTab = "login" }: { defaultTab?: "log
                     </Form>
                   ) : neon ? (
                     // ---- Inscription (mode Neon : e-mail + code de vérification) ----
-                    <Form {...emailSignupForm}>
+                    <Form key="email-signup-neon" {...emailSignupForm}>
                       <form onSubmit={emailSignupForm.handleSubmit(onEmailSignup)} noValidate className="space-y-4">
                         <FormField
                           control={emailSignupForm.control}
@@ -1092,6 +1127,32 @@ export default function AuthScreen({ defaultTab = "login" }: { defaultTab?: "log
                                 </div>
                               </FormControl>
                               <FormMessage />
+                            </FormItem>
+                          )}
+                        />
+                        <FormField
+                          control={emailSignupForm.control}
+                          name="phone"
+                          render={({ field }) => (
+                            <FormItem>
+                              <FormLabel>Téléphone</FormLabel>
+                              <FormControl>
+                                <div className="relative">
+                                  <Phone className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" aria-hidden />
+                                  <Input
+                                    {...field}
+                                    type="tel"
+                                    inputMode="tel"
+                                    autoComplete="tel"
+                                    className="h-11 pl-9"
+                                    placeholder="06 123 45 67"
+                                  />
+                                </div>
+                              </FormControl>
+                              <FormMessage />
+                              <p className="text-xs text-muted-foreground">
+                                Votre clé de compte : il vous servira aussi à vous connecter par SMS.
+                              </p>
                             </FormItem>
                           )}
                         />
@@ -1150,7 +1211,7 @@ export default function AuthScreen({ defaultTab = "login" }: { defaultTab?: "log
                     </Form>
                   ) : (
                     // ---- Inscription (mode local : formulaire complet) ----
-                    <Form {...registerForm}>
+                    <Form key="email-signup-local" {...registerForm}>
                       <form onSubmit={registerForm.handleSubmit(onRegister)} noValidate className="space-y-4">
                         <div className="grid gap-4 sm:grid-cols-2">
                           <FormField

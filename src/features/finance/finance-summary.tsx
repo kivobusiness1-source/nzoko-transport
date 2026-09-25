@@ -249,7 +249,7 @@ export function FinanceSummary({ refreshKey }: { refreshKey?: number }) {
         {categories.length === 0 ? (
           <NzokoChartEmpty />
         ) : (
-          <div className="grid items-center gap-4 md:grid-cols-2">
+          <div className="grid grid-cols-1 items-center gap-4 md:grid-cols-2">
             <div className="h-[220px] w-full">
               <ResponsiveContainer width="100%" height="100%">
                 <PieChart>

@@ -72,7 +72,7 @@ export function AdminUsers({ refreshKey }: { refreshKey?: number }) {
 
   return (
     <div>
-      <div className="grid gap-3 sm:grid-cols-[1fr_auto]">
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-[1fr_auto]">
         <div className="relative">
           <Search
             className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground"
@@ -104,15 +104,18 @@ export function AdminUsers({ refreshKey }: { refreshKey?: number }) {
           />
         )}
         {!loading && !error && users.length > 0 && (
-          <div className="grid gap-3 md:grid-cols-2">
+          <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
             {users.map((u) => (
               <Card key={u.id} className="gap-2.5 p-4">
-                <div className="flex items-start justify-between gap-2">
+                {/* flex-wrap : un badge de rôle long (« Contrôleur
+                    embarquement ») passe sous le nom au lieu de comprimer la
+                    carte sur les petits écrans. */}
+                <div className="flex flex-wrap items-start justify-between gap-2">
                   <div className="min-w-0">
                     <p className="truncate text-sm font-bold">{u.fullName}</p>
                     <p className="truncate text-xs text-muted-foreground">{u.email}</p>
                   </div>
-                  <Badge variant="outline" className="shrink-0 border-primary/30 bg-primary/10 text-primary">
+                  <Badge variant="outline" className="ml-auto shrink-0 border-primary/30 bg-primary/10 text-primary">
                     {u.roleLabel ?? ROLE_LABELS[u.role as RoleCode] ?? u.role}
                   </Badge>
                 </div>
