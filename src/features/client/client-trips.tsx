@@ -6,9 +6,9 @@
 // évaluations post-voyage via RatingDialog).
 // ============================================================
 
-import { useMemo, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { toast } from "sonner";
-import { ArrowRight, Building2, Bus, Copy, Star, Ticket } from "lucide-react";
+import { ArrowRight, Building2, Bus, Clock, Copy, RotateCcw, Star, Ticket } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -19,6 +19,7 @@ import { NzokoListSkeleton } from "@/components/shared/nzoko-skeletons";
 import { useApiData } from "@/components/shared/nzoko-use-api";
 import { api } from "@/lib/api-client";
 import { formatDateTime, formatMoney } from "@/lib/format";
+import { todayStr } from "@/lib/dates";
 import { useApp } from "@/lib/store";
 import { RatingDialog } from "@/features/client/rating-dialog";
 import { monthGroupLabel, monthKey } from "@/features/client/client-utils";
@@ -27,6 +28,16 @@ import type { BookingStatus } from "@/lib/constants";
 import type { ClientTripDTO } from "@/types";
 
 type TripFilter = "all" | "upcoming" | "past" | "ratable";
+
+/**
+ * « Réserver à nouveau » : proposé dès que le voyage n'est plus une
+ * réservation confirmée à venir (terminé, manqué, annulé, expiré) —
+ * le complément exact du filtre « À venir ».
+ */
+function isRebookable(t: ClientTripDTO): boolean {
+  const now = new Date().getTime();
+  return !(t.status === "CONFIRMED" && new Date(t.departureTime).getTime() >= now);
+}
 
 const FILTERS: { key: TripFilter; label: string }[] = [
   { key: "all", label: "Tous" },
@@ -43,6 +54,21 @@ const STATUS_BAND: Record<BookingStatus, string> = {
   CANCELLED: "border-l-red-500",
   EXPIRED: "border-l-zinc-400",
 };
+
+/**
+ * Durée estimée du trajet (« 10 h », « 1 h 45 », « 40 min ») —
+ * détail utile directement visible sur la carte sans ouvrir le billet.
+ */
+function tripDurationLabel(departureTime: string, arrivalTime: string): string {
+  const mins = Math.max(
+    0,
+    Math.round((new Date(arrivalTime).getTime() - new Date(departureTime).getTime()) / 60000),
+  );
+  const h = Math.floor(mins / 60);
+  const m = mins % 60;
+  if (h === 0) return `${m} min`;
+  return m === 0 ? `${h} h` : `${h} h ${String(m).padStart(2, "0")}`;
+}
 
 /** Petit bouton « copier la référence » (repli textarea + toast). */
 function CopyReferenceButton({ value }: { value: string }) {
@@ -80,18 +106,34 @@ function CopyReferenceButton({ value }: { value: string }) {
   );
 }
 
-function TripCard({ trip, onRate }: { trip: ClientTripDTO; onRate: (t: ClientTripDTO) => void }) {
+function TripCard({
+  trip,
+  canRebook,
+  onRate,
+  onRebook,
+}: {
+  trip: ClientTripDTO;
+  canRebook: boolean;
+  onRate: (t: ClientTripDTO) => void;
+  onRebook: (t: ClientTripDTO) => void;
+}) {
   return (
     <Card
       role="listitem"
-      className={cn("nzoko-fade-up gap-0 overflow-hidden border-l-4 p-0 py-0", STATUS_BAND[trip.status])}
+      className={cn(
+        "group nzoko-fade-up gap-0 overflow-hidden border-l-4 p-0 py-0 transition-shadow duration-200 hover:shadow-md",
+        STATUS_BAND[trip.status],
+      )}
     >
       <CardContent className="p-4">
         <div className="flex items-start justify-between gap-2">
           <div className="min-w-0">
             <p className="flex min-w-0 items-center gap-1.5 text-base font-bold">
               <span className="truncate">{trip.originCityName}</span>
-              <ArrowRight className="size-4 shrink-0 text-primary" aria-hidden />
+              <ArrowRight
+                className="size-4 shrink-0 text-primary transition-transform duration-200 group-hover:translate-x-1"
+                aria-hidden
+              />
               <span className="truncate">{trip.destinationCityName}</span>
             </p>
             <p className="mt-0.5 text-xs text-muted-foreground">{formatDateTime(trip.departureTime)}</p>
@@ -106,6 +148,10 @@ function TripCard({ trip, onRate }: { trip: ClientTripDTO; onRate: (t: ClientTri
           </span>
           <span className="flex items-center gap-1">
             <Bus className="size-3.5 shrink-0" aria-hidden /> {trip.busRegistration}
+          </span>
+          <span className="flex items-center gap-1">
+            <Clock className="size-3.5 shrink-0" aria-hidden />
+            {tripDurationLabel(trip.departureTime, trip.arrivalTime)} de trajet
           </span>
           <Badge variant="secondary" className="font-mono font-semibold">Siège {trip.seatNumber}</Badge>
           {trip.seatType === "VIP" && (
@@ -140,6 +186,17 @@ function TripCard({ trip, onRate }: { trip: ClientTripDTO; onRate: (t: ClientTri
                 <Star className="size-3.5 text-amber-500" aria-hidden /> Évaluer
               </Button>
             )}
+            {canRebook && (
+              <Button
+                variant="outline"
+                size="sm"
+                className="h-9 gap-1.5"
+                onClick={() => onRebook(trip)}
+                aria-label={`Réserver à nouveau ${trip.originCityName} → ${trip.destinationCityName}`}
+              >
+                <RotateCcw className="size-3.5 text-primary" aria-hidden /> Réserver à nouveau
+              </Button>
+            )}
           </div>
         </div>
       </CardContent>
@@ -149,10 +206,26 @@ function TripCard({ trip, onRate }: { trip: ClientTripDTO; onRate: (t: ClientTri
 
 export function ClientTrips({ refreshKey }: { refreshKey?: number }) {
   const setView = useApp((s) => s.setView);
+  const setBookingSearch = useApp((s) => s.setBookingSearch);
   const { data, loading, error, reload } = useApiData(() => api.client.trips(), { refreshKey });
   const [filter, setFilter] = useState<TripFilter>("all");
   const [ratingTrip, setRatingTrip] = useState<ClientTripDTO | null>(null);
   const [ratingOpen, setRatingOpen] = useState(false);
+
+  // « Réserver à nouveau » : pré-remplit le tunnel de réservation avec le
+  // même trajet (même contrat que les favoris / la recherche accueil).
+  const bookAgain = useCallback(
+    (trip: ClientTripDTO) => {
+      setBookingSearch({
+        from: trip.originCityId,
+        to: trip.destinationCityId,
+        date: todayStr(),
+      });
+      setView("booking");
+      window.scrollTo({ top: 0, behavior: "smooth" });
+    },
+    [setBookingSearch, setView],
+  );
 
   const trips = useMemo(() => data ?? [], [data]);
 
@@ -279,10 +352,12 @@ export function ClientTrips({ refreshKey }: { refreshKey?: number }) {
                 <TripCard
                   key={t.bookingId}
                   trip={t}
+                  canRebook={isRebookable(t)}
                   onRate={(trip) => {
                     setRatingTrip(trip);
                     setRatingOpen(true);
                   }}
+                  onRebook={bookAgain}
                 />
               ))}
             </div>

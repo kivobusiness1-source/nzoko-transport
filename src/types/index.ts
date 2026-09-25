@@ -1075,7 +1075,9 @@ export interface ClientTripDTO {
   bookingId: string;
   bookingReference: string;
   status: BookingStatus;
+  originCityId: string; // pour « Réserver à nouveau » (pré-remplissage recherche)
   originCityName: string;
+  destinationCityId: string;
   destinationCityName: string;
   departureTime: string; // ISO
   arrivalTime: string; // ISO

@@ -1939,3 +1939,26 @@ Work Log:
 Stage Summary:
 - Gouvernance documentaire ADOPTÉE et enregistrée. Toute nouvelle règle de sécurité citée proviendra exclusivement de ces deux sources ; tout diagnostic de vulnérabilité référencera la feuille/page exacte.
 - Constat : l'existant est déjà aligné sur les feuilles OWASP pertinentes (détail remis à l'utilisateur).
+
+---
+Task ID: 49-fix-auth-saisie-superadmin-mobile
+Agent: Z.ai Code (session principale)
+Task: Retours utilisateur — (1) formulaire d'inscription refuse la saisie du numéro de téléphone, (2) le champ code OTP refuse les chiffres, (3) superadmin non responsive sous mobile. Puis push production (jeton classique fourni).
+
+Work Log:
+- ÉTAT REÇU : le correctif complet existait déjà en local (commit 6be9188, session précédente interrompue avant worklog/push) : cause racine react-hook-form (câblage _registerProps dans useRef réutilisé entre les 8 <Form> de l'écran auth → frappes envoyées au mauvais store) corrigée par keys uniques ; sanitisation chiffres-seuls des champs code ; champ téléphone ajouté à l'inscription (mode Neon) avec liaison via POST /api/neon-auth/exchange ; grid-cols-1 explicite sur 13 grilles + flex-wrap nom/badge (Utilisateurs).
+- VÉRIFICATIONS CODE : tsc EXIT 0, lint 0 erreur/0 warning.
+- E2E agent-browser (390×844) :
+  * Inscription : champ téléphone accepte les frappes clavier réelles (« 06 987 65 43 » saisi au clavier) ✓
+  * OTP téléphone : champ « Code reçu par SMS » accepte la saisie chiffres au clavier ✓ ; code saisi → « Me connecter »
+  * Responsivité : 13 onglets superadmin (Vue d'ensemble → Journal) mesurés au scrollWidth — ov:0 partout ; sonde élément-par-élément sur Utilisateurs et Réservations (excluant conteneurs overflow-x-auto/tables légitimes) : 0 élément débordant ; captures agent-ctx/capture-task49-{users,reservations}-mobile.png.
+- INCIDENT INFRA RÉSOLU (pas un bug code) : POST /api/auth/otp 404 à la vérification → diagnostic : (a) la base sandbox db/custom.db était hors-schéma (colonne User.phone absente + roleId requis manquant) → prisma db push --force-reset + re-seed ; (b) le dev server détenait l'ANCIEN inode SQLite (fichier remplacé par force-reset) → redémarrage du serveur ; (c) tentatives sur le téléphone d'un compte STAFF (242061000000) : 404 NORMAL — handleVerifyLocal n'autorise que role PASSENGER (otp/route.ts L197) — comportement voulu.
+- E2E FINAL PASSENGER COMPLET : inscription Otp E2E (06 555 00 00) → User en base avec phone E.164 « 242065550000 » ✓ → déconnexion → connexion OTP téléphone → code dev 909493 saisi AU CLAVIER → session passager ouverte ✓.
+- NETTOYAGE : utilisateur de test supprimé (12 tables liées via userId : Session, Driver, Passenger, Notification, AuditLog, SecurityLog, LoyaltyAccount, FavoriteRoute, Complaint, TripRating, RedemptionRequest, PromoCode) — base sandbox rendue à l'état seed (8 comptes internes).
+- PUSH : jeton CLASSIQUE fourni par l'utilisateur → 6f24f31..6be9188 main -> main ✓ ; remote main == 6be9188 ; déploiement Vercel automatique déclenché par le push.
+
+Stage Summary:
+- LES 3 BUGS SIGNALÉS SONT CORRIGÉS ET VÉRIFIÉS E2E : saisie téléphone + OTP chiffres (cause racine react-hook-form/keys) et responsivité superadmin (13 grilles, 0 débordement à 390 px).
+- LE COMMIT 6be9188 EST EN PRODUCTION (push main réussi) — Vercel redéploie automatiquement.
+- Comportement à CONNAÎTRE : la connexion par OTP téléphone est réservée aux comptes PASSAGER (les comptes staff passent par e-mail/mot de passe) — un 404 « Aucun compte associé à ce numéro » avec un numéro staff est ATTENDU.
+- Sécurité jetons : le PAT classique utilisé pour le push a circulé dans le chat → révoquer/renouveler après usage (le précédent conseil de révocation des 3 fine-grained reste valable).

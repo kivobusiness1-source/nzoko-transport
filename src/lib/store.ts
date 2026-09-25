@@ -98,15 +98,19 @@ export const useApp = create<AppState>((set) => ({
     } catch {
       // la session locale est purgée quoi qu'il arrive
     }
-    // Session Neon Auth : déconnexion du service managé en best-effort —
-    // systématique depuis l'unification de l'identité (sans objet si
-    // aucune session Neon n'existe : l'appel échoue silencieusement).
+    // Session Neon Auth : déconnexion du service managé UNIQUEMENT quand
+    // l'identité de la session est réellement portée par Neon Auth
+    // (authProvider === "NEON_AUTH"). Pour une session locale — aucun
+    // compte Neon sous-jacent — l'appel ne peut produire qu'un 503/404
+    // bruité (proxy non configuré ou endpoint sans session) : on l'évite.
     // (import dynamique : le SDK ne charge que lorsqu'il sert vraiment ;
     //  neonAuthCall neutralise AUSSI les exceptions LANCÉES par le
     //  wrapper Neon — cf. src/lib/neon-auth/client.ts.)
-    void import("@/lib/neon-auth/client")
-      .then(({ neonAuthCall, neonAuthClient }) => neonAuthCall(() => neonAuthClient.signOut()))
-      .catch(() => {});
+    if (useApp.getState().session?.authProvider === "NEON_AUTH") {
+      void import("@/lib/neon-auth/client")
+        .then(({ neonAuthCall, neonAuthClient }) => neonAuthCall(() => neonAuthClient.signOut()))
+        .catch(() => {});
+    }
     if (typeof window !== "undefined") {
       try {
         window.sessionStorage.removeItem(VIEW_STORAGE_KEY);
