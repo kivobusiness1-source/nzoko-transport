@@ -2036,6 +2036,8 @@ Work Log:
   * tsc 0, lint 0 ; sandbox : bandeau/Google masqués en mode local (intact) ; push 2393268..d093c99 main.
 - ROUTE WEBHOOK DÉJÀ PRÊTE (sessions précédentes, vérifiée à nouveau) : /api/webhooks/neon-auth — signature EdDSA Ed25519 via JWKS du projet (X-Neon-Signature/KID/timestamp, anti-rejeu 5 min, idempotence X-Neon-Event-Id, code OTP jamais journalisé) ; delivery.ts : SMS_PROVIDER=africastalking|twilio (les deux implémentés), EMAIL_PROVIDER=smtp|resend.
 
+- E2E PRODUCTION (déploiement d093c99 vérifié) : bandeau amber « Codes SMS pas encore activés… » visible sur l'onglet Téléphone avec bouton « Utiliser E-mail / Google » ✓ ; clic sur le bouton → bascule vers l'onglet E-mail (« Continuer avec Google » accessible) ✓ ; captures agent-ctx/capture-task52-{phone-banner,sms-banner}.png ; note : le bouton Google apparaît bien dans les DEUX sous-modes e-mail (zone commune {neon &&…}, ligne ~1200) — comportement voulu.
+
 Stage Summary:
 - ACTIVATION SMS — PROCÉDURE EXPLOITANT (la seule voie) :
   1. Console Neon → Auth → Webhooks → activer, URL = https://nzoko-transport-eight.vercel.app/api/webhooks/neon-auth, événements send.otp (+ phone_number.verified).
