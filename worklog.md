@@ -1962,3 +1962,58 @@ Stage Summary:
 - LE COMMIT 6be9188 EST EN PRODUCTION (push main réussi) — Vercel redéploie automatiquement.
 - Comportement à CONNAÎTRE : la connexion par OTP téléphone est réservée aux comptes PASSAGER (les comptes staff passent par e-mail/mot de passe) — un 404 « Aucun compte associé à ce numéro » avec un numéro staff est ATTENDU.
 - Sécurité jetons : le PAT classique utilisé pour le push a circulé dans le chat → révoquer/renouveler après usage (le précédent conseil de révocation des 3 fine-grained reste valable).
+
+---
+Task ID: 50-rebook-google-email-delivery
+Agent: Z.ai Code (session principale + cron webDevReview)
+Task: (a) boucler la Task 50 (vérifications interrompues) — « Réserver à nouveau » + fix sign-out 503 ; (b) retour utilisateur : code à 6 chiffres JAMAIS reçu à l'inscription (e-mail) ; (c) accès Neon (skills) ; (d) connexion Google via Neon Auth.
+
+Work Log:
+- TASK 50 BOUCLÉE : tsc 0 / lint 0, E2E complète (bouton « Réserver à nouveau » sur carte COMPLETED, tunnel pré-rempli Brazzaville→Pointe-Noire date du jour, durée « 10 h de trajet » affichée, déconnexion SANS AUCUN appel sign-out) ; scénario de test créé puis NETTOYÉ (scripts éphémères, état seed restauré) ; commit 28df2e9.
+- SKILLS NEON INSTALLÉS (npx neon skills --agent claude-code -s neon -s neon-postgres → .claude/skills/) + docs officielles récupérées : SKILL.md neon-auth (https://neon.com/docs/ai/skills/neon-auth/SKILL.md), managed-auth.md, setup-oauth.md.
+- DIAGNOSTIC « CODE JAMAIS REÇU » (vérifié dans le code + docs Neon) :
+  * Neon Managed Auth a un SMTP partagé (auth@mail.myneon.app) MAIS dès que le webhook send.otp est configuré (notre cas), NEON NE LIVRE PLUS : notre app devient responsable (webhooks/neon-auth → delivery.ts).
+  * BUG : sendEmail()/sendSms() en mode « log » (défaut quand EMAIL_PROVIDER/SMS_PROVIDER absents) répondaient delivered:true → webhook « ok » → Neon considérait le code livré ALORS QU'aucun e-mail ne partait (production Vercel sans EMAIL_PROVIDER = signalement utilisateur exact).
+  * FIX : fournisseur non configuré SANS OTP_DEBUG (production) → delivered:false + erreur explicite → webhook 502 → Neon journalise l'échec. Sandbox (OTP_DEBUG=true) : mode log conservé (flux démo intacts).
+  * VISIBILITÉ : /api/auth/providers expose emailDelivery/smsDelivery (noms uniquement, aucun secret — conformité Secrets Management) ; auth-screen affiche un bandeau ambre honnête à l'étape « vérifiez votre boîte mail » quand la livraison n'est pas configurée (role=alert).
+- GOOGLE (supporté par Neon Managed Auth — tableau plugin « Social OAuth (Google, GitHub, Vercel) : Supported, signIn.social ») :
+  * auth-screen : bouton « Continuer avec Google » (SVG G inline, aucune dépendance) sur l'onglet E-mail, visibile UNIQUEMENT en mode Neon ; onGoogleSignIn → neonAuthClient.signIn.social({ provider:"google", callbackURL: window.location.origin }).
+  * Proxy public : whitelist « sign-in/social » (catch-all /api/auth/[...path]).
+  * Retour OAuth : NzokoApp bootstrap — providers() → mode neon → getSession() (SDK managé) → si session Neon : exchangeNeonSession() → session NZOKO + toast (best-effort, silencieux en local/visiteur simple).
+  * SDK managé gère popup/redirect + vérificateur neon_auth_session_verifier (ne PAS réimplémenter — doc Neon).
+- VALIDATIONS : tsc 0, lint 0 ; sandbox local : écran d'auth SANS bouton Google (mode local, attendu), flux téléphone/e-mail intacts ; providers renvoie emailDelivery:"log" / smsDelivery:"log".
+- PUSH : 6be9188..bcabbfd main -> main (jeton classique de la session) — 2 commits : 28df2e9 (rebook + sign-out) + bcabbfd (Google + livraison e-mail). Déploiement Vercel automatique.
+- LIMITE : CLI Neon NON authentifié (OAuth navigateur requis, pas de NEON_API_KEY fourni) — inspection directe du projet Neon impossible ; intégration réalisée sur la base des docs officielles Neon.
+
+Stage Summary:
+- LE « CODE JAMAIS REÇU » A UNE CAUSE PRÉCISE ET CORRIGÉE : le webhook send.otp confiait la livraison à une app sans fournisseur configuré, qui répondait « OK » dans le vide. Désormais : échec explicite côté serveur + avertissement visible côté utilisateur.
+- GOOGLE SIGN-IN LIVRÉ (code + whitelist + pont de session) : fonctionnel dès le déploiement en développement (identifiants partagés Neon). POUR LA PRODUCTION, l'exploitant doit : (1) créer une application OAuth Google (Web) et déclarer le redirect {NEON_AUTH_BASE_URL}/callback/google ; (2) fournir les identifiants à Neon (console, branche de prod) ; (3) déclarer le domaine de l'app dans les domaines de confiance Neon (neon neon-auth domain add https://<domaine>).
+- ACTIONS EXPLOITANT TOUJOURS REQUISES (e-mails réels) : Vercel env EMAIL_PROVIDER=resend + RESEND_API_KEY + RESEND_FROM + NEON_SERVICE_ORIGIN, puis redeploy. Alternative : SMTP (SMTP_HOST/PORT/USER/PASSWORD/FROM).
+- Pour inspection directe du projet Neon : fournir NEON_API_KEY ou exécuter la connexion CLI (npx neonctl@latest whoami).
+
+---
+Task ID: 51-fix-email-code-neon-db-inspection
+Agent: Z.ai Code (session principale)
+Task: Retour utilisateur « code à 6 chiffres jamais reçu à l'inscription » + accès direct à la base Neon fourni (connection string + URL Neon Auth) + « si Neon a un service intégré pour se connecter avec Google, configure-le ».
+
+Work Log:
+- ÉTAT DÉPART : commits 28df2e9 + bcabbfd en attente locale → vérification : le push de la session précédente avait RÉUSSI (ref locale périmée) ; après `git fetch`, origin/main = bcabbfd. Rien à repousser.
+- INSPECTION DIRECTE DE LA BASE NEON (driver @neondatabase/serverless dans un projet scratch /home/z/neonq — JAMAIS dans le repo) :
+  * La base contient le schéma applicatif COMPLET (public: 28 bookings, 138 trips, 13 app users) + le schéma neon_auth (Better Auth) — c'est LA base de production.
+  * project_config : email_and_password { requireEmailVerification: true, emailVerificationMethod: "otp", sendVerificationEmailOnSignUp: FALSE, sendVerificationEmailOnSignIn: FALSE }, email_provider { type: "shared" } (SMTP partagé Neon), webhook_config { enabled: FALSE }, social_providers [ { id: "google", isShared: TRUE } ], trusted_origins [ https://nzoko-transport-eight.vercel.app ].
+  * CORRECTION du diagnostic précédent (Task 50) : le webhook send.otp n'est PAS activé — ce n'est donc PAS notre app qui est responsable de la livraison ; NEON envoie lui-même via son SMTP partagé. Les variables Vercel EMAIL_PROVIDER/RESEND_* ne sont PAS nécessaires pour ce chemin.
+  * 13 users neon_auth ; geormakoma1@gmail.com existe (créé 09-23, emailVerified=true) ; unique trace de vérification récente : forget-password-otp-geormakoma1@gmail.com (25/09 08:59 UTC, essai « mot de passe oublié ») ; AUCUNE ligne email-otp-* → le code d'inscription n'a jamais été GÉNÉRÉ.
+- CAUSE RACINE (100% confirmée) : sendVerificationEmailOnSignUp=false → Neon n'envoie rien automatiquement et le client devait appeler sendVerificationOtp lui-même — OR AUCUN appel n'existait dans auth-screen. L'utilisateur attendait un code jamais généré. (Le flux « mot de passe oublié », lui, déclenche bien l'envoi par le SMTP partagé Neon.)
+- GOOGLE : sondé directement POST /sign-in/social (Origin: prod) → {url: ".../sign-in/social/init?token=...", redirect: true} — provider Google (identifiants partagés Neon) OPÉRATIONNEL ; le bouton livré en bcabbfd est fonctionnel en production sans configuration supplémentaire.
+- FIX (da9c7cb, src/features/auth/auth-screen.tsx uniquement) :
+  * onEmailSignup : sendVerificationOtp EXPLICITE après signUp.email token:null ; échec d'envoi = erreur visible (jamais d'attente silencieuse) ; toast « Code envoyé ».
+  * onEmailLogin : erreur « e-mail non vérifié » → envoi du code + bascule sur l'étape de vérification (au lieu d'une erreur sèche).
+  * Étape « vérifiez votre boîte mail » : bouton « Renvoyer le code » avec anti-spam 60 s (compte à rebours) + bandeau honnête par mode (Neon : expéditeur auth@mail.myneon.app + conseil spams/promotions ; sandbox : avertissement amber conservé).
+- VALIDATION : tsc 0, lint 0 ; PUSH bcabbfd..da9c7cb main (jeton classique existant toujours valide).
+- E2E PRODUCTION (agent-browser + SQL) : à exécuter après le déploiement Vercel — [COMPLÉTÉ CI-DESSOUS SI TERMINÉ].
+
+Stage Summary:
+- LE « CODE JAMAIS REÇU » : cause racine exacte = appel sendVerificationOtp manquant côté client (config Neon sendVerificationEmailOnSignUp=false) — CORRIGÉ et poussé (da9c7cb).
+- GOOGLE : déjà actif chez Neon (isShared) + bouton livré — aucun réglage supplémentaire requis en production.
+- Pour l'exploitant : le SMTP partagé Neon envoie depuis auth@mail.myneon.app — vérifier spams/promotions ; si l'adresse geormakoma1@gmail.com n'a pas reçu le code « mot de passe oublié » de 08:59 UTC, réessayer après redéploiement.
+- SÉCURITÉ : la connection string Neon (mot de passe npg_…) a circulé dans le chat → la ROTER (Neon console → Reset password) ; idem jeton GitHub (toujours valide à ce jour !).
