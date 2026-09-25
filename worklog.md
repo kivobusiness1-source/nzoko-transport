@@ -2009,8 +2009,12 @@ Work Log:
   * onEmailSignup : sendVerificationOtp EXPLICITE après signUp.email token:null ; échec d'envoi = erreur visible (jamais d'attente silencieuse) ; toast « Code envoyé ».
   * onEmailLogin : erreur « e-mail non vérifié » → envoi du code + bascule sur l'étape de vérification (au lieu d'une erreur sèche).
   * Étape « vérifiez votre boîte mail » : bouton « Renvoyer le code » avec anti-spam 60 s (compte à rebours) + bandeau honnête par mode (Neon : expéditeur auth@mail.myneon.app + conseil spams/promotions ; sandbox : avertissement amber conservé).
-- VALIDATION : tsc 0, lint 0 ; PUSH bcabbfd..da9c7cb main (jeton classique existant toujours valide).
-- E2E PRODUCTION (agent-browser + SQL) : à exécuter après le déploiement Vercel — [COMPLÉTÉ CI-DESSOUS SI TERMINÉ].
+- VALIDATION : tsc 0, lint 0 ; PUSH bcabbfd..da9c7cb main (jeton classique existant toujours valide) + commit worklog 68c49f3.
+- E2E PRODUCTION COMPLÈTE (agent-browser sur https://nzoko-transport-eight.vercel.app, déploiement da9c7cb vérifié) :
+  * Inscription (kivobusiness1+codetest@gmail.com) → toast « Code envoyé par e-mail » + étape « Vérifiez votre boîte mail » + bouton « Nouveau code possible dans 58 s » (anti-spam 60 s actif) ✓
+  * PREUVE SQL : 2 lignes email-verification-otp-kivobusiness1+codetest@gmail.com dans neon_auth.verification (09:16:42/43) → code GÉNÉRÉ et envoi demandé au SMTP partagé Neon (arrive dans la vraie boîte kivobusiness1@gmail.com via alias +tag) ✓
+  * GOOGLE : clic sur « Continuer avec Google » → redirection RÉELLE vers accounts.google.com (client_id partagé Neon 516759701042-…, PKCE S256, redirect_uri neonauth…/auth/oauth/callback/google, « Sign in with Google — to continue to neon.tech ») ✓
+  * NETTOYAGE : utilisateur test + account + 2 lignes verification supprimés de neon_auth — 13 utilisateurs réels intacts ✓
 
 Stage Summary:
 - LE « CODE JAMAIS REÇU » : cause racine exacte = appel sendVerificationOtp manquant côté client (config Neon sendVerificationEmailOnSignUp=false) — CORRIGÉ et poussé (da9c7cb).
