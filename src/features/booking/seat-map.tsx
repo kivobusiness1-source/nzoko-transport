@@ -196,17 +196,26 @@ export function SeatMap({ seatMap, loading, selectedSeatIds, onSelect, onRefresh
         )}
       </CardHeader>
       <CardContent className="space-y-4">
-        <div className="rounded-xl border bg-muted/30 p-3 sm:p-4">
+        {/* « Carrosserie » du bus : cadre arrondi, dégradé de paroi, ombre
+            intérieure — le plan se lit d'un coup d'œil comme l'intérieur d'un
+            véhicule (avant = conducteur). */}
+        <div className="relative rounded-2xl border-2 border-border/70 bg-gradient-to-b from-muted/50 via-muted/25 to-background p-3 shadow-inner sm:p-4">
           {/* Avant du bus */}
-          <div className="mx-auto mb-4 flex w-fit items-center gap-1.5 rounded-full bg-primary/10 px-3 py-1 text-[10px] font-semibold uppercase tracking-wider text-primary">
+          <div className="mx-auto mb-4 flex w-fit items-center gap-1.5 rounded-full bg-primary/10 px-3 py-1 text-[10px] font-semibold uppercase tracking-wider text-primary ring-1 ring-primary/20">
             <User className="size-3" aria-hidden /> Conducteur · avant du bus
           </div>
 
-          {/* Grille */}
+          {/* Grille + numéros de rangée à gauche (lisibilité famille/groupes) */}
           <div className="nzoko-scroll overflow-x-auto" role="group" aria-label="Plan des sièges du bus">
             <div className="mx-auto flex w-fit flex-col gap-2">
               {rows.map((seats, rowIndex) => (
                 <div key={`row-${seats[0]?.row ?? rowIndex}`} className="flex items-center gap-2">
+                  <span
+                    className="w-4 shrink-0 text-right text-[10px] font-semibold tabular-nums text-muted-foreground/60"
+                    aria-hidden
+                  >
+                    {seats[0]?.row}
+                  </span>
                   {seats.map((seat, seatIdx) => {
                     const cIdx = colIndex(seat.column);
                     const showAisle = seatIdx > 0 && cIdx === aisleAfter;

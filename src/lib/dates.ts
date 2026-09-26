@@ -21,6 +21,21 @@ export function todayStr(): string {
   return new Date(Date.now() + 3600_000).toISOString().slice(0, 10);
 }
 
+/** Jour calendaire (YYYY-MM-DD) d'un INSTANT au fuseau Congo (UTC+1 fixe).
+ *  Sert à comparer des jours « affichés » — ex. départ 14:00 → arrivée 00:00
+ *  le lendemain = voyage de nuit J+1, même si l'instant d'arrivée est APRÈS
+ *  l'instant de départ (comparaison brute toujours fausse pour ce cas). */
+export function localDayStr(iso: string | Date): string {
+  const d = typeof iso === "string" ? new Date(iso) : iso;
+  return new Date(d.getTime() + 3600_000).toISOString().slice(0, 10);
+}
+
+/** Vrai si l'arrivée tombe sur un jour calendaire POSTÉRIEUR au départ
+ *  (fuseau Congo) — la mention « J+1 » doit alors être affichée. */
+export function arrivesNextDay(departureIso: string | Date, arrivalIso: string | Date): boolean {
+  return localDayStr(arrivalIso) > localDayStr(departureIso);
+}
+
 export function addDaysStr(dateStr: string, days: number): string {
   const d = new Date(`${dateStr}T12:00:00${TZ_OFFSET}`);
   d.setUTCDate(d.getUTCDate() + days);

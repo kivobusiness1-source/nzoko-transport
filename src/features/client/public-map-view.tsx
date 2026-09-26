@@ -160,10 +160,18 @@ export default function PublicMapView() {
     [data, selectedRouteId]
   );
 
-  const servedCityCount = useMemo(
-    () => new Set((data?.routes ?? []).flatMap((r) => r.stops.map((s) => s.name))).size,
-    [data]
-  );
+  const servedCityCount = useMemo(() => {
+    // Villes DESSERVIES = origines + destinations + arrêts intermédiaires
+    // (avant : seuls les arrêts intermédiaires étaient comptés — « 0 villes »
+    // s'affichait alors que les lignes reliaient bien des villes).
+    const names = new Set<string>();
+    for (const r of data?.routes ?? []) {
+      names.add(r.originCityName);
+      names.add(r.destinationCityName);
+      for (const s of r.stops) names.add(s.name);
+    }
+    return names.size;
+  }, [data]);
 
   const sortedStops = useMemo(
     () => (selectedRoute ? [...selectedRoute.stops].sort((a, b) => a.position - b.position) : []),

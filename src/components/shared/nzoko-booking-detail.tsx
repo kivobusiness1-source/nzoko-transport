@@ -13,6 +13,7 @@ import { NzokoCopyButton } from "@/components/shared/nzoko-copy-button";
 import { NzokoQr } from "@/components/shared/nzoko-qr";
 import { PAYMENT_PROVIDER_LABELS } from "@/lib/constants";
 import type { BookingDetailDTO } from "@/types";
+import { arrivesNextDay } from "@/lib/dates";
 import { formatDateTime, formatMoney, formatTime } from "@/lib/format";
 import { cn } from "@/lib/utils";
 
@@ -209,9 +210,10 @@ export function NzokoBookingDetail({ detail, onCancel, cancelLoading, className 
           <InfoRow
             icon={Clock}
             label="Arrivée estimée"
-            // Voyage de nuit traversant minuit → mention explicite du jour +1.
+            // Voyage de nuit traversant minuit → mention explicite du jour +1
+            // (comparaison des JOURS CALENDAIRES Congo, via arrivesNextDay).
             value={
-              new Date(detail.trip.estimatedArrivalTime) < new Date(detail.trip.departureTime)
+              arrivesNextDay(detail.trip.departureTime, detail.trip.estimatedArrivalTime)
                 ? `${formatTime(detail.trip.estimatedArrivalTime)} (J+1)`
                 : formatTime(detail.trip.estimatedArrivalTime)
             }

@@ -15,6 +15,7 @@ import { cn } from "@/lib/utils";
 import { api } from "@/lib/api-client";
 import { useApp } from "@/lib/store";
 import { formatDate, formatMoney, formatTime } from "@/lib/format";
+import { arrivesNextDay } from "@/lib/dates";
 import type { BookingDetailDTO } from "@/types";
 
 /** Clé sessionStorage pour pré-remplir la vue suivi avec une référence */
@@ -69,7 +70,7 @@ export function TicketCard({ detail, channel, onNewBooking }: TicketCardProps) {
     <div class="body">
       <div class="route">${detail.trip.originCityName} <span>→</span> ${detail.trip.destinationCityName}</div>
       <div class="row"><span>Départ</span><b>${formatDate(detail.trip.departureTime)} · ${formatTime(detail.trip.departureTime)}</b></div>
-      <div class="row"><span>Arrivée estimée</span><b>${formatTime(detail.trip.estimatedArrivalTime)}</b></div>
+      <div class="row"><span>Arrivée estimée</span><b>${formatTime(detail.trip.estimatedArrivalTime)}${arrivesNextDay(detail.trip.departureTime, detail.trip.estimatedArrivalTime) ? " (J+1)" : ""}</b></div>
       <div class="row"><span>Bus</span><b>${detail.trip.busRegistration} · ${detail.trip.agencyName}</b></div>
       <div class="row"><span>Passagers</span><b>${detail.seats.map((s) => `${s.passenger?.firstName ?? detail.passenger.firstName} ${s.passenger?.lastName ?? detail.passenger.lastName} (${s.seatNumber})`).join(" · ")}</b></div>
       ${detail.dropOffNeighborhood ? `<div class="row"><span>Arrêt demandé</span><b>${detail.dropOffNeighborhood.name} (${detail.trip.destinationCityName})</b></div>` : ""}
@@ -157,6 +158,9 @@ export function TicketCard({ detail, channel, onNewBooking }: TicketCardProps) {
               </span>
               <span className="flex items-center gap-1">
                 <Clock className="size-3.5" aria-hidden /> {formatTime(detail.trip.departureTime)} → {formatTime(detail.trip.estimatedArrivalTime)}
+                {arrivesNextDay(detail.trip.departureTime, detail.trip.estimatedArrivalTime) && (
+                  <span className="rounded bg-muted px-1 py-px text-[10px] font-semibold" title="Arrivée le lendemain">J+1</span>
+                )}
               </span>
               <span className="flex items-center gap-1">
                 <MapPin className="size-3.5" aria-hidden /> {detail.trip.busRegistration}

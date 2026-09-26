@@ -10,7 +10,7 @@ import type {
   BookingDetailDTO, BusDTO, CityDTO, DriverDTO, DriverTripDTO, EventsResponseDTO, ExpenseDTO, FinanceSummaryDTO,
   GpsPointInput, TrackingSessionDTO, TrackingSessionActionDTO, TrackingFleetDTO, TrackingBatchResultDTO,
   TrackingConfigDTO, TrackingLocationResultDTO, MapPublicDTO,
-  MomoOverviewDTO, NotificationDTO, Paginated, PaymentDTO, RefundMode, ReportDTO, RoleDTO, RouteDTO, ScanResultDTO,
+  MomoOverviewDTO, NotificationDTO, Paginated, PaymentDTO, PaymentMethodDTO, RefundMode, ReportDTO, RoleDTO, RouteDTO, ScanResultDTO,
   SeatLayoutDTO, SeatMapDTO, SecurityLogDTO, SessionUser, TransactionDTO, TripContactsDTO, TripSearchDTO, UserDTO,
   RegisterInput, OtpRequestDTO, OtpVerifyInput, RegisterResult, ClientProfileDTO, ClientStatsDTO, ClientTripDTO, TripRatingInput,
   AuthProvidersDTO, MigrationBridgeDTO, PasswordResetRequestDTO, PasswordResetResultDTO,
@@ -186,6 +186,9 @@ export const api = {
   // PAIEMENTS
   // ============================================================
   payments: {
+    // Contrat §3.1 — méthodes avec disponibilité HONNÊTE (aucune méthode
+    // « piège » qui échouerait en 503 côté client).
+    methods: () => request<{ methods: PaymentMethodDTO[] }>("/payments/methods"),
     create: (input: { bookingId: string; provider: PaymentProvider; momoPhone?: string; senderName?: string }) =>
       request<PaymentDTO>("/payments", { method: "POST", body: JSON.stringify(input) }),
     confirmCash: (paymentId: string) => request<PaymentDTO>(`/payments/${paymentId}/confirm-cash`, { method: "POST" }),

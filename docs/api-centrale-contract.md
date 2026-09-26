@@ -179,6 +179,11 @@ Trois canaux authentifiés, dispatchés automatiquement :
 Garanties : authentifié, validé (montant divergent → 409 + SecurityLog),
 **idempotent** (providerTransactionId unique ; re-confirmer un SUCCESS =
 no-op) — **un webhook reçu deux fois ne crée JAMAIS deux tickets** (§21-T6).
+**Réservation déjà CONFIRMED** (durcissement §11) : replay du MÊME
+encaissement (même providerTransactionId déjà SUCCESS) → `200 duplicate:true` ;
+NOUVELLE référence de transaction sur la même réservation → **409 CONFLICT**
+(« Cette réservation est déjà payée — un seul encaissement possible. ») :
+jamais 2 paiements SUCCESS ni 2 écritures comptables pour la même réservation.
 
 ### 3.12 `GET /api/tickets/{tokenOrIdOrBoardingNumber}` — consultation billet
 ```json
@@ -205,6 +210,23 @@ TICKET_BOARDED, TRIP_CANCELLED`.
 **Stratégie §15** : à réception d'un événement concerné, le site appelle
 `GET /api/trips/{id}/seats` (ou `GET /api/bookings/{id}`) et affiche
 l'état renvoyé — jamais d'application locale des deltas. Payloads SANS PII.
+
+### 3.14 `GET /api/payments/methods` — méthodes de paiement disponibles (public)
+NOUVEAU (extension documentée §24 AVANT usage — lecteurs : SITE CLIENT + SITE AGENCES).
+Disponibilité HONNÊTE calculée côté serveur (aucun secret exposé) : le site
+n'affiche JAMAIS une méthode qui échouerait systématiquement (503) et
+n'accumule donc pas de paiements « FAILED » dans les historiques.
+```json
+{ "methods": [ { "provider": "MTN_MOMO", "label": "MTN Mobile Money",
+                 "available": false, "kind": "instant",
+                 "note": "Paiement Mobile Money en cours d'activation…" },
+               { "provider": "CASH", "label": "Espèces (guichet)",
+                 "available": true, "kind": "manual", "note": null } ] }
+```
+`kind` : `instant` = confirmation automatique (MoMo) · `manual` = confirmation
+humaine (guichet/comptable, via §3.11 canal service). Le SITE AGENCES peut
+interroger ce endpoint avant d'initier un paiement (§3.10/§3.11) pour ne
+proposer à ses guichets que les canaux réellement actifs.
 
 ---
 

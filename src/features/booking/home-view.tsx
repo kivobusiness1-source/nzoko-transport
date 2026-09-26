@@ -216,17 +216,22 @@ export default function HomeView({ onSearch }: { onSearch: (params: { from: stri
               viewport={{ once: true, margin: "-40px" }}
               transition={{ duration: 0.3, delay: i * 0.05 }}
             >
-              <Card className="h-full transition-shadow hover:shadow-md">
+              <Card className="group relative h-full overflow-hidden transition-all hover:-translate-y-0.5 hover:shadow-md">
                 <CardContent className="flex gap-3 p-4">
-                  <span className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary">
+                  <span className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary transition-colors group-hover:bg-primary group-hover:text-primary-foreground">
                     <step.icon className="h-5 w-5" aria-hidden />
                   </span>
                   <div className="min-w-0">
-                    <p className="flex items-center gap-2 font-semibold">
-                      <span className="text-xs text-muted-foreground">Étape {i + 1}</span>
-                      {step.title}
+                    {/* Chip « Étape N » sur SA PROPRE ligne (nowrap) : avant,
+                        l'intitulé et le titre se partageaient la même ligne et
+                        « Étape 2/4 » se rabattait moche sur deux lignes. */}
+                    <p className="mb-1">
+                      <span className="inline-block rounded-full bg-primary/10 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-primary whitespace-nowrap">
+                        Étape {i + 1}
+                      </span>
                     </p>
-                    <p className="mt-0.5 text-sm leading-snug text-muted-foreground">{step.text}</p>
+                    <p className="font-semibold leading-tight">{step.title}</p>
+                    <p className="mt-1 text-sm leading-snug text-muted-foreground">{step.text}</p>
                   </div>
                 </CardContent>
               </Card>

@@ -343,6 +343,20 @@ export interface PaymentDTO {
 
 export type RefundMode = "MOMO_REFUND" | "MOMO_TRANSFER" | "CASH";
 
+/** Méthode de paiement exposée AU PUBLIC (contrat §3.1 — /api/payments/methods).
+ *  Disponibilité HONNÊTE : le client ne voit jamais une méthode qui échouerait
+ *  systématiquement (503) — l'état est calculé côté serveur, sans aucun secret. */
+export interface PaymentMethodDTO {
+  provider: PaymentProvider;
+  label: string;
+  /** Utilisable dès maintenant (clés fournisseur présentes / confirmation humaine possible). */
+  available: boolean;
+  /** instant = confirmation automatique (MoMo) · manual = confirmation humaine (guichet, comptable). */
+  kind: "instant" | "manual";
+  /** Message honnête si indisponible (ex. « Bientôt disponible ») — null sinon. */
+  note: string | null;
+}
+
 export interface PaymentRefundDTO {
   mode: RefundMode;
   status: "PROCESSING" | "SUCCESSFUL" | "FAILED";

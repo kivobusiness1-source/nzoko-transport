@@ -12,6 +12,7 @@
 import { randomUUID } from "crypto";
 import { db } from "@/lib/db";
 import { ApiError, ERROR_CODES } from "@/lib/api-response";
+import { PAYMENT_PROVIDERS, PAYMENT_PROVIDER_LABELS } from "@/lib/constants";
 import { hmacSha256, timingSafeEqual, safeJsonParse } from "@/lib/security";
 import { logAudit, logSecurity } from "@/lib/audit";
 import { issueTicketForBooking } from "@/services/tickets";
@@ -33,7 +34,14 @@ import {
   toMomoMsisdn,
   momoFailureMessage,
 } from "@/services/momo";
-import type { PaymentDTO, PayBookingInput, RefundPaymentInput, MomoOverviewDTO, MomoBalanceDTO } from "@/types";
+import type {
+  PaymentDTO,
+  PayBookingInput,
+  RefundPaymentInput,
+  MomoOverviewDTO,
+  MomoBalanceDTO,
+  PaymentMethodDTO,
+} from "@/types";
 
 // ------------------------------------------------------------
 // Interface fournisseur — chaque provider officiel doit
@@ -199,6 +207,54 @@ export function getProvider(code: string): PaymentProviderInterface {
   const provider = PROVIDERS[code];
   if (!provider) throw new ApiError(400, ERROR_CODES.BAD_REQUEST, "Mode de paiement inconnu.");
   return provider;
+}
+
+/** Méthodes de paiement avec disponibilité HONNÊTE calculée côté serveur
+ *  (contrat §3.1 — GET /api/payments/methods) : aucune clé/secret exposé,
+ *  uniquement l'état « utilisable dès maintenant » + un message clair sinon.
+ *  Évite au client de sélectionner une méthode qui échouerait en 503 et
+ *  d'accumuler des paiements « Échoué » dans son historique. */
+export function listPaymentMethods(): PaymentMethodDTO[] {
+  return PAYMENT_PROVIDERS.map((code) => {
+    const label = PAYMENT_PROVIDER_LABELS[code];
+    switch (code) {
+      case "MTN_MOMO":
+        return momoCollectionConfigured()
+          ? { provider: code, label, available: true, kind: "instant" as const, note: null }
+          : {
+              provider: code,
+              label,
+              available: false,
+              kind: "instant" as const,
+              note: "Paiement Mobile Money en cours d'activation — utilisez les espèces en agence pour l'instant.",
+            };
+      case "AIRTEL_MONEY":
+        return {
+          provider: code,
+          label,
+          available: false,
+          kind: "instant" as const,
+          note: "Bientôt disponible — l'intégration Airtel Money est en cours.",
+        };
+      case "CASH":
+        return {
+          provider: code,
+          label,
+          available: true,
+          kind: "manual" as const,
+          note: null, // pleinement fonctionnel (encaissement guichet)
+        };
+      case "CARD":
+      case "BANK_TRANSFER":
+        return {
+          provider: code,
+          label,
+          available: true,
+          kind: "manual" as const,
+          note: null, // confirmation manuelle par l'administrateur/comptable
+        };
+    }
+  });
 }
 
 // ------------------------------------------------------------

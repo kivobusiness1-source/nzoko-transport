@@ -24,7 +24,7 @@ import { PAYMENT_PROVIDER_LABELS } from "@/lib/constants";
 import type { PaymentProvider } from "@/lib/constants";
 import { useApp } from "@/lib/store";
 import { formatMoney, formatTime } from "@/lib/format";
-import type { BookingDTO, BookingDetailDTO, PaymentDTO, PromoCodeValidationDTO } from "@/types";
+import type { BookingDTO, BookingDetailDTO, PaymentDTO, PaymentMethodDTO, PromoCodeValidationDTO } from "@/types";
 import { cn } from "@/lib/utils";
 
 interface PaymentStepProps {
@@ -92,6 +92,30 @@ export function PaymentStep({ channel, booking, onPaid }: PaymentStepProps) {
   const [error, setError] = useState<string | null>(null);
   const [expired, setExpired] = useState(false);
 
+  // ---- Disponibilité HONNÊTE des méthodes (contrat §3.1) ----
+  // Le serveur dit quelles méthodes sont réellement utilisables (clés
+  // fournisseur présentes). Une méthode indisponible est affichée DÉSACTIVÉE
+  // avec son message — plus jamais une tentative qui finit en 503 avec une
+  // ligne « Échoué » dans l'historique du billet. En cas d'échec de ce
+  // endpoint (réseau), on garde toutes les méthodes visibles : le serveur
+  // reste de toute façon la protection finale.
+  const [methods, setMethods] = useState<PaymentMethodDTO[] | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    api.payments
+      .methods()
+      .then((res) => {
+        if (!cancelled) setMethods(res.methods);
+      })
+      .catch(() => {
+        if (!cancelled) setMethods(null);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
   // ---- Code promo / fidélité (validation, affichage de la remise) ----
   // NB : le code est appliqué côté serveur À LA CRÉATION de la réservation.
   // Cette réservation a été créée sans code → la remise validée ici s'applique
@@ -117,6 +141,24 @@ export function PaymentStep({ channel, booking, onPaid }: PaymentStepProps) {
   };
 
   const needsPhone = provider === "MTN_MOMO";
+
+  // Méthode sélectionnée indisponible (info serveur arrivée après le rendu
+  // initial) → bascule automatique vers la première méthode disponible.
+  const providerInfo = (code: PaymentProvider): PaymentMethodDTO | undefined =>
+    methods?.find((m) => m.provider === code);
+  const isAvailable = (code: PaymentProvider): boolean => {
+    const info = providerInfo(code);
+    return info ? info.available : true; // pas d'info serveur → ne pas bloquer
+  };
+
+  useEffect(() => {
+    if (!methods || payment) return;
+    if (!isAvailable(provider)) {
+      const firstAvailable = PROVIDER_OPTIONS.find((o) => isAvailable(o.value));
+      if (firstAvailable) setProvider(firstAvailable.value);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [methods]);
 
   const loadDetail = useCallback(async () => {
     try {
@@ -496,34 +538,69 @@ export function PaymentStep({ channel, booking, onPaid }: PaymentStepProps) {
               )}
             </div>
 
-            <RadioGroup value={provider} onValueChange={(v) => setProvider(v as PaymentProvider)} className="gap-3">
-              {PROVIDER_OPTIONS.map((opt) => (
-                <label
-                  key={opt.value}
-                  className={cn(
-                    "flex cursor-pointer items-start gap-3 rounded-xl border p-3 transition-colors",
-                    provider === opt.value ? "border-primary bg-primary/5" : "hover:border-primary/30"
-                  )}
-                >
-                  <RadioGroupItem value={opt.value} className="mt-1" aria-label={PAYMENT_PROVIDER_LABELS[opt.value]} />
-                  <span className="flex min-w-0 flex-1 items-start gap-3">
-                    <span
-                      className={cn(
-                        "flex size-10 shrink-0 items-center justify-center rounded-lg",
-                        opt.value === "CASH" ? "bg-orange-100 text-orange-700 dark:bg-orange-950/60 dark:text-orange-300" : "bg-primary/10 text-primary"
-                      )}
-                    >
-                      <opt.icon className="h-5 w-5" aria-hidden />
-                    </span>
-                    <span className="min-w-0">
-                      <span className="block text-sm font-semibold">{PAYMENT_PROVIDER_LABELS[opt.value]}</span>
-                      <span className="block text-xs leading-snug text-muted-foreground">
-                        {channel === "AGENT" && opt.agentHint ? opt.agentHint : opt.description}
+            <RadioGroup
+              value={provider}
+              onValueChange={(v) => isAvailable(v as PaymentProvider) && setProvider(v as PaymentProvider)}
+              className="gap-3"
+            >
+              {PROVIDER_OPTIONS.map((opt) => {
+                const available = isAvailable(opt.value);
+                const info = providerInfo(opt.value);
+                return (
+                  <label
+                    key={opt.value}
+                    className={cn(
+                      "flex items-start gap-3 rounded-xl border p-3 transition-colors",
+                      provider === opt.value ? "border-primary bg-primary/5" : "hover:border-primary/30",
+                      available ? "cursor-pointer" : "cursor-not-allowed opacity-60"
+                    )}
+                    aria-disabled={available ? undefined : "true"}
+                  >
+                    <RadioGroupItem
+                      value={opt.value}
+                      disabled={!available}
+                      className="mt-1"
+                      aria-label={PAYMENT_PROVIDER_LABELS[opt.value]}
+                    />
+                    <span className="flex min-w-0 flex-1 items-start gap-3">
+                      <span
+                        className={cn(
+                          "flex size-10 shrink-0 items-center justify-center rounded-lg",
+                          opt.value === "CASH"
+                            ? "bg-orange-100 text-orange-700 dark:bg-orange-950/60 dark:text-orange-300"
+                            : "bg-primary/10 text-primary"
+                        )}
+                      >
+                        <opt.icon className="h-5 w-5" aria-hidden />
+                      </span>
+                      <span className="min-w-0">
+                        <span className="flex flex-wrap items-center gap-1.5">
+                          <span className="text-sm font-semibold">{PAYMENT_PROVIDER_LABELS[opt.value]}</span>
+                          {available ? (
+                            info?.kind === "manual" && (
+                              <span className="rounded-full bg-sky-100 px-2 py-px text-[10px] font-semibold text-sky-800 dark:bg-sky-950/60 dark:text-sky-300">
+                                Confirmation par notre équipe
+                              </span>
+                            )
+                          ) : (
+                            <span className="rounded-full bg-zinc-200 px-2 py-px text-[10px] font-semibold text-zinc-600 dark:bg-zinc-800 dark:text-zinc-300">
+                              Bientôt
+                            </span>
+                          )}
+                        </span>
+                        <span className="block text-xs leading-snug text-muted-foreground">
+                          {channel === "AGENT" && opt.agentHint ? opt.agentHint : opt.description}
+                        </span>
+                        {!available && info?.note && (
+                          <span className="mt-1 block rounded-lg bg-muted/60 px-2 py-1 text-[11px] leading-snug text-muted-foreground">
+                            {info.note}
+                          </span>
+                        )}
                       </span>
                     </span>
-                  </span>
-                </label>
-              ))}
+                  </label>
+                );
+              })}
             </RadioGroup>
 
             {needsPhone && (

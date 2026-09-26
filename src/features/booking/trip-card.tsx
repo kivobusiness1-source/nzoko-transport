@@ -7,7 +7,7 @@
 import { ArrowRight, Bus, Clock, MapPin, Users } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
-import { formatDuration } from "@/lib/dates";
+import { arrivesNextDay, formatDuration } from "@/lib/dates";
 import { formatMoney, formatTime } from "@/lib/format";
 import type { TripSearchDTO } from "@/types";
 import { cn } from "@/lib/utils";
@@ -84,9 +84,15 @@ export function TripCard({ trip, onSelect }: TripCardProps) {
           <div className="text-right">
             <p className="text-lg font-bold tabular-nums leading-none">
               {formatTime(trip.estimatedArrivalTime)}
-              {/* Voyage de nuit traversant minuit → mention explicite du jour +1. */}
-              {new Date(trip.estimatedArrivalTime) < new Date(trip.departureTime) && (
-                <span className="ml-1 align-middle text-[10px] font-semibold text-muted-foreground">J+1</span>
+              {/* Voyage de nuit traversant minuit → mention explicite du jour +1
+                  (comparaison des JOURS CALENDAIRES Congo — pas des instants). */}
+              {arrivesNextDay(trip.departureTime, trip.estimatedArrivalTime) && (
+                <span
+                  className="ml-1 inline-block rounded bg-muted px-1 py-px align-middle text-[10px] font-semibold text-muted-foreground"
+                  title="Arrivée le lendemain matin"
+                >
+                  J+1
+                </span>
               )}
             </p>
             <p className="mt-0.5 text-[11px] text-muted-foreground">Arrivée</p>

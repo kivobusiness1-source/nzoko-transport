@@ -15,6 +15,7 @@ import { ok, routeError, getClientIp, ApiError, ERROR_CODES, isServiceAuth } fro
 import { enforceRateLimit } from "@/lib/rate-limit";
 import { RATE_LIMITS } from "@/lib/constants";
 import { handleMomoWebhook, handlePaymentWebhook } from "@/services/payment";
+import { toPaymentDTO } from "@/services/payment-mappers";
 import { db } from "@/lib/db";
 import { z } from "zod";
 
@@ -74,6 +75,23 @@ export async function POST(req: NextRequest) {
       const existing = await db.payment.findUnique({ where: { providerTransactionId: payload.providerTransactionId } });
       if (existing && existing.bookingId !== booking.id) {
         throw new ApiError(409, ERROR_CODES.CONFLICT, "Référence de transaction déjà utilisée pour une autre réservation.");
+      }
+      // §11 — une réservation DÉJÀ PAYÉE ne peut pas l'être une seconde fois :
+      //   • replay du MÊME encaissement (même providerTransactionId, déjà
+      //     SUCCESS) → réponse idempotente duplicate:true ;
+      //   • NOUVELLE référence de transaction sur une réservation confirmée
+      //     → 409. Jamais 2 paiements SUCCESS / 2 écritures comptables pour
+      //     la même réservation (le billet, lui, reste unique de toute façon).
+      if (booking.status === "CONFIRMED") {
+        const confirmed = booking.payment.find((p) => p.status === "SUCCESS");
+        if (existing && confirmed && existing.id === confirmed.id) {
+          const full = await db.payment.findUnique({
+            where: { id: confirmed.id },
+            include: { booking: true, createdBy: true },
+          });
+          if (full) return ok({ received: true, duplicate: true, payment: toPaymentDTO(full) }, 200);
+        }
+        throw new ApiError(409, ERROR_CODES.CONFLICT, "Cette réservation est déjà payée — un seul encaissement possible.");
       }
       const payment =
         existing ??

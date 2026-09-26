@@ -136,9 +136,13 @@ export async function getAuth(req: NextRequest): Promise<AuthContext | null> {
 export async function revokeSession(req: NextRequest): Promise<void> {
   const token = req.cookies.get(SESSION_COOKIE)?.value;
   if (!token) return;
-  await db.session
-    .update({ where: { id: sha256(token) }, data: { revokedAt: new Date() } })
-    .catch(() => {});
+  // updateMany (et non update) : une session déjà révoquée/supprimée ne
+  // lève PAS de P2025 « record not found » — révocation idempotente et
+  // silencieuse (l'ancien update polluait les logs avec prisma:error).
+  await db.session.updateMany({
+    where: { id: sha256(token), revokedAt: null },
+    data: { revokedAt: new Date() },
+  });
 }
 
 // ---------- Helpers d'autorisation ----------
