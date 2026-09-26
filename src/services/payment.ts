@@ -16,6 +16,7 @@ import { hmacSha256, timingSafeEqual, safeJsonParse } from "@/lib/security";
 import { logAudit, logSecurity } from "@/lib/audit";
 import { issueTicketForBooking } from "@/services/tickets";
 import { awardPointsForBooking } from "@/services/loyalty";
+import { emitDomainEvents, emitDomainEvent } from "@/services/domain-events";
 import { toPaymentDTO } from "@/services/payment-mappers";
 import {
   momoCollectionConfigured,
@@ -420,6 +421,57 @@ export async function confirmPaymentAndIssueTicket(
   });
 
   // ---------- Post-traitement idempotent (hors transaction) ----------
+  // Événements de domaine (contrat §14) : le paiement est LA transition
+  // critique multi-sites — le SITE AGENCES voit la place passer PAID,
+  // le SITE CLIENT reçoit la confirmation de son billet. Best-effort.
+  const confirmedBooking = await db.booking.findUnique({
+    where: { id: payment.bookingId },
+    select: {
+      tripId: true,
+      bookingReference: true,
+      occupancies: { select: { seatId: true } },
+      ticket: { select: { id: true } },
+    },
+  }).catch(() => null);
+  if (confirmedBooking) {
+    await emitDomainEvents([
+      {
+        type: "PAYMENT_SUCCESS",
+        aggregateType: "Payment",
+        aggregateId: payment.id,
+        tripId: confirmedBooking.tripId,
+        bookingId: payment.bookingId,
+        payload: { provider: payment.provider, amount: payment.amount },
+      },
+      {
+        type: "BOOKING_CONFIRMED",
+        aggregateType: "Booking",
+        aggregateId: payment.bookingId,
+        tripId: confirmedBooking.tripId,
+        bookingId: payment.bookingId,
+        payload: { reference: confirmedBooking.bookingReference },
+      },
+      ...confirmedBooking.occupancies.map((o) => ({
+        type: "SEAT_PAID" as const,
+        aggregateType: "Seat" as const,
+        aggregateId: o.seatId,
+        tripId: confirmedBooking.tripId,
+        bookingId: payment.bookingId,
+        payload: {},
+      })),
+      ...(confirmedBooking.ticket
+        ? [{
+            type: "TICKET_CREATED" as const,
+            aggregateType: "Ticket" as const,
+            aggregateId: confirmedBooking.ticket.id,
+            tripId: confirmedBooking.tripId,
+            bookingId: payment.bookingId,
+            payload: { reference: confirmedBooking.bookingReference },
+          }]
+        : []),
+    ]);
+  }
+
   // Points fidélité : bookingId unique sur LoyaltyTransaction — un paiement
   // rejoué ne double JAMAIS les points. Passager anonyme → silencieux.
   await awardPointsForBooking(db, payment.bookingId).catch(() => {});
@@ -815,6 +867,14 @@ export async function handlePaymentWebhook(rawBody: string, signature: string | 
 
   if (payload.status !== "SUCCESS") {
     await db.payment.update({ where: { id: payment.id }, data: { status: payload.status } });
+    // Événement (contrat §14) : le paiement a échoué côté fournisseur.
+    await emitDomainEvent({
+      type: "PAYMENT_FAILED",
+      aggregateType: "Payment",
+      aggregateId: payment.id,
+      bookingId: payment.bookingId,
+      payload: { provider: payment.provider, status: payload.status },
+    });
     return { received: true, duplicate: false };
   }
 

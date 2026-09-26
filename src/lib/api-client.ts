@@ -7,7 +7,7 @@
 import { CSRF_HEADER, CSRF_HEADER_VALUE } from "@/lib/auth-shared";
 import type {
   AgencyDTO, AgencyStatsDTO, AdminStatsDTO, AssistantReplyDTO, AuditLogDTO, BoardingTripDTO, BookingDTO,
-  BookingDetailDTO, BusDTO, CityDTO, DriverDTO, DriverTripDTO, ExpenseDTO, FinanceSummaryDTO,
+  BookingDetailDTO, BusDTO, CityDTO, DriverDTO, DriverTripDTO, EventsResponseDTO, ExpenseDTO, FinanceSummaryDTO,
   GpsPointInput, TrackingSessionDTO, TrackingSessionActionDTO, TrackingFleetDTO, TrackingBatchResultDTO,
   TrackingConfigDTO, TrackingLocationResultDTO, MapPublicDTO,
   MomoOverviewDTO, NotificationDTO, Paginated, PaymentDTO, RefundMode, ReportDTO, RoleDTO, RouteDTO, ScanResultDTO,
@@ -137,10 +137,42 @@ export const api = {
   },
 
   // ============================================================
+  // ÉVÉNEMENTS (contrat §14/§15 — temps réel par polling à curseur)
+  // ============================================================
+  events: {
+    list: (params: { tripId?: string; bookingId?: string; since?: string; types?: string[] } = {}) => {
+      const q = new URLSearchParams();
+      if (params.tripId) q.set("tripId", params.tripId);
+      if (params.bookingId) q.set("bookingId", params.bookingId);
+      if (params.since) q.set("since", params.since);
+      if (params.types?.length) q.set("types", params.types.join(","));
+      const qs = q.toString();
+      return request<EventsResponseDTO>(`/events/client${qs ? `?${qs}` : ""}`);
+    },
+  },
+
+  // ============================================================
   // RÉSERVATIONS
   // ============================================================
   bookings: {
-    create: (input: { tripId: string; seatId: string; channel?: "WEB" | "AGENT"; promoCode?: string; dropOffNeighborhoodId?: string; passenger: { firstName: string; lastName: string; phone: string; email?: string; documentNumber?: string } }) =>
+    /** Contrat §7 — réservation temporaire multi-sièges (hold 10 min).
+     *  idempotencyKey : généré UNE FOIS par commande côté client (useRef) et
+     *  réutilisé à chaque nouvelle tentative d'envoi (contrat §16). */
+    hold: (input: {
+      tripId: string;
+      seatIds: string[];
+      agencyId?: string;
+      customer?: { name: string; phone: string; email?: string };
+      passenger?: { firstName: string; lastName: string; phone: string; email?: string; documentNumber?: string };
+      promoCode?: string;
+      dropOffNeighborhoodId?: string;
+    }, idempotencyKey?: string) =>
+      request<BookingDetailDTO>("/bookings/hold", {
+        method: "POST",
+        body: JSON.stringify(input),
+        headers: idempotencyKey ? { "Idempotency-Key": idempotencyKey } : undefined,
+      }),
+    create: (input: { tripId: string; seatId?: string; seatIds?: string[]; channel?: "WEB" | "AGENT"; promoCode?: string; dropOffNeighborhoodId?: string; passenger: { firstName: string; lastName: string; phone: string; email?: string; documentNumber?: string } }) =>
       request<BookingDTO>("/bookings", { method: "POST", body: JSON.stringify(input) }),
     validatePromo: (code: string, tripId: string) =>
       request<PromoCodeValidationDTO>("/bookings/promo/validate", { method: "POST", body: JSON.stringify({ code, tripId }) }),

@@ -24,8 +24,11 @@ export const ERROR_CODES = {
   NOT_FOUND: "NOT_FOUND",
   CONFLICT: "CONFLICT",
   SEAT_UNAVAILABLE: "SEAT_UNAVAILABLE",
+  SEAT_ALREADY_TAKEN: "SEAT_ALREADY_TAKEN", // contrat §8 — place prise concurrentiellement
   TRIP_UNAVAILABLE: "TRIP_UNAVAILABLE",
+  AGENCY_UNAVAILABLE: "AGENCY_UNAVAILABLE", // contrat §7.4 — agence inactive/inconnue
   PAYMENT_ERROR: "PAYMENT_ERROR",
+  PAYMENT_REQUIRED: "PAYMENT_REQUIRED", // contrat §12 — confirm sans paiement confirmé
   RATE_LIMITED: "RATE_LIMITED",
   INTERNAL: "INTERNAL_ERROR",
   BAD_REQUEST: "BAD_REQUEST",
@@ -104,9 +107,35 @@ export function getUserAgent(req: Request): string {
   return (req.headers.get("user-agent") ?? "unknown").slice(0, 250);
 }
 
-/** Refuse les requêtes mutantes sans l'en-tête anti-CSRF maison. */
+/**
+ * Authentification service-à-service (SITE AGENCES ↔ API centrale).
+ * Un Bearer CENTRAL_API_SECRET valide (≥ 32 caractères, comparaison à
+ * temps constant) identifie une APPLICATION SERVEUR : pas de cookies,
+ * donc pas de surface CSRF — les gardes same-origin sont levées.
+ * Le secret ne vit QUE côté serveur (jamais NEXT_PUBLIC_*).
+ */
+export function isServiceAuth(req: Request): boolean {
+  const secret = process.env.CENTRAL_API_SECRET ?? "";
+  if (secret.length < 32) return false; // secret absent/faible → service auth désactivé
+  const header = req.headers.get("authorization") ?? "";
+  const match = /^Bearer\s+(.+)$/i.exec(header);
+  if (!match) return false;
+  return timingSafeEqualStr(match[1], secret);
+}
+
+/** Comparaison à temps constant pour strings (évite timing attacks). */
+function timingSafeEqualStr(a: string, b: string): boolean {
+  if (a.length !== b.length) return false;
+  let diff = 0;
+  for (let i = 0; i < a.length; i++) diff |= a.charCodeAt(i) ^ b.charCodeAt(i);
+  return diff === 0;
+}
+
+/** Refuse les requêtes mutantes sans l'en-tête anti-CSRF maison.
+ *  Exception : appel serveur-à-serveur authentifié (Bearer CENTRAL_API_SECRET). */
 export function assertSameOriginPost(req: Request): void {
   if (req.method === "GET") return;
+  if (isServiceAuth(req)) return;
   const h = req.headers.get("x-requested-with");
   if (h !== "nzoko") {
     throw new ApiError(403, ERROR_CODES.FORBIDDEN, "Requête non autorisée (origine invalide).");

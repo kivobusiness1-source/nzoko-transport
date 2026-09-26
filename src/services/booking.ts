@@ -7,11 +7,12 @@
 import { db } from "@/lib/db";
 import { ApiError, ERROR_CODES } from "@/lib/api-response";
 import { generateBookingReference } from "@/lib/security";
-import { SEAT_HOLD_MINUTES } from "@/lib/constants";
+import { SEAT_HOLD_MINUTES, MAX_SEATS_PER_BOOKING } from "@/lib/constants";
 import { dayRange } from "@/lib/dates";
 import { normalizePhone } from "@/lib/phone";
 import { validatePromoForTrip } from "@/services/promo";
-import type { BookingDTO, BookingDetailDTO, CreateBookingInput, SeatMapDTO, TripSearchDTO } from "@/types";
+import { emitDomainEvents } from "@/services/domain-events";
+import type { BookingDTO, BookingDetailDTO, CreateBookingInput, HoldCustomerInput, PassengerInput, SeatMapDTO, TripSearchDTO, TripSeatStatus } from "@/types";
 import type { Prisma } from "@prisma/client";
 import { toPaymentDTO } from "@/services/payment-mappers";
 
@@ -49,6 +50,25 @@ export function releaseExpiredHolds(options?: { force?: boolean }): Promise<void
           .updateMany({ where: { id: { in: bookingIds }, status: "PENDING" }, data: { status: "EXPIRED" } })
           .catch(() => {});
       });
+      // Événements (contrat §14) : les places repassent AVAILABLE, les
+      // réservations PENDING correspondantes passent EXPIRED. Best-effort.
+      await emitDomainEvents([
+        ...expired.map((o) => ({
+          type: "SEAT_RELEASED" as const,
+          aggregateType: "Seat" as const,
+          aggregateId: o.seatId,
+          tripId: o.tripId,
+          bookingId: o.bookingId,
+          payload: { reason: "HOLD_EXPIRED", seatId: o.seatId },
+        })),
+        ...bookingIds.map((id) => ({
+          type: "BOOKING_EXPIRED" as const,
+          aggregateType: "Booking" as const,
+          aggregateId: id,
+          bookingId: id,
+          payload: { reason: "HOLD_EXPIRED" },
+        })),
+      ]);
     } catch {
       // purge best-effort : jamais bloquante pour la route appelante
     } finally {
@@ -117,14 +137,24 @@ export async function searchTrips(params: {
     .map((t) => toTripSearchDTO(t, t.bus.seatLayout.seats.length, t.occupancies.length));
 }
 
-type TripWithRelations = Prisma.TripGetPayload<{
-  include: {
-    route: { include: { originCity: true; destinationCity: true; stops: { include: { city: true } } } };
-    bus: { include: { agency: true; seatLayout: { include: { seats: true } } } };
-    agency: true;
-    occupancies: { where: { OR: [{ status: "BOOKED" }, { status: "HELD", expiresAt: { gt: Date } }] } };
-  };
-}>;
+type TripWithRelations = Omit<
+  Prisma.TripGetPayload<{
+    include: {
+      route: { include: { originCity: true; destinationCity: true; stops: { include: { city: true } } } };
+      bus: { include: { agency: true; seatLayout: { include: { seats: true } } } };
+      agency: true;
+      occupancies: {
+        where: { OR: [{ status: "BOOKED" }, { status: "HELD", expiresAt: { gt: Date } }] };
+        include: { booking: { select: { ticket: { select: { status: true } } } } };
+      };
+    };
+  }>,
+  "occupancies"
+> & {
+  /** Type structurel souple : le DTO de recherche ne consomme que le COUNT
+   *  des occupations actives — les appelants admin passent leur propre include. */
+  occupancies: { seatId: string }[];
+};
 
 export function toTripSearchDTO(trip: TripWithRelations, totalSeats: number, takenSeats: number): TripSearchDTO {
   const r = trip.route;
@@ -167,6 +197,7 @@ export async function getSeatMap(tripId: string): Promise<SeatMapDTO> {
       agency: true,
       occupancies: {
         where: { OR: [{ status: "BOOKED" }, { status: "HELD", expiresAt: { gt: now } }] },
+        include: { booking: { select: { ticket: { select: { status: true } } } } },
       },
     },
   });
@@ -176,19 +207,34 @@ export async function getSeatMap(tripId: string): Promise<SeatMapDTO> {
     throw new ApiError(409, ERROR_CODES.TRIP_UNAVAILABLE, "Ce voyage n'est plus réservable.");
   }
 
-  const takenSeatIds = new Set(trip.occupancies.map((o) => o.seatId));
+  // Statut contractuel par place (API centrale §4/§6) :
+  //  - verrou HELD actif        → HELD (🟡)
+  //  - occupation BOOKED        → PAID (🔴) sauf ticket USED → BOARDED (⚫)
+  //  - aucune occupation active → AVAILABLE (🟢)
+  const occupancyBySeat = new Map(trip.occupancies.map((o) => [o.seatId, o]));
   const seats = trip.bus.seatLayout.seats
-    .map((s) => ({
-      id: s.id,
-      seatNumber: s.seatNumber,
-      row: s.row,
-      column: s.column,
-      type: s.type as "STANDARD" | "VIP",
-      status: (takenSeatIds.has(s.id) ? "BOOKED" : "AVAILABLE") as "BOOKED" | "AVAILABLE",
-    }))
+    .map((s) => {
+      const occ = occupancyBySeat.get(s.id);
+      let status: TripSeatStatus = "AVAILABLE";
+      if (occ) {
+        if (occ.status === "HELD") status = "HELD";
+        else if (occ.booking.ticket?.status === "USED") status = "BOARDED";
+        else status = "PAID";
+      }
+      return {
+        id: s.id,
+        seatNumber: s.seatNumber,
+        number: s.seatNumber, // alias contractuel (API centrale §6)
+        row: s.row,
+        column: s.column,
+        type: s.type as "STANDARD" | "VIP",
+        status,
+      };
+    })
     .sort((a, b) => a.row - b.row || a.column.localeCompare(b.column));
 
   return {
+    tripId: trip.id,
     trip: {
       id: trip.id,
       code: trip.code,
@@ -209,6 +255,7 @@ export async function getSeatMap(tripId: string): Promise<SeatMapDTO> {
     },
     seats,
     availableSeats: seats.filter((s) => s.status === "AVAILABLE").length,
+    total: seats.length,
     holdMinutes: SEAT_HOLD_MINUTES,
   };
 }
@@ -227,14 +274,56 @@ export interface CreateBookingContext {
 const bookingInclude = {
   trip: { include: { route: { include: { originCity: true, destinationCity: true } }, bus: true, agency: true } },
   seat: true,
+  occupancies: { include: { seat: true }, orderBy: { seat: { seatNumber: "asc" as const } } },
   passenger: true,
   agency: true,
   createdBy: true,
   dropOffNeighborhood: { select: { id: true, name: true, city: { select: { name: true } } } },
 } satisfies Prisma.BookingInclude;
 
+/** Convertit le `customer` contractuel (§7) en passager complet.
+ *  « Jean Mbala » → firstName=Jean, lastName=Mbala (un seul mot → les deux). */
+function customerToPassenger(c: HoldCustomerInput): PassengerInput {
+  const parts = c.name.trim().split(/\s+/).filter(Boolean);
+  const firstName = parts[0] ?? "Passager";
+  const lastName = parts.slice(1).join(" ") || firstName;
+  return { firstName, lastName, phone: c.phone, email: c.email, documentNumber: undefined };
+}
+
 export async function createBooking(input: CreateBookingInput, ctx: CreateBookingContext): Promise<BookingDTO> {
-  // force : un verrou expiré sur le siige visé doit être libéré AVANT le
+  // ⚠️ IDEMPOTENCE (contrat §16) : la même Idempotency-Key rejouée renvoie
+  // la réservation D'ORIGINE — jamais une seconde.
+  if (input.idempotencyKey) {
+    const existing = await db.booking.findUnique({ where: { idempotencyKey: input.idempotencyKey } });
+    if (existing) {
+      const created = await db.booking.findUnique({ where: { id: existing.id }, include: bookingInclude });
+      if (created) return toBookingDTO(created);
+    }
+  }
+
+  // Multi-sièges (contrat §7) : seatIds prioritaire, sinon seatId historique.
+  const seatIds = [...new Set((input.seatIds?.length ? input.seatIds : input.seatId ? [input.seatId] : []).filter(Boolean))];
+  if (seatIds.length === 0) {
+    throw new ApiError(400, ERROR_CODES.BAD_REQUEST, "Aucune place sélectionnée.");
+  }
+  if (seatIds.length > MAX_SEATS_PER_BOOKING) {
+    throw new ApiError(400, ERROR_CODES.BAD_REQUEST, `Maximum ${MAX_SEATS_PER_BOOKING} places par réservation.`);
+  }
+
+  // Passager : objet complet OU client contractuel minimal (normalisé).
+  const rawPassenger = input.passenger ?? customerToPassenger(input.customer ?? { name: "", phone: "" });
+  const p: PassengerInput = {
+    firstName: rawPassenger.firstName,
+    lastName: rawPassenger.lastName,
+    phone: rawPassenger.phone,
+    email: rawPassenger.email,
+    documentNumber: rawPassenger.documentNumber,
+  };
+  if (!p.firstName || !p.lastName || !p.phone) {
+    throw new ApiError(400, ERROR_CODES.BAD_REQUEST, "Informations client incomplètes (nom + téléphone requis).");
+  }
+
+  // force : un verrou expiré sur le siège visé doit être libéré AVANT le
   // test d’unicité tripId+seatId, sinon le client recevrait un 409 injuste.
   await releaseExpiredHolds({ force: true });
   const now = new Date();
@@ -250,8 +339,26 @@ export async function createBooking(input: CreateBookingInput, ctx: CreateBookin
   if (!["SCHEDULED", "BOARDING"].includes(trip.status) || trip.departureTime < now) {
     throw new ApiError(409, ERROR_CODES.TRIP_UNAVAILABLE, "Ce voyage n'est plus réservable.");
   }
-  const seat = trip.bus.seatLayout.seats.find((s) => s.id === input.seatId);
-  if (!seat) throw new ApiError(404, ERROR_CODES.NOT_FOUND, "Siège introuvable pour ce bus.");
+  const seatByid = new Map(trip.bus.seatLayout.seats.map((s) => [s.id, s]));
+  const seats = seatIds.flatMap((id) => {
+    const seat = seatByid.get(id);
+    return seat ? [seat] : [];
+  });
+  if (seats.length !== seatIds.length) {
+    throw new ApiError(404, ERROR_CODES.NOT_FOUND, "Place introuvable pour ce bus.");
+  }
+
+  // Agence choisie par le client (contrat §5) : canal/agence de vente de la
+  // réservation. Elle NE possède PAS la place — la disponibilité reste
+  // globale au voyage. Validée serveur : existante + ACTIVE (§7.4).
+  let sellerAgencyId: string | null = null;
+  if (input.agencyId) {
+    const agency = await db.agency.findUnique({ where: { id: input.agencyId }, select: { id: true, isActive: true } });
+    if (!agency || !agency.isActive) {
+      throw new ApiError(400, ERROR_CODES.AGENCY_UNAVAILABLE, "Agence invalide ou inactive. Choisissez une agence active.");
+    }
+    sellerAgencyId = agency.id;
+  }
 
   // Quartier d'arrêt (optionnel) : il doit exister, être ACTIF et
   // appartenir à la ville de DESTINATION du voyage — jamais sur parole
@@ -271,12 +378,11 @@ export async function createBooking(input: CreateBookingInput, ctx: CreateBookin
     dropOffNeighborhoodId = hood.id;
   }
 
-  const p = input.passenger;
-
   // Code promo : MÊME validation que /api/bookings/promo/validate
   // (une seule implémentation — src/services/promo.ts). La remise est
-  // figée dans le montant de la réservation.
-  let amount = trip.price;
+  // figée dans le montant de la réservation — appliquée PAR PLACE puis
+  // multipliée par le nombre de places.
+  let unitAmount = trip.price;
   let promoCode: string | null = null;
   if (input.promoCode?.trim()) {
     const validated = await validatePromoForTrip(
@@ -284,9 +390,10 @@ export async function createBooking(input: CreateBookingInput, ctx: CreateBookin
       trip.id,
       ctx.actorRole === "PASSENGER" ? ctx.actorUserId ?? null : null
     );
-    amount = validated.discountedAmount;
+    unitAmount = validated.discountedAmount;
     promoCode = validated.code;
   }
+  const amount = unitAmount * seats.length;
 
   // Téléphone passager : normalisé E.164 digits (compatibilité MoMo OK)
   const passengerPhone = normalizePhone(p.phone) ?? p.phone.trim();
@@ -338,43 +445,79 @@ export async function createBooking(input: CreateBookingInput, ctx: CreateBookin
           bookingReference: generateBookingReference(),
           tripId: trip.id,
           passengerId: passenger.id,
-          seatId: seat.id,
+          seatId: seats[0].id, // place principale (compat) — liste complète dans SeatOccupancy
           amount,
           status: "PENDING",
           channel: ctx.channel,
-          agencyId: ctx.channel === "AGENT" ? ctx.actorAgencyId : trip.agencyId,
+          // Agence vendeuse : choisie par le client (contrat §5/§21-T7), sinon
+          // l'agence du voyage (WEB historique) ou l'agence de l'agent (guichet).
+          agencyId: ctx.channel === "AGENT" ? ctx.actorAgencyId : sellerAgencyId ?? trip.agencyId,
           createdById: ctx.actorUserId ?? null,
           promoCode,
           dropOffNeighborhoodId,
           expiresAt,
+          idempotencyKey: input.idempotencyKey ?? null,
         },
       });
 
-      // ⚠️ Verrou : la contrainte unique (tripId+seatId) rejette TOUTE double
-      // réservation simultanée, quel que soit le nombre de clients parallèles.
-      await tx.seatOccupancy.create({
-        data: {
+      // ⚠️ VERROU CRITIQUE (contrat §8) : la contrainte unique (tripId+seatId)
+      // rejette TOUTE double réservation simultanée, quel que soit le nombre
+      // de clients parallèles — UNE seule transaction gagne, les autres
+      // reçoivent 409 SEAT_ALREADY_TAKEN (rollback complet du groupe).
+      await tx.seatOccupancy.createMany({
+        data: seats.map((s) => ({
           tripId: trip.id,
-          seatId: seat.id,
+          seatId: s.id,
           bookingId: booking.id,
           status: "HELD",
           expiresAt,
-        },
+        })),
       });
 
       return booking.id;
     });
 
+    // Événements (contrat §14) : BOOKING_CREATED + SEAT_HELD par place.
+    // Best-effort, post-transaction — jamais bloquant.
+    await emitDomainEvents([
+      {
+        type: "BOOKING_CREATED",
+        aggregateType: "Booking",
+        aggregateId: bookingId,
+        tripId: trip.id,
+        bookingId,
+        payload: { seats: seats.map((s) => s.seatNumber), amount, channel: ctx.channel },
+      },
+      ...seats.map((s) => ({
+        type: "SEAT_HELD" as const,
+        aggregateType: "Seat" as const,
+        aggregateId: s.id,
+        tripId: trip.id,
+        bookingId,
+        payload: { seatNumber: s.seatNumber, holdMinutes: SEAT_HOLD_MINUTES },
+      })),
+    ]);
+
     const created = await db.booking.findUnique({ where: { id: bookingId }, include: bookingInclude });
     if (!created) throw new ApiError(500, ERROR_CODES.INTERNAL, "Impossible de finaliser votre réservation. Veuillez réessayer.");
     return toBookingDTO(created);
   } catch (err) {
-    const prismaErr = err as { code?: string };
+    const prismaErr = err as { code?: string; meta?: { target?: string[] } };
     if (prismaErr?.code === "P2002") {
+      const target = prismaErr.meta?.target ?? [];
+      // Collision sur la clé d'idempotence : la requête a déjà été traitée
+      // avec UNE AUTRE charge utile — conflit documenté (contrat §16).
+      if (target.includes("idempotencyKey")) {
+        throw new ApiError(
+          409,
+          ERROR_CODES.CONFLICT,
+          "Cette clé d'idempotence a déjà été utilisée avec une requête différente."
+        );
+      }
       throw new ApiError(
         409,
-        ERROR_CODES.SEAT_UNAVAILABLE,
-        "Ce siège vient d'être pris par un autre passager. Veuillez en choisir un autre."
+        ERROR_CODES.SEAT_ALREADY_TAKEN,
+        "Cette place vient d'être réservée. Veuillez choisir une autre place."
       );
     }
     throw err;
@@ -416,6 +559,12 @@ export async function cancelBooking(
     throw new ApiError(409, ERROR_CODES.CONFLICT, "Cette réservation ne peut plus être annulée.");
   }
 
+  // Places à libérer capturées AVANT la transaction (elle supprime les verrous).
+  const freedSeats = await db.seatOccupancy.findMany({
+    where: { bookingId: booking.id },
+    select: { seatId: true },
+  }).catch(() => []);
+
   await db.$transaction(async (tx) => {
     await tx.booking.update({ where: { id: booking.id }, data: { status: "CANCELLED" } });
     await tx.seatOccupancy.deleteMany({ where: { bookingId: booking.id } });
@@ -432,7 +581,7 @@ export async function cancelBooking(
             reference: booking.bookingReference,
             description: `Remboursement réservation ${booking.bookingReference}`,
             agencyId: booking.agencyId,
-            createdById: actorUserId,
+            createdById: actorUserId || null, // ""/marqueur service → null (contrainte FK User)
           },
         });
       } else if (["PENDING", "PROCESSING"].includes(pay.status)) {
@@ -441,28 +590,76 @@ export async function cancelBooking(
     }
   });
 
+  // Événements (contrat §14) : annulation + libération des places
+  // (règle métier documentée : une place CANCELLED REDEVIENT AVAILABLE).
+  await emitDomainEvents([
+    {
+      type: "BOOKING_CANCELLED",
+      aggregateType: "Booking",
+      aggregateId: booking.id,
+      tripId: booking.tripId,
+      bookingId: booking.id,
+      payload: { reference: booking.bookingReference },
+    },
+    ...freedSeats.map((o) => ({
+      type: "SEAT_RELEASED" as const,
+      aggregateType: "Seat" as const,
+      aggregateId: o.seatId,
+      tripId: booking.tripId,
+      bookingId: booking.id,
+      payload: { reason: "BOOKING_CANCELLED" },
+    })),
+    ...(booking.ticket
+      ? [{
+          type: "TICKET_CANCELLED" as const,
+          aggregateType: "Ticket" as const,
+          aggregateId: booking.ticket.id,
+          tripId: booking.tripId,
+          bookingId: booking.id,
+          payload: { reference: booking.bookingReference },
+        }]
+      : []),
+  ]);
+
   return getBookingDetail(booking.id);
 }
 
 // ---------- Mappers ----------
 type BookingWithRelations = Prisma.BookingGetPayload<{ include: typeof bookingInclude }>;
 
-/** Le quartier d'arrêt est OPTIONNEL pour les appelants qui construisent
- *  leur propre include (stats, listes partielles) : le mapper tolère
- *  son absence (mappée à null dans le DTO). */
-export type BookingWithOptionalDropOff = Omit<BookingWithRelations, "dropOffNeighborhood"> & {
+/** Le quartier d'arrêt ET les occupancies sont OPTIONNELS pour les appelants
+ *  qui construisent leur propre include (stats, listes partielles) : les
+ *  mappers tolèrent leur absence (repli sur la place principale). */
+export type BookingWithOptionalDropOff = Omit<BookingWithRelations, "dropOffNeighborhood" | "occupancies"> & {
   dropOffNeighborhood?: BookingWithRelations["dropOffNeighborhood"] | null;
+  occupancies?: BookingWithRelations["occupancies"];
 };
 
 export function toBookingDTO(b: BookingWithRelations | BookingWithOptionalDropOff): BookingDTO {
+  // Places de la réservation (multi-sièges) : occupancies triées par numéro.
+  // Tolère l'absence de l'include (listes partielles) → repli sur la place principale.
+  const occupancyRows = "occupancies" in b && Array.isArray(b.occupancies) ? b.occupancies : [];
+  const allSeats =
+    occupancyRows.length > 0
+      ? occupancyRows.map((o) => ({ id: o.seat.id, seatNumber: o.seat.seatNumber, type: o.seat.type as "STANDARD" | "VIP" }))
+      : [{ id: b.seat.id, seatNumber: b.seat.seatNumber, type: b.seat.type as "STANDARD" | "VIP" }];
+  const contractMap: Record<string, "HELD" | "CONFIRMED" | "CANCELLED" | "EXPIRED"> = {
+    PENDING: "HELD",
+    CONFIRMED: "CONFIRMED",
+    COMPLETED: "CONFIRMED",
+    CANCELLED: "CANCELLED",
+    EXPIRED: "EXPIRED",
+  };
   return {
     id: b.id,
     bookingReference: b.bookingReference,
     status: b.status as BookingDTO["status"],
+    contractStatus: contractMap[b.status] ?? "HELD",
     amount: b.amount,
     channel: b.channel as "WEB" | "AGENT",
     promoCode: b.promoCode,
     expiresAt: b.expiresAt?.toISOString() ?? null,
+    holdExpiresAt: b.expiresAt?.toISOString() ?? null,
     createdAt: b.createdAt.toISOString(),
     trip: {
       id: b.trip.id,
@@ -476,6 +673,7 @@ export function toBookingDTO(b: BookingWithRelations | BookingWithOptionalDropOf
       agencyName: b.trip.agency.name,
     },
     seat: { id: b.seat.id, seatNumber: b.seat.seatNumber, type: b.seat.type as "STANDARD" | "VIP" },
+    seats: allSeats,
     passenger: {
       id: b.passenger.id,
       firstName: b.passenger.firstName,
@@ -495,6 +693,7 @@ type BookingDetailWithRelations = Prisma.BookingGetPayload<{
   include: {
     trip: { include: { route: { include: { originCity: true; destinationCity: true } }, bus: true, agency: true } };
     seat: true;
+    occupancies: { include: { seat: true }, orderBy: { seat: { seatNumber: "asc" } } };
     passenger: true;
     agency: true;
     createdBy: true;

@@ -5,7 +5,7 @@
 // 1 Trajet → 2 Voyage → 3 Siège → 4 Passager → 5 Paiement → 6 Billet
 // ============================================================
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import { toast } from "sonner";
 import { CalendarSearch, ChevronLeft, Check, Search, Ticket, XCircle } from "lucide-react";
@@ -60,7 +60,11 @@ export default function BookingFlow({ channel }: { channel: "WEB" | "AGENT" }) {
   const [trip, setTrip] = useState<TripSearchDTO | null>(null);
   const [seatMap, setSeatMap] = useState<SeatMapDTO | null>(null);
   const [seatLoading, setSeatLoading] = useState(false);
-  const [seatId, setSeatId] = useState<string | null>(null);
+  // Multi-sièges (contrat §6/§7) : le client sélectionne 1..6 places.
+  const [seatIds, setSeatIds] = useState<string[]>([]);
+  // Idempotency-Key (contrat §16) : générée UNE FOIS par commande, réutilisée
+  // à chaque tentative d'envoi — un retry réseau ne crée JAMAIS deux holds.
+  const holdIdempotencyKeyRef = useRef<string>(typeof crypto !== "undefined" ? crypto.randomUUID() : "");
 
   const [submitting, setSubmitting] = useState(false);
   const [booking, setBooking] = useState<BookingDTO | null>(null);
@@ -99,11 +103,12 @@ export default function BookingFlow({ channel }: { channel: "WEB" | "AGENT" }) {
       setTrips(null);
       setTrip(null);
       setSeatMap(null);
-      setSeatId(null);
+      setSeatIds([]);
       setBooking(null);
       setDetail(null);
       setSearchError(null);
       setAgency(null);
+      holdIdempotencyKeyRef.current = typeof crypto !== "undefined" ? crypto.randomUUID() : "";
       if (message) toast.info(message);
     },
     []
@@ -157,35 +162,107 @@ export default function BookingFlow({ channel }: { channel: "WEB" | "AGENT" }) {
   const chooseTrip = useCallback(
     (t: TripSearchDTO) => {
       setTrip(t);
-      setSeatId(null);
+      setSeatIds([]);
       setStep(3);
       loadSeatMap(t.id);
     },
     [loadSeatMap]
   );
 
+  // Toggle d'une place (multi-sélection, max 6 — contrat §7).
+  const toggleSeat = useCallback(
+    (seat: { id: string; status: string }) => {
+      if (seat.status !== "AVAILABLE" && seat.status !== "CANCELLED") return;
+      setSeatIds((prev) => {
+        if (prev.includes(seat.id)) return prev.filter((id) => id !== seat.id);
+        if (prev.length >= 6) {
+          toast.info("Maximum 6 places par réservation.");
+          return prev;
+        }
+        return [...prev, seat.id];
+      });
+    },
+    []
+  );
+
+  // ---------- TEMPS RÉEL (contrat §15) ----------
+  // Tant que le plan de sièges est affiché, on écoute les événements du
+  // voyage : tout changement serveur (hold, paiement, annulation, embarquement
+  // d'un autre client) déclenche un rechargement du plan — le SERVEUR reste
+  // la source de vérité, jamais le cache frontend.
+  useEffect(() => {
+    if (step !== 3 || !trip) return;
+    let cancelled = false;
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    let cursor: string | undefined;
+    const poll = async () => {
+      try {
+        const res = await api.events.list({
+          tripId: trip.id,
+          since: cursor,
+          types: ["SEAT_HELD", "SEAT_RELEASED", "SEAT_PAID", "SEAT_CANCELLED", "BOOKING_CREATED", "BOOKING_CANCELLED", "TICKET_BOARDED"],
+        });
+        if (cancelled) return;
+        cursor = res.cursor ?? cursor;
+        if (res.events.length > 0) {
+          // On recharge la vérité serveur (GET /api/trips/{id}/seats) —
+          // JAMAIS d'application locale des deltas (§15).
+          setSeatMap(await api.trips.seats(trip.id));
+        }
+      } catch {
+        // réseau/polling : silencieux, la prochaine itération réessaie
+      } finally {
+        if (!cancelled) timer = setTimeout(poll, 5000);
+      }
+    };
+    timer = setTimeout(poll, 5000);
+    return () => {
+      cancelled = true;
+      if (timer) clearTimeout(timer);
+    };
+  }, [step, trip, trip?.id]);
+
   const createBooking = useCallback(
     async (passenger: PassengerInput, dropOffNeighborhoodId?: string) => {
-      if (!trip || !seatId) return;
+      if (!trip || seatIds.length === 0) return;
       setSubmitting(true);
       try {
-        const created = await api.bookings.create({ tripId: trip.id, seatId, passenger, channel, dropOffNeighborhoodId });
+        // Contrat §7 : hold multi-sièges + agence choisie (filtre « Trouver
+        // mon agence » = canal de vente de la réservation) + clé idempotente.
+        const created = await api.bookings.hold(
+          {
+            tripId: trip.id,
+            seatIds,
+            agencyId: agency?.id,
+            passenger,
+            dropOffNeighborhoodId,
+          },
+          holdIdempotencyKeyRef.current
+        );
         setBooking(created);
         setSeatMap((prev) =>
           prev
             ? {
                 ...prev,
-                availableSeats: Math.max(prev.availableSeats - 1, 0),
-                seats: prev.seats.map((s) => (s.id === seatId ? { ...s, status: "HELD" as const } : s)),
+                availableSeats: Math.max(prev.availableSeats - seatIds.length, 0),
+                seats: prev.seats.map((s) => (seatIds.includes(s.id) ? { ...s, status: "HELD" as const } : s)),
               }
             : prev
         );
-        toast.success("Siège réservé ! Vous avez 10 minutes pour finaliser le paiement.");
+        toast.success(
+          created.seats.length > 1
+            ? `${created.seats.length} places réservées ! Vous avez 10 minutes pour finaliser le paiement.`
+            : "Siège réservé ! Vous avez 10 minutes pour finaliser le paiement."
+        );
         setStep(5);
       } catch (err) {
-        if (err instanceof ApiClientError && (err.code === "SEAT_UNAVAILABLE" || err.code === "SEAT_HELD")) {
+        if (
+          err instanceof ApiClientError &&
+          (err.code === "SEAT_UNAVAILABLE" || err.code === "SEAT_HELD" || err.code === "SEAT_ALREADY_TAKEN")
+        ) {
+          // Contrat §8 : la place vient d'être prise → retour au plan + vérité serveur.
           toast.error(err.message);
-          setSeatId(null);
+          setSeatIds([]);
           setStep(3);
           loadSeatMap(trip.id);
         } else {
@@ -195,7 +272,7 @@ export default function BookingFlow({ channel }: { channel: "WEB" | "AGENT" }) {
         setSubmitting(false);
       }
     },
-    [trip, seatId, channel, loadSeatMap]
+    [trip, seatIds, agency, loadSeatMap]
   );
 
   const handlePaid = useCallback((d: BookingDetailDTO) => {
@@ -299,8 +376,10 @@ export default function BookingFlow({ channel }: { channel: "WEB" | "AGENT" }) {
             <AlertDialogHeader>
               <AlertDialogTitle>Annuler cette réservation ?</AlertDialogTitle>
               <AlertDialogDescription>
-                Le siège {booking.seat.seatNumber} sera libéré et la réservation {booking.bookingReference} annulée.
-                Vous devrez recommencer la réservation depuis le début.
+                {booking.seats.length > 1
+                  ? `Les places ${booking.seats.map((s) => s.seatNumber).join(", ")} seront libérées et la réservation ${booking.bookingReference} annulée.`
+                  : `Le siège ${booking.seat.seatNumber} sera libéré et la réservation ${booking.bookingReference} annulée.`}
+                {" "}Vous devrez recommencer la réservation depuis le début.
               </AlertDialogDescription>
             </AlertDialogHeader>
             <AlertDialogFooter>
@@ -460,25 +539,29 @@ export default function BookingFlow({ channel }: { channel: "WEB" | "AGENT" }) {
               <SeatMap
                 seatMap={seatMap}
                 loading={seatLoading}
-                selectedSeatId={seatId}
-                onSelect={(seat) => setSeatId((prev) => (seat.status === "AVAILABLE" && prev !== seat.id ? seat.id : null))}
+                selectedSeatIds={seatIds}
+                onSelect={toggleSeat}
                 onRefresh={trip ? () => loadSeatMap(trip.id) : undefined}
               />
               <Button
                 size="lg"
                 className="h-12 w-full"
-                disabled={!seatId}
-                onClick={() => setStep(4)}
+                disabled={seatIds.length === 0}
+                onClick={() => {
+                  // Nouvelle commande → nouvelle clé d'idempotence (contrat §16).
+                  holdIdempotencyKeyRef.current = crypto.randomUUID();
+                  setStep(4);
+                }}
               >
-                {seatId
-                  ? `Continuer avec le siège ${seatMap?.seats.find((s) => s.id === seatId)?.seatNumber ?? ""}`
-                  : "Sélectionnez un siège pour continuer"}
+                {seatIds.length > 0
+                  ? `Continuer avec ${seatIds.length} place${seatIds.length > 1 ? "s" : ""} (${seatIds.length > 0 && seatMap ? seatMap.seats.filter((s) => seatIds.includes(s.id)).map((s) => s.seatNumber).join(", ") : ""})`
+                  : "Sélectionnez au moins un siège pour continuer"}
               </Button>
             </div>
           )}
 
           {step === 4 && trip && seatMap && (
-            <PassengerStep trip={trip} seatMap={seatMap} seatId={seatId} submitting={submitting} onSubmit={createBooking} />
+            <PassengerStep trip={trip} seatMap={seatMap} seatIds={seatIds} submitting={submitting} onSubmit={createBooking} />
           )}
 
           {step === 5 && booking && (

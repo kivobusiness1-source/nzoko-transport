@@ -6,6 +6,7 @@
 
 import QRCode from "qrcode";
 import { db } from "@/lib/db";
+import { emitDomainEvent } from "@/services/domain-events";
 import { generateBoardingNumber, generateTicketToken } from "@/lib/security";
 import type { Prisma, Ticket } from "@prisma/client";
 
@@ -186,6 +187,16 @@ export async function scanAndBoard(rawCode: string, ctx: BoardingContext): Promi
   }
 
   await logScan(ctx, code, "VALID");
+  // Événement (contrat §14) : la place passe BOARDED — visible sur le plan
+  // de sièges temps réel des deux sites. Best-effort.
+  await emitDomainEvent({
+    type: "TICKET_BOARDED",
+    aggregateType: "Ticket",
+    aggregateId: target.id,
+    tripId: b.tripId,
+    bookingId: b.id,
+    payload: { reference: b.bookingReference, seatNumber: b.seat.seatNumber },
+  });
   return {
     result: "VALID",
     message: `✓ EMBARQUEMENT VALIDÉ — ${info.passengerName}, siège ${info.seatNumber}.`,

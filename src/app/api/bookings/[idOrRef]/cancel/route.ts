@@ -3,7 +3,7 @@
 // - Non connecté porteur de la référence → PENDING uniquement (statut vérifié serveur)
 
 import { NextRequest } from "next/server";
-import { ok, routeError, ApiError, ERROR_CODES, getClientIp, assertSameOriginPost } from "@/lib/api-response";
+import { ok, routeError, ApiError, ERROR_CODES, getClientIp, assertSameOriginPost, isServiceAuth } from "@/lib/api-response";
 import { getAuth } from "@/lib/auth";
 import { logAudit } from "@/lib/audit";
 import { enforceRateLimit } from "@/lib/rate-limit";
@@ -11,7 +11,7 @@ import { GLOBAL_ROLES, RATE_LIMITS } from "@/lib/constants";
 import { cancelBooking } from "@/services/booking";
 import { db } from "@/lib/db";
 
-export async function PATCH(req: NextRequest, { params }: { params: Promise<{ idOrRef: string }> }) {
+async function handleCancel(req: NextRequest, { params }: { params: Promise<{ idOrRef: string }> }) {
   try {
     assertSameOriginPost(req);
     const { idOrRef } = await params;
@@ -37,6 +37,21 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
         entity: "Booking",
         entityId: detail.id,
         metadata: { reference: detail.bookingReference, previousStatus: detail.status, by: "staff" },
+        ipAddress: ip,
+      });
+      return ok(detail);
+    }
+
+    // SITE AGENCES (service-à-serveur, Bearer CENTRAL_API_SECRET — contrat §3.9) :
+    // annulation inter-sites, scope global, journalisée. actorUserId="" →
+    // aucune FK utilisateur écrite par le remboursement (service sans compte).
+    if (isServiceAuth(req)) {
+      const detail = await cancelBooking(key, "", null, true);
+      await logAudit({
+        action: "BOOKING_CANCELLED",
+        entity: "Booking",
+        entityId: detail.id,
+        metadata: { reference: detail.bookingReference, previousStatus: detail.status, by: "service" },
         ipAddress: ip,
       });
       return ok(detail);
@@ -74,6 +89,15 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     });
     return ok(detail);
   } catch (err) {
-    return routeError(err, "PATCH /api/bookings/[idOrRef]/cancel");
+    return routeError(err, "PATCH|POST /api/bookings/[idOrRef]/cancel");
   }
+}
+
+// Contrat §17 : POST /api/bookings/{id}/cancel — PATCH reste accepté (historique).
+export async function POST(req: NextRequest, ctx: { params: Promise<{ idOrRef: string }> }) {
+  return handleCancel(req, ctx);
+}
+
+export async function PATCH(req: NextRequest, ctx: { params: Promise<{ idOrRef: string }> }) {
+  return handleCancel(req, ctx);
 }

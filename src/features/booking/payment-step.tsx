@@ -297,9 +297,11 @@ export function PaymentStep({ channel, booking, onPaid }: PaymentStepProps) {
               <p className="truncate font-semibold">{booking.trip.busRegistration}</p>
             </div>
             <div>
-              <p className="text-[11px] uppercase text-muted-foreground">Siège</p>
+              <p className="text-[11px] uppercase text-muted-foreground">
+                {booking.seats.length > 1 ? "Places" : "Siège"}
+              </p>
               <p className="font-semibold">
-                {booking.seat.seatNumber}
+                {booking.seats.map((s) => s.seatNumber).join(", ")}
                 {booking.seat.type === "VIP" && <span className="ml-1 text-[10px] font-bold uppercase text-orange-600">VIP</span>}
               </p>
             </div>

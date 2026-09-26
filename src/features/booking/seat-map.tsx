@@ -3,6 +3,10 @@
 // ============================================================
 // Océan du Nord — Plan de sièges interactif (étape 3)
 // Grille générée depuis layout { rows, columns, aisleAfter }.
+// MULTI-SÉLECTION (contrat §6) : le client choisit une ou plusieurs
+// places, puis passe au formulaire passager.
+// Statuts contractuels (API centrale §4) :
+//   🟢 AVAILABLE · 🟡 HELD (hold temporaire) · 🔴 PAID · ⚫ BOARDED
 // ============================================================
 
 import { useMemo } from "react";
@@ -10,15 +14,18 @@ import { Info, Loader2, RefreshCw, User } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
-import type { SeatMapDTO, SeatMapSeatDTO } from "@/types";
+import type { SeatMapDTO, SeatMapSeatDTO, TripSeatStatus } from "@/types";
 import { cn } from "@/lib/utils";
 
 interface SeatMapProps {
   seatMap: SeatMapDTO | null;
   loading: boolean;
-  selectedSeatId: string | null;
+  selectedSeatIds: string[];
+  /** Toggle d'une place (le parent gère la sélection multi-sièges). */
   onSelect: (seat: SeatMapSeatDTO) => void;
   onRefresh?: () => void;
+  /** Nombre max de places sélectionnables (contrat §7 : 6). */
+  maxSeats?: number;
 }
 
 function colIndex(column: string): number {
@@ -28,17 +35,51 @@ function colIndex(column: string): number {
 interface SeatButtonProps {
   seat: SeatMapSeatDTO;
   selected: boolean;
+  selectionFull: boolean;
   onSelect: (seat: SeatMapSeatDTO) => void;
 }
 
-function SeatButton({ seat, selected, onSelect }: SeatButtonProps) {
-  const occupied = seat.status !== "AVAILABLE";
-  const disabled = occupied && !selected;
+/** Style par statut contractuel (§6 — le front n'invente JAMAIS un état :
+ *  il affiche celui renvoyé par le serveur, source unique de vérité). */
+function seatStyle(seat: SeatMapSeatDTO, selected: boolean): string {
+  if (selected) return "nzoko-pulse border-primary bg-primary text-primary-foreground";
+  switch (seat.status) {
+    case "HELD":
+      return "cursor-not-allowed border-amber-300 bg-amber-100 text-amber-700 dark:border-amber-700 dark:bg-amber-950/50 dark:text-amber-300";
+    case "PAID":
+      return "cursor-not-allowed border-red-300 bg-red-100 text-red-700 dark:border-red-800 dark:bg-red-950/50 dark:text-red-300";
+    case "BOARDED":
+      return "cursor-not-allowed border-zinc-400 bg-zinc-700 text-zinc-200 dark:border-zinc-600 dark:bg-zinc-800 dark:text-zinc-300";
+    case "CANCELLED":
+      return "border-input bg-muted text-foreground hover:border-primary/40 hover:bg-primary/10";
+    default: // AVAILABLE
+      return seat.type === "VIP"
+        ? "border-orange-400 bg-orange-50 text-orange-700 hover:bg-orange-100 dark:border-orange-600 dark:bg-orange-950/40 dark:text-orange-300"
+        : "border-input bg-muted text-foreground hover:border-primary/40 hover:bg-primary/10";
+  }
+}
+
+const STATUS_LABELS: Record<TripSeatStatus, string> = {
+  AVAILABLE: "disponible",
+  HELD: "temporairement réservé (hold en cours)",
+  PAID: "déjà réservé / payé",
+  CANCELLED: "libérée (annulation)",
+  BOARDED: "passager embarqué",
+};
+
+function SeatButton({ seat, selected, selectionFull, onSelect }: SeatButtonProps) {
+  const occupied = seat.status === "HELD" || seat.status === "PAID" || seat.status === "BOARDED";
+  // Une place déjà sélectionnée reste cliquable (pour la désélectionner).
+  const disabled = (occupied || (selectionFull && !selected)) && !selected;
   const stateLabel = selected
-    ? "siège sélectionné"
+    ? `siège sélectionné — ${seat.status === "AVAILABLE" ? "disponible" : STATUS_LABELS[seat.status]}`
     : occupied
-      ? seat.status === "HELD" ? "siège temporairement réservé" : "siège occupé"
-      : seat.type === "VIP" ? "siège VIP disponible" : "siège disponible";
+      ? `siège ${STATUS_LABELS[seat.status]}`
+      : selectionFull
+        ? `siège disponible — limite de ${MAX_SELECTION_LABEL} places atteinte`
+        : seat.type === "VIP"
+          ? "siège VIP disponible"
+          : "siège disponible";
 
   return (
     <button
@@ -47,15 +88,10 @@ function SeatButton({ seat, selected, onSelect }: SeatButtonProps) {
       disabled={disabled}
       aria-label={`Siège ${seat.seatNumber} — ${stateLabel}`}
       aria-pressed={selected}
+      title={`Siège ${seat.seatNumber} — ${selected ? "sélectionné" : STATUS_LABELS[seat.status]}`}
       className={cn(
         "flex size-10 items-center justify-center rounded-lg border text-xs font-semibold transition-all outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50",
-        selected
-          ? "nzoko-pulse border-primary bg-primary text-primary-foreground"
-          : occupied
-            ? "cursor-not-allowed border-zinc-200 bg-zinc-100 text-zinc-400 line-through dark:border-zinc-800 dark:bg-zinc-900 dark:text-zinc-600"
-            : seat.type === "VIP"
-              ? "border-orange-400 bg-orange-50 text-orange-700 hover:bg-orange-100 dark:border-orange-600 dark:bg-orange-950/40 dark:text-orange-300"
-              : "border-input bg-muted text-foreground hover:border-primary/40 hover:bg-primary/10"
+        seatStyle(seat, selected)
       )}
     >
       {seat.seatNumber}
@@ -63,12 +99,16 @@ function SeatButton({ seat, selected, onSelect }: SeatButtonProps) {
   );
 }
 
+const MAX_SELECTION_LABEL = "6";
+
 function Legend() {
   const items = [
     { label: "Disponible", className: "border-input bg-muted" },
     { label: "VIP", className: "border-orange-400 bg-orange-50 dark:border-orange-600 dark:bg-orange-950/40" },
     { label: "Sélectionné", className: "border-primary bg-primary" },
-    { label: "Occupé", className: "border-zinc-200 bg-zinc-100 dark:border-zinc-800 dark:bg-zinc-900" },
+    { label: "Hold en cours", className: "border-amber-300 bg-amber-100 dark:border-amber-700 dark:bg-amber-950/50" },
+    { label: "Payé", className: "border-red-300 bg-red-100 dark:border-red-800 dark:bg-red-950/50" },
+    { label: "Embarqué", className: "border-zinc-400 bg-zinc-700" },
   ];
   return (
     <ul className="flex flex-wrap items-center gap-x-4 gap-y-2">
@@ -82,7 +122,7 @@ function Legend() {
   );
 }
 
-export function SeatMap({ seatMap, loading, selectedSeatId, onSelect, onRefresh }: SeatMapProps) {
+export function SeatMap({ seatMap, loading, selectedSeatIds, onSelect, onRefresh, maxSeats = 6 }: SeatMapProps) {
   const rows = useMemo(() => {
     if (!seatMap) return [];
     const byRow = new Map<number, SeatMapSeatDTO[]>();
@@ -126,16 +166,24 @@ export function SeatMap({ seatMap, loading, selectedSeatId, onSelect, onRefresh 
 
   const { layout } = seatMap;
   const aisleAfter = Math.min(Math.max(layout.aisleAfter, 0), Math.max(layout.columns - 1, 0));
+  const selectionFull = selectedSeatIds.length >= maxSeats;
 
   return (
     <Card>
       <CardHeader className="flex-row items-start justify-between space-y-0">
         <div className="min-w-0">
-          <CardTitle className="text-base">Choisissez votre siège</CardTitle>
+          <CardTitle className="text-base">Choisissez vos places</CardTitle>
           <p className="mt-1 text-sm text-muted-foreground">
             <span className="font-semibold text-primary">{seatMap.availableSeats}</span> place
-            {seatMap.availableSeats > 1 ? "s" : ""} disponible{seatMap.availableSeats > 1 ? "s" : ""} · {layout.name}
+            {seatMap.availableSeats > 1 ? "s" : ""} disponible{seatMap.availableSeats > 1 ? "s" : ""} sur{" "}
+            {seatMap.total} · {layout.name}
           </p>
+          {selectedSeatIds.length > 0 && (
+            <p className="mt-1 text-sm font-medium text-primary" aria-live="polite">
+              {selectedSeatIds.length} place{selectedSeatIds.length > 1 ? "s" : ""} sélectionnée
+              {selectedSeatIds.length > 1 ? "s" : ""} (max {maxSeats})
+            </p>
+          )}
         </div>
         {onRefresh && (
           <Button variant="ghost" size="icon" onClick={onRefresh} aria-label="Actualiser le plan des sièges" className="size-9">
@@ -161,7 +209,12 @@ export function SeatMap({ seatMap, loading, selectedSeatId, onSelect, onRefresh 
                     return (
                       <span key={seat.id} className="flex items-center gap-2">
                         {showAisle && <span className="w-3 sm:w-4" aria-hidden />}
-                        <SeatButton seat={seat} selected={seat.id === selectedSeatId} onSelect={onSelect} />
+                        <SeatButton
+                          seat={seat}
+                          selected={selectedSeatIds.includes(seat.id)}
+                          selectionFull={selectionFull}
+                          onSelect={onSelect}
+                        />
                       </span>
                     );
                   })}
@@ -175,7 +228,8 @@ export function SeatMap({ seatMap, loading, selectedSeatId, onSelect, onRefresh 
 
         <p className="flex items-start gap-1.5 text-[11px] leading-snug text-muted-foreground">
           <Info className="mt-0.5 size-3.5 shrink-0" aria-hidden />
-          Votre siège est bloqué {seatMap.holdMinutes} minutes le temps de compléter la réservation et le paiement.
+          Vos places sont bloquées {seatMap.holdMinutes} minutes le temps de compléter la réservation et le paiement.
+          Les places affichées reflètent l&apos;état réel du serveur, actualisé en continu.
         </p>
       </CardContent>
     </Card>

@@ -396,6 +396,7 @@ export const INACTIVE_CLIENT_DAYS = 60;
 
 // ---------- PARAMÈTRES MÉTIER ----------
 export const SEAT_HOLD_MINUTES = 10; // verrou temporaire de siège
+export const MAX_SEATS_PER_BOOKING = 6; // contrat §7 — plafond de sécurité multi-sièges
 export const SESSION_HOURS = 12;
 export const RATE_LIMITS = {
   login: { limit: 5, windowMs: 15 * 60 * 1000 },

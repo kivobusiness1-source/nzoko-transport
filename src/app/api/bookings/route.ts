@@ -25,8 +25,17 @@ const passengerSchema = z.object({
 
 const bookingSchema = z.object({
   tripId: z.string().trim().min(1, "Voyage requis."),
-  seatId: z.string().trim().min(1, "Siège requis."),
+  // Multi-sièges (contrat §7) — sinon siège unique historique.
+  seatId: z.string().trim().min(1, "Siège requis.").optional(),
+  seatIds: z.array(z.string().trim().min(1)).min(1).max(6).optional(),
   passenger: passengerSchema,
+  customer: z
+    .object({
+      name: z.string().trim().min(2).max(120),
+      phone: z.string().trim().min(8).max(20),
+      email: z.email("Adresse e-mail invalide.").optional(),
+    })
+    .optional(),
   channel: z.enum(["WEB", "AGENT"]).optional(),
   promoCode: z.string().trim().min(3, "Code promo invalide.").max(40).optional(),
   dropOffNeighborhoodId: z.string().trim().min(1).max(60).optional(),
@@ -63,7 +72,7 @@ export async function POST(req: NextRequest) {
         };
 
     const booking = await createBooking(
-      { ...input, channel: ctx.channel },
+      { ...input, channel: ctx.channel, idempotencyKey: req.headers.get("idempotency-key") ?? undefined },
       ctx
     );
 

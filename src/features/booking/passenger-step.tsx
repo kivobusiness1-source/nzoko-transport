@@ -50,13 +50,16 @@ const isSyntheticEmail = (email: string) => /^\d+@/.test(email.trim());
 interface PassengerStepProps {
   trip: TripSearchDTO;
   seatMap: SeatMapDTO;
-  seatId: string | null;
+  /** Places sélectionnées (multi-sièges, contrat §7). */
+  seatIds: string[];
   submitting: boolean;
   onSubmit: (passenger: PassengerInput, dropOffNeighborhoodId?: string) => void;
 }
 
-export function PassengerStep({ trip, seatMap, seatId, submitting, onSubmit }: PassengerStepProps) {
-  const seat = seatMap.seats.find((s) => s.id === seatId) ?? null;
+export function PassengerStep({ trip, seatMap, seatIds, submitting, onSubmit }: PassengerStepProps) {
+  const selectedSeats = seatMap.seats.filter((s) => seatIds.includes(s.id));
+  const total = trip.price * selectedSeats.length;
+  const seatsLabel = selectedSeats.map((s) => s.seatNumber).join(", ");
   const session = useApp((s) => s.session);
   // Client connecté : formulaire pré-rempli (éditable) depuis la session.
   const connectedClient = session?.role === "PASSENGER" ? session : null;
@@ -132,13 +135,24 @@ export function PassengerStep({ trip, seatMap, seatId, submitting, onSubmit }: P
             </p>
           </div>
           <div className="text-right">
-            <p className="text-xs text-muted-foreground">Siège</p>
-            <p className="text-lg font-bold text-primary">
-              {seat ? seat.seatNumber : "—"}
-              {seat?.type === "VIP" && <span className="ml-1 text-[10px] font-semibold uppercase text-orange-600">VIP</span>}
+            <p className="text-xs text-muted-foreground">
+              Place{selectedSeats.length > 1 ? "s" : ""}
             </p>
+            <p className="text-lg font-bold text-primary" aria-label={`Places ${seatsLabel}`}>
+              {seatsLabel || "—"}
+            </p>
+            {selectedSeats.some((s) => s.type === "VIP") && (
+              <p className="text-[10px] font-semibold uppercase text-orange-600">VIP incluse</p>
+            )}
           </div>
-          <p className="w-full text-right text-base font-bold text-primary sm:w-auto">{formatMoney(trip.price)}</p>
+          <div className="w-full text-right sm:w-auto">
+            {selectedSeats.length > 1 && (
+              <p className="text-xs text-muted-foreground">
+                {formatMoney(trip.price)} × {selectedSeats.length}
+              </p>
+            )}
+            <p className="text-base font-bold text-primary">{formatMoney(total)}</p>
+          </div>
         </CardContent>
       </Card>
 
@@ -297,10 +311,14 @@ export function PassengerStep({ trip, seatMap, seatId, submitting, onSubmit }: P
 
               <Button type="submit" size="lg" disabled={submitting} className="h-12 w-full">
                 <Lock className="h-4 w-4" aria-hidden />
-                {submitting ? "Réservation en cours…" : "Réserver et verrouiller le siège"}
+                {submitting
+                  ? "Réservation en cours…"
+                  : selectedSeats.length > 1
+                    ? `Réserver et verrouiller les ${selectedSeats.length} places`
+                    : "Réserver et verrouiller le siège"}
               </Button>
               <p className="text-center text-[11px] text-muted-foreground">
-                Le siège reste bloqué pendant 10 minutes. Annulation possible tant que le paiement n&apos;est pas effectué.
+                Les places restent bloquées pendant 10 minutes. Annulation possible tant que le paiement n&apos;est pas effectué.
               </p>
             </form>
           </Form>

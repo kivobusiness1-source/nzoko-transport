@@ -164,16 +164,28 @@ export interface TripSearchDTO {
   durationMinutes: number;
 }
 
+// Statut d'une place POUR UN VOYAGE (TripSeat) — vocabulaire contractuel
+// partagé avec le SITE AGENCES (docs/api-centrale-contract.md).
+// - AVAILABLE : aucune occupation active (verrou expiré → redevenue libre)
+// - HELD      : verrou temporaire (hold 10 min) en cours
+// - PAID      : réservation confirmée/payée (interne BOOKED)
+// - CANCELLED : annulée — règle métier : la place REDEVIENT disponible
+// - BOARDED   : passager embarqué (ticket scanné USED)
+export type TripSeatStatus = "AVAILABLE" | "HELD" | "PAID" | "CANCELLED" | "BOARDED";
+
 export interface SeatMapSeatDTO {
   id: string;
   seatNumber: string;
+  /** Alias contractuel de seatNumber (API centrale). */
+  number: string;
   row: number;
   column: string;
   type: SeatType;
-  status: "AVAILABLE" | "HELD" | "BOOKED";
+  status: TripSeatStatus;
 }
 
 export interface SeatMapDTO {
+  tripId: string;
   trip: {
     id: string;
     code: string;
@@ -189,6 +201,7 @@ export interface SeatMapDTO {
   layout: { rows: number; columns: number; aisleAfter: number; name: string };
   seats: SeatMapSeatDTO[];
   availableSeats: number;
+  total: number; // total de places physiques du bus (= seats.length)
   holdMinutes: number;
 }
 
@@ -208,13 +221,33 @@ export interface PublicNeighborhoodDTO {
   name: string;
 }
 
+/** Client minimal du contrat API centrale (POST /api/bookings/hold §7). */
+export interface HoldCustomerInput {
+  name: string; // « Jean Mbala » — split serveur en prénom/nom
+  phone: string;
+  email?: string;
+}
+
 export interface CreateBookingInput {
   tripId: string;
-  seatId: string;
-  passenger: PassengerInput;
+  /** Siège unique (compatibilité POST /api/bookings historique). */
+  seatId?: string;
+  /** Multi-sièges (contrat §7) — prioritaire sur seatId, 1..6 places. */
+  seatIds?: string[];
+  /** Passager complet (flux historique) — requis si `customer` absent. */
+  passenger?: PassengerInput;
+  /** Client simplifié (contrat §7) — utilisé si passenger absent. */
+  customer?: HoldCustomerInput;
   channel?: "WEB" | "AGENT";
+  /** Agence choisie par le client (contrat §5) — canal de vente de la
+   *  réservation. Validée serveur : existante + ACTIVE. Ne possède PAS
+   *  la place (la disponibilité reste globale au voyage). */
+  agencyId?: string;
   promoCode?: string; // code fidélité/campagne — remise appliquée au montant
   dropOffNeighborhoodId?: string; // quartier d'arrêt à la destination (optionnel)
+  /** Idempotency-Key (contrat §16) — rejouer la requête ne crée JAMAIS
+   *  une seconde réservation. */
+  idempotencyKey?: string;
 }
 
 export interface BookingDTO {
@@ -238,10 +271,16 @@ export interface BookingDTO {
     agencyName: string;
   };
   seat: { id: string; seatNumber: string; type: SeatType };
+  /** Toutes les places de la réservation (multi-sièges, contrat §7). */
+  seats: { id: string; seatNumber: string; type: SeatType }[];
   passenger: { id: string; firstName: string; lastName: string; phone: string; documentNumber: string | null };
   dropOffNeighborhood?: { id: string; name: string; cityName: string } | null;
   agencyName: string | null;
   createdByName: string | null;
+  /** Statut contractuel API centrale (PENDING→HELD, COMPLETED→CONFIRMED). */
+  contractStatus: "HELD" | "CONFIRMED" | "CANCELLED" | "EXPIRED";
+  /** Alias contractuel de expiresAt (contrat §9). */
+  holdExpiresAt: string | null;
 }
 
 export interface TicketDTO {
@@ -258,6 +297,25 @@ export interface TicketDTO {
 export interface BookingDetailDTO extends BookingDTO {
   payments: PaymentDTO[];
   ticket: TicketDTO | null;
+}
+
+// ---------- ÉVÉNEMENTS (contrat §14/§15) ----------
+export interface DomainEventDTO {
+  id: string;
+  type: string; // SEAT_HELD, SEAT_RELEASED, SEAT_PAID, BOOKING_CONFIRMED…
+  aggregateType: string;
+  aggregateId: string;
+  tripId: string | null;
+  bookingId: string | null;
+  payload: Record<string, unknown>;
+  createdAt: string;
+}
+
+export interface EventsResponseDTO {
+  events: DomainEventDTO[];
+  cursor: string | null;
+  hasMore: boolean;
+  pollAfterMs: number;
 }
 
 // ---------- PAIEMENTS ----------

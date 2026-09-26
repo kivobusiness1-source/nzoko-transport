@@ -137,7 +137,11 @@ export function NzokoBookingDetail({ detail, onCancel, cancelLoading, className 
         <h3 className="mb-1 text-xs font-semibold uppercase tracking-wider text-muted-foreground">Passager</h3>
         <InfoRow icon={User} label="Nom" value={`${detail.passenger.firstName} ${detail.passenger.lastName}`} />
         <InfoRow icon={Phone} label="Téléphone" value={detail.passenger.phone} />
-        <InfoRow icon={TicketIcon} label="Siège" value={`${detail.seat.seatNumber} (${detail.seat.type === "VIP" ? "VIP" : "Standard"})`} />
+        <InfoRow
+          icon={TicketIcon}
+          label={detail.seats && detail.seats.length > 1 ? "Places" : "Siège"}
+          value={`${detail.seats.map((s) => s.seatNumber).join(", ")} (${detail.seat.type === "VIP" ? "VIP" : "Standard"})`}
+        />
         {detail.dropOffNeighborhood && (
           <InfoRow icon={MapPin} label="Arrêt demandé" value={`${detail.dropOffNeighborhood.name} (${detail.dropOffNeighborhood.cityName})`} />
         )}

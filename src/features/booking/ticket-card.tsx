@@ -11,6 +11,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { NzokoCopyButton } from "@/components/shared/nzoko-copy-button";
 import { NzokoQr } from "@/components/shared/nzoko-qr";
+import { cn } from "@/lib/utils";
 import { api } from "@/lib/api-client";
 import { useApp } from "@/lib/store";
 import { formatDate, formatMoney, formatTime } from "@/lib/format";
@@ -72,7 +73,7 @@ export function TicketCard({ detail, channel, onNewBooking }: TicketCardProps) {
       <div class="row"><span>Bus</span><b>${detail.trip.busRegistration} · ${detail.trip.agencyName}</b></div>
       <div class="row"><span>Passager</span><b>${detail.passenger.firstName} ${detail.passenger.lastName}</b></div>
       ${detail.dropOffNeighborhood ? `<div class="row"><span>Arrêt demandé</span><b>${detail.dropOffNeighborhood.name} (${detail.trip.destinationCityName})</b></div>` : ""}
-      <div class="seat">SIÈGE ${detail.seat.seatNumber}${detail.seat.type === "VIP" ? " · VIP" : ""}</div>
+      <div class="seat">${detail.seats.length > 1 ? "PLACES " : "SIÈGE "}${detail.seats.map((s) => s.seatNumber).join(" · ")}${detail.seat.type === "VIP" ? " · VIP" : ""}</div>
       ${qrDataUrl ? `<div class="qr"><img src="${qrDataUrl}" alt="QR"></div>` : ""}
       <div class="ref">${detail.bookingReference}</div>
       ${ticket.boardingNumber ? `<div class="boarding">N° d'embarquement : ${ticket.boardingNumber}</div>` : ""}
@@ -182,9 +183,11 @@ export function TicketCard({ detail, channel, onNewBooking }: TicketCardProps) {
               <p className="mt-0.5 text-xs text-muted-foreground">{detail.trip.agencyName} · {formatMoney(detail.amount)}</p>
             </div>
             <div className="shrink-0 text-center">
-              <p className="text-[11px] uppercase tracking-wide text-muted-foreground">Siège</p>
-              <p className="text-3xl font-bold text-primary">
-                {detail.seat.seatNumber}
+              <p className="text-[11px] uppercase tracking-wide text-muted-foreground">
+                {detail.seats.length > 1 ? "Places" : "Siège"}
+              </p>
+              <p className={cn("font-bold text-primary", detail.seats.length > 1 ? "text-xl" : "text-3xl")}>
+                {detail.seats.map((s) => s.seatNumber).join(", ")}
                 {detail.seat.type === "VIP" && <span className="ml-1 align-middle text-[10px] font-bold uppercase text-orange-600">VIP</span>}
               </p>
             </div>

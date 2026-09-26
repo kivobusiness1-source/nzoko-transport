@@ -536,6 +536,7 @@ model Booking {
   createdById      String? // agent utilisateur (si guichet)
   createdBy        User?     @relation("BookingCreator", fields: [createdById], references: [id])
   promoCode        String? // code fidélité/campagne appliqué (remise déjà déduite du montant)
+  idempotencyKey   String? @unique // Idempotency-Key (hold/POST /api/bookings) — rejouer la requête ne crée JAMAIS deux réservations
   // Achat billet — quartier d'arrêt (destination) choisi par le passager,
   // configuré dans l'admin (Parc → Quartiers). null = arrêt principal.
   dropOffNeighborhoodId String?
@@ -546,7 +547,7 @@ model Booking {
 
   payment   Payment[]
   ticket    Ticket?
-  occupancy SeatOccupancy?
+  occupancies SeatOccupancy[] // multi-sièges : N verrous par réservation
 
   loyaltyTransactions LoyaltyTransaction[] @relation("LoyaltyBooking")
   tripRating          TripRating?          @relation("TripRatingBooking")
@@ -560,21 +561,49 @@ model Booking {
 
 // Verrou d'occupation de siège par voyage — LA disponibilité est TOUJOURS par voyage.
 // Contrainte unique (tripId, seatId) = protection anti double réservation au niveau base.
+// Multi-sites (architecture Océan du Nord) : cette table FUSIONNE TripSeat
+// (état du siège pour UN voyage) et BookingSeat (lien réservation↔siège).
+// Un booking multi-sièges = N lignes partageant le même bookingId.
+// Statut exposé via l'API centrale : AVAILABLE (absence de ligne / verrou
+// expiré) | HELD | PAID (= BOOKED) | BOARDED (ticket USED) | CANCELLED.
 model SeatOccupancy {
   id        String    @id @default(cuid())
   tripId    String
   trip      Trip      @relation(fields: [tripId], references: [id], onDelete: Cascade)
   seatId    String
   seat      Seat      @relation(fields: [seatId], references: [id])
-  bookingId String    @unique
+  bookingId String // PLUS unique : une réservation multi-sièges partage son id sur N lignes
   booking   Booking   @relation(fields: [bookingId], references: [id], onDelete: Cascade)
-  status    String    @default("HELD") // HELD (verrou temporaire) | BOOKED (confirmé)
+  status    String    @default("HELD") // HELD (verrou temporaire) | BOOKED (confirmé/paid)
   expiresAt DateTime? // fin du verrou quand HELD
   createdAt DateTime  @default(now())
 
-  @@unique([tripId, seatId]) // ⚠️ verrou critique anti-concurrence
+  @@unique([tripId, seatId]) // ⚠️ verrou critique anti-concurrence (TripSeat)
+  @@index([bookingId])
   @@index([expiresAt])
   @@index([status])
+}
+
+// Événements de domaine — bus de synchronisation multi-sites (SITE CLIENT ↔
+// SITE AGENCES via l'API centrale). Chaque mutation critique émet un événement
+// consommable par polling GET /api/events/client (curseur `since`).
+// Types : SEAT_HELD, SEAT_RELEASED, SEAT_PAID, SEAT_CANCELLED, BOOKING_CREATED,
+// BOOKING_CONFIRMED, BOOKING_CANCELLED, BOOKING_EXPIRED, PAYMENT_SUCCESS,
+// PAYMENT_FAILED, TICKET_CREATED, TICKET_CANCELLED, TICKET_BOARDED.
+model DomainEvent {
+  id            String   @id @default(cuid())
+  type          String // cf. liste ci-dessus — vocabulaire partagé avec le SITE AGENCES
+  aggregateType String // Trip | Booking | Payment | Ticket | Seat
+  aggregateId   String
+  tripId        String? // index de filtrage client (plan de sièges temps réel)
+  bookingId     String? // index de filtrage réservation (suivi de commande)
+  payload       String   @default("{}") // JSON sérialisé — jamais de donnée PII (ni téléphone, ni nom)
+  createdAt     DateTime @default(now())
+
+  @@index([createdAt])
+  @@index([tripId, createdAt])
+  @@index([bookingId, createdAt])
+  @@index([type, createdAt])
 }
 
 // ============================================================
