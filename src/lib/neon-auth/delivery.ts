@@ -8,7 +8,9 @@
 //
 // Adaptateurs (choisis par variables d'environnement, JAMAIS de secret
 // côté client) :
-//  - SMS    : SMS_PROVIDER = africastalking | twilio | log
+//  - SMS    : SMS_PROVIDER = esms | africastalking | twilio | log
+//    (« esms » = eSMS Africa, esmsafrica.io — Congo-Brazzaville : MTN ·
+//    Airtel, routes opérateur directes ; recommandé par l'exploitant)
 //  - E-mail : EMAIL_PROVIDER = smtp | resend | log
 //
 // « log » (défaut sandbox) journalise la livraison sans l'effectuer —
@@ -30,6 +32,72 @@ export interface DeliveryResult {
 
 function franceToE164(phone: string): string {
   return phone.trim().startsWith("+") ? phone.trim() : `+${phone.trim().replace(/^0+/, "")}`;
+}
+
+// ------------------------------------------------------------
+// eSMS Africa (esmsafrica.io) — contrat API confirmé via le SDK
+// officiel `esms-sms` v1.0.0 (source dist/index.js) + exemples du site :
+//   POST {base}/messages/send
+//   Authorization: Bearer esms_live_… (prod) | esms_test_… (sandbox)
+//   { "to": "+24206…", "text": "…", "sender_id": "…" (optionnel) }
+//   → 200 { "id": "…", "status": "submitted", "route": "ESMS_CG", … }
+// Couverture Congo-Brazzaville : MTN · Airtel (API « Production »).
+// ------------------------------------------------------------
+
+async function sendSmsEsms(to: string, message: string): Promise<DeliveryResult> {
+  const apiKey = process.env.ESMS_API_KEY ?? "";
+  if (!apiKey) {
+    return { delivered: false, provider: "esms", error: "ESMS_API_KEY manquante (clé esms_live_… du dashboard eSMS Africa, menu Développeurs → API Keys)." };
+  }
+  const baseUrl = (process.env.ESMS_BASE_URL ?? "https://sms.esmsafrica.io/api").replace(/\/+$/, "");
+  const senderId = process.env.ESMS_SENDER_ID ?? "";
+  const res = await fetch(`${baseUrl}/messages/send`, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${apiKey}`,
+      "Content-Type": "application/json",
+      Accept: "application/json",
+    },
+    body: JSON.stringify({
+      to: franceToE164(to),
+      text: message,
+      ...(senderId ? { sender_id: senderId } : {}),
+    }),
+    // Le webhook Neon attend une réponse rapide (les relances côté Neon
+    // sont limitées) : timeout court, pas de reprise automatique.
+    signal: AbortSignal.timeout(10_000),
+  });
+  const json = (await res.json().catch(() => ({}))) as {
+    id?: string;
+    status?: string;
+    message?: string;
+    error?: { message?: string };
+  };
+  if (res.ok) {
+    const status = (json.status ?? "").toLowerCase();
+    // Accepté par la passerelle dès « submitted »/« queued » (la remise
+    // finale est suivie côté eSMS, cf. delivery reports).
+    if (!status || /submitted|queued|sent|accepted|delivered/.test(status)) {
+      return { delivered: true, provider: "esms" };
+    }
+    return { delivered: false, provider: "esms", error: `statut eSMS inattendu : « ${status} »`.slice(0, 180) };
+  }
+  if (res.status === 401 || res.status === 403) {
+    return { delivered: false, provider: "esms", error: `clé API refusée (HTTP ${res.status}) — vérifier ESMS_API_KEY.` };
+  }
+  if (res.status === 422) {
+    // 422 = requête invalide OU solde insuffisant (InsufficientBalanceError
+    // du SDK : .balance / .cost / .currency).
+    return {
+      delivered: false,
+      provider: "esms",
+      error: `requête refusée (HTTP 422) — solde insuffisant ou paramètre invalide : ${json.message ?? json.error?.message ?? "?"}`.slice(0, 180),
+    };
+  }
+  if (res.status === 429) {
+    return { delivered: false, provider: "esms", error: "limite de débit eSMS (HTTP 429) — réessayer plus tard." };
+  }
+  return { delivered: false, provider: "esms", error: `HTTP ${res.status} ${json.message ?? json.error?.message ?? ""}`.slice(0, 180) };
 }
 
 async function sendSmsAfricaTalking(to: string, message: string): Promise<DeliveryResult> {
@@ -80,6 +148,7 @@ async function sendSmsTwilio(to: string, message: string): Promise<DeliveryResul
 export async function sendSms(to: string, message: string): Promise<DeliveryResult> {
   const provider = (process.env.SMS_PROVIDER ?? "log").trim().toLowerCase();
   try {
+    if (provider === "esms") return await sendSmsEsms(to, message);
     if (provider === "africastalking") return await sendSmsAfricaTalking(to, message);
     if (provider === "twilio") return await sendSmsTwilio(to, message);
   } catch (err) {

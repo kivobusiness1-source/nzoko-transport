@@ -2046,3 +2046,28 @@ Stage Summary:
   4. Redeploy. Test : connexion téléphone → code SMS réel.
   5. Alternative « tout déléguer » : fournir une NEON_API_KEY + clés SMS/Vercel à l'agent qui configure alors le webhook via l'API Neon et les env vars via l'API Vercel.
 - UX en attendant : l'utilisateur est guidé vers Google (fonctionnel, Task 51) et l'e-mail (fonctionnel depuis da9c7cb).
+
+---
+Task ID: 53-sms-provider-esms-africa
+Agent: Z.ai Code (session principale)
+Task: L'exploitant a choisi eSMS Africa (esmsafrica.io — « SMS API Congo-Brazzaville ») comme fournisseur SMS pour les codes OTP : lire leur documentation et brancher l'adaptateur dans l'application.
+
+Work Log:
+- DOC eSMS AFRICA LUE (docs.esmsafrica.io en panne 522 pendant toute la session — contenu reconstitué via le site principal + le SDK officiel npm `esms-sms` v1.0.0 téléchargé et DISSÉQUÉ (dist/index.js) + sondes réseau directes) :
+  * Base API : https://sms.esmsafrica.io/api — auth Bearer (esms_live_… prod / esms_test_… bac à sable : simulé, jamais envoyé, jamais facturé).
+  * Envoi : POST /messages/send { to: "+242…", text, sender_id? (optionnel), route? } → 200 { id, status:"submitted", route:"ESMS_CG", cost }.
+  * Statuts acceptés : submitted/queued/sent/accepted/delivered ; erreurs typées : 401 AuthenticationError, 403 PermissionError, 422 InvalidRequest/InsufficientBalance (solde), 429 RateLimit, 5xx ApiError (le SDK rejoue 429/5xx avec backoff — notre webhook Neon, lui, répond vite : 1 tentative + timeout 10 s, Neon gère ses relances).
+  * Produit « eSMS Verify » (start/check géré par eSMS) NON retenu : Neon Auth génère et vérifie déjà le code — on utilise l'envoi SMS simple, Neon reste la source de vérité.
+  * Couverture Congo-Brazzaville : MTN · Airtel — SMPP/API « Production » ✓ ; compte eSMS gratuit à créer (dashboard → Développeurs → API Keys).
+- IMPLÉMENTATION (src/lib/neon-auth/delivery.ts) : adaptateur sendSmsEsms() — SMS_PROVIDER=esms (env : ESMS_API_KEY requise, ESMS_SENDER_ID optionnel, ESMS_BASE_URL optionnel défaut https://sms.esmsafrica.io/api) ; to normalisé E.164 (+242…) ; erreurs 401/403/422-solde/429 traduites en messages français clairs ; câblé dans sendSms() aux côtés de africastalking|twilio ; commentaires d'en-tête (delivery.ts + route webhook) et .env.example mis à jour (procédure + esms_test_ bac à sable).
+- VALIDATION ADAPTATEUR EN RÉEL (aucun SMS envoyé) : sonde POST /messages/send avec clé factice → 401 {"error":{"code":"unauthorized",…}} = contrat confirmé ; adaptateur importé isolément (bun) : SMS_PROVIDER=esms + clé factice → {delivered:false, provider:"esms", error:"clé API refusée (HTTP 401)…"} ✓ ; sans clé → message ESMS_API_KEY manquante ✓. tsc 0, lint 0.
+- SANDBOX RESTAURÉE ET RE-VÉRIFIÉE (rollback : dépôt re-cloné) : .env local régénéré (DATABASE_URL SQLite dépôt + OTP_DEBUG) — ⚠️ PIÈGE env : le shell de la sandbox exporte DATABASE_URL=file:/home/z/my-project/db/custom.db (template) qui ÉCRASE le .env du dépôt (variables d'env > .env) → db:push/seed/dev serveur lisaient la mauvaise base (P2021 OtpCode manquante). Correctif : export DATABASE_URL explicite avant db:push/seed/dev. db:push + seed OK (40 tables), providers → {mode:"local", smsDelivery:"log"}, flux téléphone E2E : request → code normalisé 242065550000 + devCode → verify → message « aucun compte associé » attendu (numéro de test) ; 0 erreur console (agent-browser). Ligne OtpCode de test supprimée.
+- BANDEAU UI (d093c99, inchangé) : la condition `providers.smsDelivery === "log"` masquera automatiquement le bandeau « Codes SMS pas encore activés » dès que SMS_PROVIDER=esms sera défini dans Vercel — aucune modification UI nécessaire.
+
+Stage Summary:
+- L'ADAPTATEUR eSMS AFRICA EST BRANCHÉ ET VALIDÉ : en production, il ne reste que TROIS actions exploitant (aucun code à modifier) :
+  1. Créer le compte eSMS Africa (https://auth.esmsafrica.io/register?service=sms) → Développeurs → API Keys → copier la clé esms_live_… (+ éventuellement demander un sender ID validé « NZOKO »).
+  2. Console Neon → Auth → Webhooks → activer : URL https://nzoko-transport-eight.vercel.app/api/webhooks/neon-auth, événements send.otp + phone_number.verified. ⚠️ Dès cet instant, Neon ne livre PLUS les e-mails OTP lui-même → configurer SIMULTANÉMENT EMAIL_PROVIDER (resend ou smtp) dans Vercel, sinon les codes e-mail cassent.
+  3. Vercel env : SMS_PROVIDER=esms + ESMS_API_KEY (+ ESMS_SENDER_ID optionnel) + EMAIL_PROVIDER/RESEND_API_KEY/RESEND_FROM (ou SMTP_*) → Redeploy → tester connexion téléphone (code SMS réel sur +242…).
+- Bac à sable eSMS (esms_test_…) possible pour un premier test facturé 0 — mais l'activation réelle exige le webhook Neon actif (live).
+- Le produit eSMS « Verify » (start/check) n'est PAS utilisé : Neon Auth reste la source de vérité du code (génération + vérification + expiration + rate-limit déjà gérés côté Neon/notre webhook).

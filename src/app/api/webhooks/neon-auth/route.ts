@@ -5,7 +5,7 @@
 // publique + événements send.otp / phone_number.verified), le service
 // managé nous délègue LA LIVRAISON DES CODES :
 //  - send.otp + delivery_preference "sms"  → fournisseur SMS
-//    (SMS_PROVIDER : africastalking | twilio | log) ;
+//    (SMS_PROVIDER : esms | africastalking | twilio | log) ;
 //  - send.otp + e-mail (vérification d'adresse, mot de passe oublié)
 //    → fournisseur e-mail (EMAIL_PROVIDER : smtp | resend | log) ;
 //  - phone_number.verified (non bloquant) → journal d'audit.
