@@ -5,7 +5,7 @@
 // Timeline : réservée → payée → billet émis → embarquée
 // ============================================================
 
-import { Bus, Calendar, CheckCircle2, Clock, CreditCard, MapPin, Phone, Ticket as TicketIcon, User, XCircle } from "lucide-react";
+import { BadgeCheck, Bus, Calendar, CheckCircle2, Clock, CreditCard, MapPin, Phone, Ticket as TicketIcon, User, XCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 import { BookingStatusBadge, PaymentStatusBadge } from "@/components/shared/nzoko-badge";
@@ -196,6 +196,37 @@ export function NzokoBookingDetail({ detail, onCancel, cancelLoading, className 
       <div className="rounded-xl border bg-muted/30 px-4 py-4">
         <Timeline detail={detail} />
       </div>
+
+      {/* Annulation par l'exploitant : sort du client vis-à-vis de son argent.
+          Paiement SUCCESS non remboursé = remboursement À TRAITER par l'agence
+          (liste « Contacts annulation ») ; REFUNDED = remboursement effectué. */}
+      {detail.status === "CANCELLED" && detail.payments.some((p) => p.status === "SUCCESS") && (
+        <div className="flex items-start gap-2.5 rounded-xl border border-amber-300/60 bg-amber-50 px-3.5 py-3 dark:border-amber-500/30 dark:bg-amber-950/30" role="status">
+          <Clock className="mt-0.5 h-4 w-4 shrink-0 text-amber-600 dark:text-amber-400" aria-hidden />
+          <div className="min-w-0 text-sm">
+            <p className="font-semibold text-amber-800 dark:text-amber-200">
+              Voyage annulé — remboursement en cours
+            </p>
+            <p className="mt-0.5 leading-relaxed text-amber-700 dark:text-amber-300">
+              {formatMoney(detail.payments.filter((p) => p.status === "SUCCESS").reduce((s, p) => s + p.amount, 0))} à
+              vous rendre. Notre équipe vous contacte (numéro saisi à la réservation) — remboursement en agence
+              ou par Mobile Money.
+            </p>
+          </div>
+        </div>
+      )}
+      {detail.payments.some((p) => p.status === "REFUNDED") && (
+        <div className="flex items-start gap-2.5 rounded-xl border border-primary/30 bg-primary/5 px-3.5 py-3" role="status">
+          <BadgeCheck className="mt-0.5 h-4 w-4 shrink-0 text-primary" aria-hidden />
+          <div className="min-w-0 text-sm">
+            <p className="font-semibold">Remboursement effectué</p>
+            <p className="mt-0.5 leading-relaxed text-muted-foreground">
+              {formatMoney(detail.payments.filter((p) => p.status === "REFUNDED").reduce((s, p) => s + p.amount, 0))} ont
+              été rendus pour cette réservation. Merci de votre confiance.
+            </p>
+          </div>
+        </div>
+      )}
 
       {/* Voyage */}
       <section aria-label="Voyage">

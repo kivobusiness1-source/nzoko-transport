@@ -417,6 +417,8 @@ export interface TripContactPassengerDTO {
   seatLabel: string | null; // ex: "05"
   amount: number; // XAF
   paymentState: TripContactPaymentState;
+  /** Paiement ciblé par l'action « Marquer remboursé » (§3.16) — null si aucun. */
+  paymentId: string | null;
   whatsappUrl: string | null; // https://wa.me/242…?text=… (message pré-rempli FR)
   telUrl: string | null; // tel:+242…
 }

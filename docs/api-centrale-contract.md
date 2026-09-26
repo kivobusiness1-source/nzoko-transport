@@ -205,8 +205,8 @@ Polling à curseur (fiable serverless). Params : `tripId=`, `bookingId=`
 ```
 Vocabulaire : `SEAT_HELD, SEAT_RELEASED, SEAT_PAID, SEAT_CANCELLED,
 BOOKING_CREATED, BOOKING_CONFIRMED, BOOKING_CANCELLED, BOOKING_EXPIRED,
-PAYMENT_SUCCESS, PAYMENT_FAILED, TICKET_CREATED, TICKET_CANCELLED,
-TICKET_BOARDED, TRIP_CANCELLED`.
+PAYMENT_SUCCESS, PAYMENT_FAILED, PAYMENT_REFUNDED, TICKET_CREATED,
+TICKET_CANCELLED, TICKET_BOARDED, TRIP_CANCELLED`.
 **Stratégie §15** : à réception d'un événement concerné, le site appelle
 `GET /api/trips/{id}/seats` (ou `GET /api/bookings/{id}`) et affiche
 l'état renvoyé — jamais d'application locale des deltas. Payloads SANS PII.
@@ -277,6 +277,23 @@ PAID → CANCELLED (annulation + remboursement) → AVAILABLE
 Paiement : `PENDING → SUCCESS | FAILED` — confirmé UNIQUEMENT côté serveur
 (MTN re-vérifié par GET, webhook HMAC, ou encaissement guichet authentifié).
 Le bouton « J'ai payé » n'est JAMAIS une preuve.
+
+### 4.1 Annulation d'un VOYAGE par l'exploitant (extension §24 documentée)
+Quand un voyage passe `CANCELLED` (PATCH admin), le serveur annule TOUTES les
+réservations actives du voyage — PENDING **et CONFIRMED** :
+- places libérées (`SEAT_RELEASED ×N`, redeviennent `AVAILABLE` — un client
+  peut réserver sur un voyage de remplacement) ;
+- billets VOID (`TICKET_CANCELLED`) — le scan checker renvoie TRIP_CANCELLED ;
+- `BOOKING_CANCELLED` par réservation (`payload.reason = "TRIP_CANCELLED"`) ;
+- un événement `TRIP_CANCELLED` (payload `{cancelledBookings}`) ;
+- notifications in-app aux clients concernés.
+**Remboursements** : les paiements des réservations CONFIRMED restent `SUCCESS`
+(l'argent est réellement encaissé) — l'agence traite chaque remboursement via
+sa liste de contacts d'annulation puis l'enregistre : le paiement passe alors
+`REFUNDED` (écriture comptable `REFUND` + événement `PAYMENT_REFUNDED`
+payload `{provider, amount, mode}` + notification client). Le SITE AGENCES
+doit s'abonner à `PAYMENT_REFUNDED` (§3.13/§3.15) pour répercuter l'état
+« remboursé » sur les ventes de son canal.
 
 ## 5. Tests imposés (§21) — couverts et VÉRIFIÉS en E2E
 

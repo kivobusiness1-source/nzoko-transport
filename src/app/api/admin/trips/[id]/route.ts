@@ -1,6 +1,8 @@
 // PATCH /api/admin/trips/[id] — statut / prix / chauffeur / bus (trip:manage ; scope agence)
 // Transitions : SCHEDULED→BOARDING→DEPARTED→ARRIVED→COMPLETED ; →CANCELLED depuis SCHEDULED/BOARDING.
-// Annulation ⇒ réservations PENDING annulées, verrous sièges libérés, notifications.
+// Annulation ⇒ TOUTES les réservations actives annulées (PENDING + CONFIRMED — billets VOID,
+// places libérées, événements TRIP_CANCELLED/BOOKING_CANCELLED/SEAT_RELEASED/TICKET_CANCELLED),
+// notifications clients ; remboursements traités ensuite via la liste de contacts (§3.16).
 
 import { NextRequest } from "next/server";
 import { z } from "zod";
@@ -10,6 +12,7 @@ import { logAudit } from "@/lib/audit";
 import { TRIP_STATUSES } from "@/lib/constants";
 import { db } from "@/lib/db";
 import { toTripSearchDTO } from "@/services/booking";
+import { cancelTripBookingsForCancellation } from "@/services/trip-lifecycle";
 
 const ALLOWED_TRANSITIONS: Record<string, string[]> = {
   SCHEDULED: ["BOARDING", "CANCELLED"],
@@ -82,35 +85,32 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       },
     });
 
-    // --- Annulation : libérer les sièges + réservations PENDING + notifications ---
-    let cancelledBookings = 0;
+    // --- Annulation : TOUTES les réservations actives (PENDING + CONFIRMED) ---
+    // PENDING  : verrous libérés, aucun argent encaissé.
+    // CONFIRMED: billets VOID, places libérées, paiements laissés SUCCESS —
+    //            le remboursement est traité par l'agence via la liste de
+    //            contacts (POST /api/admin/payments/{id}/refund §3.16) puis
+    //            journalisé (événement PAYMENT_REFUNDED).
+    // Événements §14 émis par le service : TRIP_CANCELLED + BOOKING_CANCELLED
+    // (reason=TRIP_CANCELLED) + SEAT_RELEASED ×N + TICKET_CANCELLED —
+    // le SITE AGENCES et le SITE CLIENT répercutent l'annulation en temps réel.
+    let cancellation: Awaited<ReturnType<typeof cancelTripBookingsForCancellation>> | null = null;
     if (body.status === "CANCELLED") {
-      const pending = await db.booking.findMany({
-        where: { tripId: id, status: "PENDING" },
-        select: { id: true, createdById: true, bookingReference: true },
-      });
-      cancelledBookings = pending.length;
-
-      await db.$transaction(async (tx) => {
-        if (pending.length > 0) {
-          await tx.booking.updateMany({
-            where: { id: { in: pending.map((b) => b.id) } },
-            data: { status: "CANCELLED" },
-          });
-          await tx.seatOccupancy.deleteMany({
-            where: { bookingId: { in: pending.map((b) => b.id) } },
-          });
-        }
-      });
+      cancellation = await cancelTripBookingsForCancellation(id, auth.userId);
 
       // Notifications : créateurs des réservations + responsables de l'agence
+      const affected = await db.booking.findMany({
+        where: { tripId: id, status: "CANCELLED", createdById: { not: null } },
+        select: { createdById: true },
+      });
       const recipients = new Set<string>();
-      for (const b of pending) if (b.createdById) recipients.add(b.createdById);
+      for (const b of affected) if (b.createdById) recipients.add(b.createdById);
       const managers = await db.user.findMany({
         where: { agencyId: trip.agencyId, isActive: true, role: { code: "AGENCY_MANAGER" } },
         select: { id: true },
       });
       for (const m of managers) recipients.add(m.id);
+      const totalCancelled = cancellation.cancelledPending + cancellation.cancelledConfirmed;
       for (const userId of recipients) {
         await db.notification
           .create({
@@ -118,9 +118,9 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
               userId,
               title: "Voyage annulé",
               message: `Le voyage ${trip.code} a été annulé. ${
-                cancelledBookings > 0
-                  ? `${cancelledBookings} réservation(s) en attente ont été annulées.`
-                  : "Aucune réservation en attente."
+                totalCancelled > 0
+                  ? `${totalCancelled} réservation(s) ont été annulées${cancellation.refundDue > 0 ? ` — ${cancellation.cancelledConfirmed} billet(s) payé(s) à rembourser (${cancellation.refundDue} FCFA, liste dans « Contacts annulation »)` : ""}.`
+                  : "Aucune réservation active."
               }`,
               type: "ALERT",
             },
@@ -156,14 +156,28 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
         code: trip.code,
         fields: Object.keys(body),
         ...(body.status !== undefined && body.status !== trip.status
-          ? { oldStatus: trip.status, newStatus: body.status, cancelledBookings }
+          ? {
+              oldStatus: trip.status,
+              newStatus: body.status,
+              ...(cancellation
+                ? {
+                    cancelledPending: cancellation.cancelledPending,
+                    cancelledConfirmed: cancellation.cancelledConfirmed,
+                    refundDue: cancellation.refundDue,
+                    freedSeats: cancellation.freedSeats,
+                  }
+                : {}),
+            }
           : {}),
         ...(body.price !== undefined ? { oldPrice: trip.price, newPrice: body.price } : {}),
       },
       ipAddress: ip,
     });
 
-    return ok(toTripSearchDTO(updated, updated.bus.seatLayout.seats.length, updated.occupancies.length));
+    return ok({
+      ...toTripSearchDTO(updated, updated.bus.seatLayout.seats.length, updated.occupancies.length),
+      ...(cancellation ? { cancellation } : {}),
+    });
   } catch (err) {
     return routeError(err, "PATCH /api/admin/trips/[id]");
   }

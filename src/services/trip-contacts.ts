@@ -134,7 +134,7 @@ export async function getTripCancellationContacts(tripId: string): Promise<TripC
     include: {
       passenger: true,
       seat: true,
-      payment: { select: { status: true, createdAt: true }, orderBy: { createdAt: "desc" } },
+      payment: { select: { id: true, status: true, createdAt: true }, orderBy: { createdAt: "desc" } },
     },
     orderBy: { bookingReference: "asc" },
   });
@@ -147,6 +147,14 @@ export async function getTripCancellationContacts(tripId: string): Promise<TripC
     const paymentState = paymentStateOf(b.payment);
     const phoneE164 = normalizePhoneSoft(b.passenger.phone ?? "");
     const seatLabel = b.seat?.seatNumber ?? null;
+    // Paiement SUCCESS à l'origine de l'état PAID — cible de l'action
+    // « Marquer remboursé » (§3.16). REFUNDED → id du paiement remboursé.
+    const payment =
+      paymentState === "PAID"
+        ? b.payment.find((p) => p.status === "SUCCESS")
+        : paymentState === "REFUNDED"
+          ? b.payment.find((p) => p.status === "REFUNDED")
+          : undefined;
 
     const message = buildContactMessage({
       firstName: b.passenger.firstName,
@@ -171,6 +179,7 @@ export async function getTripCancellationContacts(tripId: string): Promise<TripC
       seatLabel,
       amount: b.amount,
       paymentState,
+      paymentId: payment?.id ?? null,
       whatsappUrl: phoneE164 ? `https://wa.me/${phoneE164}?text=${encodeURIComponent(message)}` : null,
       telUrl: phoneE164 ? `tel:+${phoneE164}` : null,
     };

@@ -683,6 +683,33 @@ async function finalizeRefund(
     metadata: { mode, amount: refundMeta.amount, booking: payment.booking.bookingReference, financialTransactionId },
     ipAddress: ip,
   });
+
+  // Événement §14 (extension §24 documentée — contrat) : le SITE AGENCES,
+  // canal de vente de la réservation, doit savoir que l'argent est revenu.
+  // Payload SANS PII (ni numéro bénéficiaire, ni nom).
+  await emitDomainEvent({
+    type: "PAYMENT_REFUNDED",
+    aggregateType: "Payment",
+    aggregateId: paymentId,
+    tripId: payment.booking.tripId,
+    bookingId: payment.bookingId,
+    payload: { provider: payment.provider, amount: refundMeta.amount, mode },
+  });
+
+  // Notification client : le suivi de billet montre l'état, l'alerte in-app
+  // complète le tableau (pas d'e-mail transactionnel générique ici).
+  if (payment.booking.createdById) {
+    await db.notification
+      .create({
+        data: {
+          userId: payment.booking.createdById,
+          title: "Remboursement effectué",
+          message: `Votre paiement de ${refundMeta.amount} FCFA pour la réservation ${payment.booking.bookingReference} a été remboursé. Consultez le suivi de votre billet pour le détail.`,
+          type: "INFO",
+        },
+      })
+      .catch(() => {});
+  }
 }
 
 export async function initiatePaymentRefund(

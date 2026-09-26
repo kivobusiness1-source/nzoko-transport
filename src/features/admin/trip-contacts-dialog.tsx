@@ -9,8 +9,9 @@
 // ============================================================
 
 import { useCallback, useEffect, useState } from "react";
-import { AlertTriangle, Ban, Copy, MessageCircle, Phone, Users } from "lucide-react";
+import { AlertTriangle, Ban, BadgeCheck, Copy, Loader2, MessageCircle, Phone, Users } from "lucide-react";
 import { toast } from "sonner";
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -21,7 +22,8 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { api } from "@/lib/api-client";
+import { api, hasPerm } from "@/lib/api-client";
+import { useApp } from "@/lib/store";
 import { formatDateTime, formatMoney } from "@/lib/format";
 import { friendlyApiError, type ApiErrorInfo } from "@/components/shared/nzoko-use-api";
 import { NzokoErrorBox } from "@/components/shared/nzoko-error-box";
@@ -55,6 +57,11 @@ export function TripContactsDialog({
   const [data, setData] = useState<TripContactsDTO | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<ApiErrorInfo | null>(null);
+  const [refundingId, setRefundingId] = useState<string | null>(null);
+  const { session } = useApp();
+  // Droit de ENREGISTRER un remboursement (argent réel) — même permission que
+  // POST /api/admin/payments/{id}/refund : payment:manage (SUPER_ADMIN).
+  const canRefund = hasPerm(session, "payment:manage");
 
   const load = useCallback(async (id: string) => {
     setLoading(true);
@@ -84,6 +91,28 @@ export function TripContactsDialog({
       toast.error("Copie impossible sur ce navigateur.");
     }
   };
+
+  // Enregistre le remboursement ESPÈCES d'un billet payé (§3.16) : payment
+  // REFUNDED + écriture comptable REFUND + événement PAYMENT_REFUNDED (§14)
+  // + notification client. Puis recharge la liste (états à jour).
+  const handleRefund = useCallback(
+    async (contact: TripContactPassengerDTO) => {
+      if (!contact.paymentId) return;
+      setRefundingId(contact.paymentId);
+      try {
+        await api.admin.initiateRefund(contact.paymentId, { mode: "CASH" });
+        toast.success(
+          `Remboursement de ${formatMoney(contact.amount)} enregistré pour ${contact.passengerName} (${contact.bookingReference}).`
+        );
+        if (tripId) void load(tripId);
+      } catch (err) {
+        toast.error(friendlyApiError(err).message);
+      } finally {
+        setRefundingId(null);
+      }
+    },
+    [tripId, load]
+  );
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -149,7 +178,13 @@ export function TripContactsDialog({
             ) : (
               <div className="nzoko-scroll grid max-h-96 gap-2 overflow-y-auto pr-1">
                 {data.contacts.map((c) => (
-                  <ContactCard key={c.bookingId} contact={c} />
+                  <ContactCard
+                    key={c.bookingId}
+                    contact={c}
+                    canRefund={canRefund}
+                    refunding={!!c.paymentId && refundingId === c.paymentId}
+                    onRefund={() => void handleRefund(c)}
+                  />
                 ))}
               </div>
             )}
@@ -190,7 +225,17 @@ function SummaryTile({
   );
 }
 
-function ContactCard({ contact }: { contact: TripContactPassengerDTO }) {
+function ContactCard({
+  contact,
+  canRefund,
+  refunding,
+  onRefund,
+}: {
+  contact: TripContactPassengerDTO;
+  canRefund: boolean;
+  refunding: boolean;
+  onRefund: () => void;
+}) {
   return (
     <Card className="gap-2 p-3">
       <div className="flex items-start justify-between gap-2">
@@ -230,6 +275,42 @@ function ContactCard({ contact }: { contact: TripContactPassengerDTO }) {
           Numéro inexploitable (format invalide) : appelez la réservation depuis votre téléphone ou
           corrigez le contact en agence.
         </p>
+      )}
+
+      {/* Enregistrement du remboursement (espèces remises en main propre) —
+          visible uniquement avec le droit payment:manage ; confirmation
+          obligatoire car l'écriture comptable REFUND est définitive. */}
+      {contact.paymentState === "PAID" && canRefund && contact.paymentId && (
+        <AlertDialog>
+          <AlertDialogTrigger asChild>
+            <Button
+              variant="outline"
+              className="h-10 w-full gap-1.5 border-primary/40 text-primary hover:bg-primary/10"
+              disabled={refunding}
+            >
+              {refunding ? (
+                <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
+              ) : (
+                <BadgeCheck className="h-4 w-4" aria-hidden="true" />
+              )}
+              Marquer remboursé — {formatMoney(contact.amount)}
+            </Button>
+          </AlertDialogTrigger>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>Enregistrer le remboursement ?</AlertDialogTitle>
+              <AlertDialogDescription>
+                Confirmez UNIQUEMENT si les {formatMoney(contact.amount)} ont réellement été rendus à{" "}
+                {contact.passengerName} ({contact.bookingReference}). Une écriture comptable
+                « Remboursement » sera créée — action définitive, le client en sera notifié.
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel>Annuler</AlertDialogCancel>
+              <AlertDialogAction onClick={onRefund}>Oui, remboursement rendu</AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
       )}
     </Card>
   );
