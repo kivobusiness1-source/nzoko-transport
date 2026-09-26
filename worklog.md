@@ -2112,3 +2112,22 @@ Stage Summary:
 - L'API CENTRALE DU CONTRAT §17 EST EN LIGNE DANS CE DÉPLOIEMENT, documentée dans docs/api-centrale-contract.md : l'IA du SITE AGENCES peut coder contre ce contrat — lecture publics (agencies/trips/seats), mutations (hold/confirm/cancel/payments/webhook) accessibles cookie-web OU Bearer CENTRAL_API_SECRET, idempotence et anti-concurrence vérifiées E2E 27/27.
 - POUR L'EXPLOITANT : définir CENTRAL_API_SECRET (même valeur) dans Vercel (ce site) ET côté SITE AGENCES ; donner docs/api-centrale-contract.md à l'autre IA. Aucune autre config nécessaire.
 - RESTE (prochaines sessions) : (1) validation en prod Vercel après deploy ; (2) events SSE si volumétrie (polling 5 s retenu) ; (3) multi-passagers nommés par place (v1 = 1 acheteur pour N places) ; (4) le SITE AGENCES peut poller /api/events/client ?types=… dès maintenant.
+---
+Task ID: 56-prod-validation-passagers-nommes
+Agent: Z.ai Code (cron webDevReview)
+Task: Revue 15 min — évaluation du statut, QA navigateur, choix du focus (corrections / nouvelles fonctions), continuation du développement.
+
+Work Log:
+- STATUT AU DÉMARRAGE : contrat §17 complet en sandbox (27/27 E2E), main poussé (43ea720..f770bb3). Prod Vercel : /api/agencies répondaient AU CONTRAT mais POST /api/bookings/hold → 500 P2022 (« colonne absente »).
+- BUG PROD CORRIGÉ (priorité 1) : le déploiement Vercel n'exécute QUE `prisma generate` — le push Neon est manuel. `prisma db push --schema prisma/schema.postgres.prisma --accept-data-loss` exécuté sur Neon (changement 100 % additif : Booking.idempotencyKey nullable, table DomainEvent, unique→index bookingId ; unique sur colonne toutes-NULL = sûr). RE-JEU E2E EN PROD : hold 201 HELD + Idempotency-Key ✓, détail contractStatus/holdExpiresAt ✓, events client BOOKING_CREATED/SEAT_HELD ✓, cancel 200 + BOOKING_CANCELLED/SEAT_RELEASED ✓. Le contrat complet tourne sur Neon.
+- FOCUS FONCTIONNEL CHOISI : passagers NOMMÉS par place (recommandation du Task 55) — familles/groupes : chaque place porte SON voyageur. Extension contrat DOCUMENTÉE dans docs/api-centrale-contract.md (§7 + note §24).
+- IMPLÉMENTATION : (1) schéma ×2 — SeatOccupancy.passengerId FK Passenger nullable + index, PUSH NEON EXÉCUTÉ (2) createBooking — passengers[] aligné par index sur seatIds (phone optionnel → repli téléphone acheteur), passagers créés/réutilisés (phone+lastName) DANS la transaction, liés à chaque verrou ; (3) DTO seats[].passenger ; (4) zod hold+legacy (max 6, phone optionnel) ; (5) UI : carte « Acheteur (passager 1 · place XX) » + cartes compactes « Passager N · place YY » (badge, note contact, erreurs inline) ; (6) billet vue+impression + fiche suivi : liste passagers par place avec badge numéro + mention (acheteur·e).
+- E2E API 7/7 : hold 2 places (Alice acheteuse place 1, Paul nommé place 2), montant 2×prix, §7 strict conservé sans passengers[], paiement service → ticket, noms conservés après confirmation. E2E NAVIGATEUR : sélection 03+04 → cartes → hold « 2 places réservées ! » → paiement service → Suivi billet NZK-2026-52PBC7 : « PASSENGERS — 03 Marie Nkouka (acheteur·e) / 04 Paul Mbemba » + QR + PDF. 0 erreur console.
+- BUG FIX EN ROUTE : cartes extras vides au premier montage (useState [] + ajustement rendu uniquement sur changement) → initialisation paresseuse avec seatCount-1.
+- PIÈGE DOCUMENTÉ : `prisma db push` sur Neon régénère le client Prisma en provider POSTGRES → tout nouveau process local (scripts bun, restart dev) échoue avec DATABASE_URL file: → TOUJOURS re-générer le client SQLite (bunx prisma generate + db push local) après un push Neon. Le serveur dev en cours garde son client chargé au démarrage.
+- COMMIT abc2d23 poussé (f770bb3..abc2d23 main) ; capture agent-ctx/e2e-named-passengers.png + e2e-ticket-named2.png.
+
+Stage Summary:
+- PROD VERCÉL VALIDÉE pour le contrat §17 (le risque n°1 du Task 55 est levé) : l'IA du SITE AGENCES peut appeler la prod avec le Bearer CENTRAL_API_SECRET dès que l'exploitant pose la variable.
+- MULTI-PASSAGERS NOMMÉS livré (schema+API+UI+billet) : capacité famille/groupe réelle, contractuellement documentée pour les deux sites.
+- RESTE : (1) réinitialiser les mots de passe seed locaux si besoin (non touchés) ; (2) interface checker : afficher le passager de CHAQUE place au scan (aujourd'hui l'acheteur principal) ; (3) events SSE si volumétrie ; (4) côté SITE AGENCES : le canal service /api/payments/webhook + /api/bookings/{id}/cancel sont prêts (secret à définir côté Vercel par l'exploitant).
