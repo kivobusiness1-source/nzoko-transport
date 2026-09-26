@@ -436,7 +436,7 @@ function NewComplaintDialog({
         <div className="space-y-4">
           <div>
             <Label className="mb-1.5">Catégorie</Label>
-            <Select value={category || undefined} onValueChange={(v) => setCategory(v as ComplaintCategory)}>
+            <Select value={category || ""} onValueChange={(v) => setCategory(v as ComplaintCategory)}>
               <SelectTrigger className="h-11 w-full">
                 <SelectValue placeholder="Choisir une catégorie" />
               </SelectTrigger>

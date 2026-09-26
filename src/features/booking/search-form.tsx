@@ -57,7 +57,7 @@ function CitySelect({
       <Label htmlFor={id} className="mb-1.5 block text-xs font-medium text-muted-foreground">
         {label}
       </Label>
-      <Select value={value || undefined} onValueChange={onChange} disabled={disabled}>
+      <Select value={value || ""} onValueChange={onChange} disabled={disabled}>
         <SelectTrigger id={id} className="h-11 w-full" aria-label={label}>
           <span className="flex min-w-0 items-center gap-2">
             <MapPin className="size-4 shrink-0 text-primary" aria-hidden />

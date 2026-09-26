@@ -46,7 +46,13 @@ export async function getTicketQrDataUrl(token: string): Promise<string> {
 
 // ------------------------------------------------------------
 // Contrôle d'embarquement (CHECKER)
-// Validation atomique : deux scans simultanés → un seul embarquement.
+// Validation atomique : deux checkers scannent en même temps → un seul embarquement.
+// Embarquement PAR PLACE (extension §24 — passagers nommés) : une réservation
+// multi-places émet UN billet (QR) mais embarque chaque voyageur individuellement.
+//   - preview:true            → toutes les vérifications, AUCUNE mutation
+//   - seatNumbers undefined   → tout le groupe embarque (comportement historique)
+//   - seatNumbers:[...]       → seules ces places sont marquées embarquées
+// Un billet déjà USED peut compléter ses places restantes (passagers retardataires).
 // ------------------------------------------------------------
 import type { ScanResultDTO } from "@/types";
 
@@ -58,44 +64,53 @@ interface BoardingContext {
   ip: string | null;
 }
 
-export async function scanAndBoard(rawCode: string, ctx: BoardingContext): Promise<ScanResultDTO> {
+interface BoardingOptions {
+  /** Places à embarquer (numéros). Absent = tout le groupe. */
+  seatNumbers?: string[];
+  /** Mode aperçu : vérifie sans embarquer (sélection des passagers du groupe). */
+  preview?: boolean;
+}
+
+const bookingIncludeForScan = {
+  trip: { include: { route: { include: { originCity: true, destinationCity: true } }, bus: true, agency: true } },
+  seat: true, // place principale (compat) — liste complète dans occupancies
+  passenger: true,
+  payment: true,
+  agency: true,
+  occupancies: {
+    include: { seat: true, passenger: { select: { firstName: true, lastName: true } } },
+    orderBy: { seatId: "asc" as const },
+  },
+} satisfies Prisma.BookingInclude;
+
+/** Ticket + réservation chargés pour le scan (token direct ou référence/numéro). */
+async function findScannableTicket(code: string) {
+  const ticket = await db.ticket.findUnique({
+    where: { token: code },
+    include: { booking: { include: bookingIncludeForScan }, checkedBy: true },
+  });
+  if (ticket) return ticket;
+
+  const upper = code.toUpperCase();
+  const isBoardingNumber = /^NZK-[A-Z2-9]{6}$/.test(upper) && !upper.startsWith("NZK-202");
+  const booking = await db.booking.findFirst({
+    where: isBoardingNumber ? { ticket: { boardingNumber: upper } } : { bookingReference: upper },
+    include: { ticket: { include: { booking: { include: bookingIncludeForScan }, checkedBy: true } } },
+  });
+  return booking?.ticket ?? null;
+}
+
+export async function scanAndBoard(
+  rawCode: string,
+  ctx: BoardingContext,
+  options: BoardingOptions = {}
+): Promise<ScanResultDTO> {
   const code = rawCode.trim();
   if (!code) {
     return { result: "INVALID", message: "Code vide.", boarded: false, ticket: null };
   }
 
-  // Le QR contient un token de billet. On accepte aussi une référence de
-  // réservation (NZK-2026-…) ou un numéro d'embarquement (NZK-XXXXXX).
-  const ticket = await db.ticket.findUnique({
-    where: { token: code },
-    include: {
-      booking: {
-        include: {
-          trip: { include: { route: { include: { originCity: true, destinationCity: true } }, bus: true, agency: true } },
-          seat: true,
-          passenger: true,
-          payment: true,
-          agency: true,
-        },
-      },
-      checkedBy: true,
-    },
-  });
-
-  let target = ticket;
-  if (!target) {
-    const upper = code.toUpperCase();
-    const isBoardingNumber = /^NZK-[A-Z2-9]{6}$/.test(upper) && !upper.startsWith("NZK-202");
-    const booking = await db.booking.findFirst({
-      where: isBoardingNumber
-        ? { ticket: { boardingNumber: upper } }
-        : { bookingReference: upper },
-      include: { ticket: { include: { booking: { include: { trip: { include: { route: { include: { originCity: true, destinationCity: true } }, bus: true, agency: true } }, seat: true, passenger: true, payment: true, agency: true } }, checkedBy: true } } },
-    });
-    if (booking?.ticket) {
-      target = booking.ticket as typeof ticket;
-    }
-  }
+  const target = await findScannableTicket(code);
 
   if (!target) {
     await logScan(ctx, code, "INVALID");
@@ -103,6 +118,28 @@ export async function scanAndBoard(rawCode: string, ctx: BoardingContext): Promi
   }
 
   const b = target.booking;
+
+  // ---- Liste des places du groupe (extension passagers nommés) ----
+  // Fallback héritage : un ticket USED SANS aucune place datée (réservation
+  // antérieure à l'extension) marque TOUTES ses places embarquées. Dès qu'UNE
+  // place porte boardedAt, les données par place font foi (embarquement partiel).
+  const hasAnyBoarded = b.occupancies.some((o) => o.boardedAt !== null);
+  const legacyBoardedAt = target.status === "USED" && !hasAnyBoarded ? target.checkedAt : null;
+  const seats = b.occupancies.map((o) => {
+    const passenger = o.passenger ?? b.passenger;
+    const boardedAt = o.boardedAt ?? legacyBoardedAt;
+    return {
+      seatNumber: o.seat.seatNumber,
+      seatType: o.seat.type as "STANDARD" | "VIP",
+      passengerName: `${passenger.firstName} ${passenger.lastName}`,
+      isBuyer: o.passengerId === null || o.passengerId === b.passengerId,
+      boardedAt: boardedAt ? boardedAt.toISOString() : null,
+      occupancyId: o.id,
+      seatId: o.seatId,
+    };
+  });
+
+  // Champs historiques (compat) : passager acheteur + place principale.
   const info = {
     reference: b.bookingReference,
     token: target.token,
@@ -123,6 +160,13 @@ export async function scanAndBoard(rawCode: string, ctx: BoardingContext): Promi
     checkedByName: target.checkedBy
       ? `${target.checkedBy.firstName} ${target.checkedBy.lastName}`
       : null,
+    seats: seats.map(({ seatNumber, seatType, passengerName, isBuyer, boardedAt }) => ({
+      seatNumber,
+      seatType,
+      passengerName,
+      isBuyer,
+      boardedAt,
+    })),
   };
 
   // Sécurité multi-agences : un checker ne contrôle que les voyages de son agence
@@ -158,50 +202,132 @@ export async function scanAndBoard(rawCode: string, ctx: BoardingContext): Promi
     return { result: "TRIP_CANCELLED", message: "Ce voyage a été annulé.", boarded: false, ticket: info };
   }
 
-  if (target.status === "USED") {
+  // ---- Résolution des places ciblées ----
+  const requested = options.seatNumbers?.map((s) => s.trim()).filter(Boolean);
+  let selected = seats;
+  if (requested && requested.length > 0) {
+    const wanted = new Set(requested);
+    selected = seats.filter((s) => wanted.has(s.seatNumber));
+    if (selected.length === 0) {
+      return {
+        result: "INVALID",
+        message: "Aucune place connue dans la sélection.",
+        boarded: false,
+        ticket: info,
+      };
+    }
+  }
+  const pending = selected.filter((s) => s.boardedAt === null);
+  const allGroupBoarded = seats.every((s) => s.boardedAt !== null);
+
+  // Aperçu : vérifications faites, AUCUNE mutation — le contrôleur choisit
+  // les voyageurs présents quand le billet couvre plusieurs places.
+  if (options.preview) {
+    if (allGroupBoarded) {
+      await logScan(ctx, code, "ALREADY_USED");
+      return {
+        result: "ALREADY_USED",
+        message: `Groupe déjà embarqué${target.checkedAt ? ` le ${new Date(target.checkedAt).toLocaleString("fr-FR")}` : ""}.`,
+        boarded: false,
+        ticket: info,
+      };
+    }
+    await logScan(ctx, code, "PREVIEW");
+    return { result: "VALID", message: "Aperçu du billet (aucun embarquement effectué).", boarded: false, preview: true, ticket: info };
+  }
+
+  // Groupe entièrement embarqué sans sélection explicite → refus classique.
+  if (allGroupBoarded) {
     await logScan(ctx, code, "ALREADY_USED");
     return {
       result: "ALREADY_USED",
-      message: `Billet DÉJÀ UTILISÉ le ${target.checkedAt ? new Date(target.checkedAt).toLocaleString("fr-FR") : "?"}.`,
+      message: `Billet DÉJÀ UTILISÉ${target.checkedAt ? ` le ${new Date(target.checkedAt).toLocaleString("fr-FR")}` : ""}.`,
       boarded: false,
-      ticket: { ...info, checkedAt: target.checkedAt?.toISOString() ?? null },
+      ticket: info,
     };
   }
 
-  // ⚠️ Transition atomique VALID → USED : si deux checkers scannent en même
-  // temps, updateMany ne modifie qu'une seule ligne — l'autre reçoit ALREADY_USED.
-  const result = await db.ticket.updateMany({
-    where: { id: target.id, status: "VALID" },
-    data: { status: "USED", checkedAt: new Date(), checkedById: ctx.checkerUserId },
+  // Places restantes = cibles par défaut (tout le groupe).
+  const toBoard = pending.length > 0 ? pending : selected;
+  if (toBoard.length === 0) {
+    await logScan(ctx, code, "ALREADY_USED");
+    return {
+      result: "ALREADY_USED",
+      message: "Toutes les places sélectionnées sont déjà embarquées.",
+      boarded: false,
+      ticket: info,
+    };
+  }
+
+  const now = new Date();
+  const boardingNames = toBoard.map((s) => `${s.passengerName} (${s.seatNumber})`).join(", ");
+
+  // ⚠️ Transitions atomiques :
+  //  - billet VALID → USED : updateMany conditionnel — deux scans simultanés
+  //    ne modifient qu'une ligne, l'autre reçoit ALREADY_USED ;
+  //  - places : updateMany { boardedAt: null } → { boardedAt: now } sur les
+  //    SEULES places ciblées (idempotent — rejouer ne double-datera pas).
+  if (target.status === "VALID") {
+    const ticketUpdate = await db.ticket.updateMany({
+      where: { id: target.id, status: "VALID" },
+      data: { status: "USED", checkedAt: now, checkedById: ctx.checkerUserId },
+    });
+    if (ticketUpdate.count === 0) {
+      const refreshed = await db.ticket.findUnique({ where: { id: target.id } });
+      await logScan(ctx, code, "ALREADY_USED");
+      return {
+        result: "ALREADY_USED",
+        message: "Billet DÉJÀ UTILISÉ (embarquement concurrent).",
+        boarded: false,
+        ticket: { ...info, checkedAt: refreshed?.checkedAt?.toISOString() ?? null },
+      };
+    }
+  }
+
+  const occupancyUpdate = await db.seatOccupancy.updateMany({
+    where: { id: { in: toBoard.map((s) => s.occupancyId) }, boardedAt: null },
+    data: { boardedAt: now },
   });
 
-  if (result.count === 0) {
-    const refreshed = await db.ticket.findUnique({ where: { id: target.id } });
+  if (occupancyUpdate.count === 0) {
     await logScan(ctx, code, "ALREADY_USED");
     return {
       result: "ALREADY_USED",
-      message: "Billet DÉJÀ UTILISÉ (embarquement concurrent).",
+      message: "Toutes les places sélectionnées sont déjà embarquées (embarquement concurrent).",
       boarded: false,
-      ticket: { ...info, checkedAt: refreshed?.checkedAt?.toISOString() ?? null },
+      ticket: info,
     };
   }
+
+  // Événements (contrat §14) : chaque place passe BOARDED — visible sur le
+  // plan de sièges temps réel des deux sites. Best-effort, après la transaction.
+  await Promise.all(
+    toBoard.map((s) =>
+      emitDomainEvent({
+        type: "TICKET_BOARDED",
+        aggregateType: "Ticket",
+        aggregateId: target.id,
+        tripId: b.tripId,
+        bookingId: b.id,
+        payload: { reference: b.bookingReference, seatNumber: s.seatNumber },
+      }).catch(() => {})
+    )
+  );
 
   await logScan(ctx, code, "VALID");
-  // Événement (contrat §14) : la place passe BOARDED — visible sur le plan
-  // de sièges temps réel des deux sites. Best-effort.
-  await emitDomainEvent({
-    type: "TICKET_BOARDED",
-    aggregateType: "Ticket",
-    aggregateId: target.id,
-    tripId: b.tripId,
-    bookingId: b.id,
-    payload: { reference: b.bookingReference, seatNumber: b.seat.seatNumber },
-  });
+  const suffix = seats.length > 1 ? ` — ${toBoard.length}/${seats.length} place(s) à bord` : "";
   return {
     result: "VALID",
-    message: `✓ EMBARQUEMENT VALIDÉ — ${info.passengerName}, siège ${info.seatNumber}.`,
+    message: `✓ EMBARQUEMENT VALIDÉ — ${boardingNames}${suffix}.`,
     boarded: true,
-    ticket: { ...info, checkedAt: new Date().toISOString() },
+    ticket: {
+      ...info,
+      seats: info.seats.map((s) => ({
+        ...s,
+        boardedAt: toBoard.some((t2) => t2.seatNumber === s.seatNumber) ? now.toISOString() : s.boardedAt,
+      })),
+      checkedAt: target.status === "VALID" ? now.toISOString() : info.checkedAt,
+    },
   };
 }
 

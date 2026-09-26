@@ -197,7 +197,9 @@ export async function getSeatMap(tripId: string): Promise<SeatMapDTO> {
       agency: true,
       occupancies: {
         where: { OR: [{ status: "BOOKED" }, { status: "HELD", expiresAt: { gt: now } }] },
-        include: { booking: { select: { ticket: { select: { status: true } } } } },
+        include: {
+          booking: { select: { ticket: { select: { status: true, checkedAt: true } } } },
+        },
       },
     },
   });
@@ -209,8 +211,15 @@ export async function getSeatMap(tripId: string): Promise<SeatMapDTO> {
 
   // Statut contractuel par place (API centrale §4/§6) :
   //  - verrou HELD actif        → HELD (🟡)
-  //  - occupation BOOKED        → PAID (🔴) sauf ticket USED → BOARDED (⚫)
+  //  - occupation BOOKED        → PAID (🔴) sauf embarquée → BOARDED (⚫)
+  //    Embarquement PAR PLACE (§24) : occupancy.boardedAt fait foi. Fallback
+  //    héritage (ticket USED) UNIQUEMENT si AUCUNE place de la réservation
+  //    n'est datée (groupe embarqué avant l'extension) — sinon une place
+  //    non embarquée d'un groupe partiel serait faussement BOARDED.
   //  - aucune occupation active → AVAILABLE (🟢)
+  const bookingsWithBoarded = new Set(
+    trip.occupancies.filter((o) => o.boardedAt !== null).map((o) => o.bookingId)
+  );
   const occupancyBySeat = new Map(trip.occupancies.map((o) => [o.seatId, o]));
   const seats = trip.bus.seatLayout.seats
     .map((s) => {
@@ -218,8 +227,12 @@ export async function getSeatMap(tripId: string): Promise<SeatMapDTO> {
       let status: TripSeatStatus = "AVAILABLE";
       if (occ) {
         if (occ.status === "HELD") status = "HELD";
-        else if (occ.booking.ticket?.status === "USED") status = "BOARDED";
-        else status = "PAID";
+        else if (
+          occ.boardedAt !== null ||
+          (occ.booking.ticket?.status === "USED" && !bookingsWithBoarded.has(occ.bookingId))
+        ) {
+          status = "BOARDED";
+        } else status = "PAID";
       }
       return {
         id: s.id,

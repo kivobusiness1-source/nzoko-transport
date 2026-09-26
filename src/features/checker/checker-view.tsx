@@ -8,7 +8,7 @@
 // jour en cache local 12 h, validation BLOQUÉE hors-ligne).
 // ============================================================
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import {
   Ban,
@@ -25,6 +25,7 @@ import {
   ScanLine,
   ShieldCheck,
   User,
+  Users,
   Wifi,
   WifiOff,
   XCircle,
@@ -32,6 +33,7 @@ import {
 import type { LucideIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { QrScanner } from "@/features/checker/qr-scanner";
@@ -39,7 +41,7 @@ import { TripsBoard } from "@/features/checker/trips-board";
 import { api, ApiClientError } from "@/lib/api-client";
 import { useApp } from "@/lib/store";
 import { formatDateTime, formatTime } from "@/lib/format";
-import type { BoardingTripDTO, ScanResultCode, ScanResultDTO } from "@/types";
+import type { BoardingTripDTO, ScanResultCode, ScanResultDTO, ScanSeatDTO } from "@/types";
 import { cn } from "@/lib/utils";
 
 // ---------- Cache hors-ligne des voyages du jour (localStorage, TTL 12 h) ----------
@@ -150,6 +152,52 @@ const CHECKER_CSS = `
 
 // ---------- Panneau résultat (plein cadre, contraste élevé usage extérieur) ----------
 
+/** Liste des voyageurs du groupe (toutes places du billet, passagers nommés). */
+function SeatRoster({ seats, compact = false }: { seats: ScanSeatDTO[]; compact?: boolean }) {
+  if (seats.length === 0) return null;
+  return (
+    <ul className={cn("space-y-1.5", compact && "space-y-1")} aria-label="Voyageurs du billet">
+      {seats.map((s) => {
+        const boarded = s.boardedAt !== null;
+        return (
+          <li
+            key={s.seatNumber}
+            className={cn(
+              "flex items-center gap-2.5 rounded-lg px-2.5 py-1.5",
+              boarded ? "bg-emerald-500/20" : "bg-white/5"
+            )}
+          >
+            <span
+              className={cn(
+                "flex size-7 shrink-0 items-center justify-center rounded-md font-mono text-xs font-bold",
+                boarded ? "bg-emerald-500 text-emerald-950" : "bg-white/20 text-white"
+              )}
+              title={`Place ${s.seatNumber}`}
+            >
+              {s.seatNumber}
+            </span>
+            <span className="min-w-0 flex-1">
+              <span className="block truncate text-sm font-semibold leading-tight" title={s.passengerName}>
+                {s.passengerName}
+                {s.isBuyer && <span className="ml-1.5 text-[10px] font-normal opacity-75">(acheteur·e)</span>}
+              </span>
+              <span className="block text-[10px] leading-tight opacity-80">
+                {s.seatType === "VIP" ? "VIP · " : ""}
+                {s.boardedAt !== null ? `À bord depuis ${formatTime(s.boardedAt)}` : "Non embarqué·e"}
+              </span>
+            </span>
+            {s.boardedAt !== null ? (
+              <CheckCircle2 className="size-4 shrink-0 text-emerald-300" aria-label="Embarqué" />
+            ) : (
+              <Clock className="size-4 shrink-0 opacity-60" aria-label="En attente" />
+            )}
+          </li>
+        );
+      })}
+    </ul>
+  );
+}
+
 interface ResultPanelProps {
   result: ScanResultDTO;
   onScanNext: () => void;
@@ -158,6 +206,8 @@ interface ResultPanelProps {
 function ResultPanel({ result, onScanNext }: ResultPanelProps) {
   const meta = RESULT_META[result.result] ?? RESULT_META.INVALID;
   const t = result.ticket;
+  const groupSeats = t?.seats ?? [];
+  const pendingCount = groupSeats.filter((s) => s.boardedAt === null).length;
 
   return (
     <div
@@ -186,9 +236,14 @@ function ResultPanel({ result, onScanNext }: ResultPanelProps) {
       </div>
 
       {/* Messages contextuels */}
-      {result.result === "ALREADY_USED" && t?.checkedAt && (
+      {result.result === "ALREADY_USED" && t?.checkedAt && pendingCount === 0 && (
         <p className="border-t border-white/20 bg-black/20 px-4 py-2.5 text-center text-sm font-semibold sm:px-5">
           Billet DÉJÀ UTILISÉ le {formatDateTime(t.checkedAt)} par {t.checkedByName ?? "un contrôleur"}
+        </p>
+      )}
+      {result.result === "ALREADY_USED" && pendingCount > 0 && (
+        <p className="border-t border-white/20 bg-black/20 px-4 py-2.5 text-center text-sm font-semibold sm:px-5">
+          {pendingCount === 1 ? "1 passager" : `${pendingCount} passagers`} encore à terre — complétez ci-dessous.
         </p>
       )}
       {result.result === "PAYMENT_NOT_CONFIRMED" && (
@@ -245,10 +300,12 @@ function ResultPanel({ result, onScanNext }: ResultPanelProps) {
               <dd className="truncate font-semibold">{t.busRegistration}</dd>
             </div>
             <div>
-              <dt className="text-[10px] uppercase tracking-wider opacity-80">Siège</dt>
+              <dt className="text-[10px] uppercase tracking-wider opacity-80">Places</dt>
               <dd className="font-semibold">
-                {t.seatNumber}
-                {t.seatType === "VIP" ? " · VIP" : ""}
+                {groupSeats.length > 0
+                  ? groupSeats.map((s) => s.seatNumber).join(", ")
+                  : t.seatNumber}
+                {t.seatType === "VIP" && groupSeats.length === 0 ? " · VIP" : ""}
               </dd>
             </div>
             <div>
@@ -265,6 +322,16 @@ function ResultPanel({ result, onScanNext }: ResultPanelProps) {
               )}
             </div>
           </dl>
+
+          {groupSeats.length > 1 && (
+            <div className="rounded-xl border border-white/15 bg-black/20 p-3">
+              <p className="mb-2 flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-wider opacity-90">
+                <Users className="size-3.5" aria-hidden /> Groupe — {groupSeats.length} places ·{" "}
+                {groupSeats.length - pendingCount} à bord
+              </p>
+              <SeatRoster seats={groupSeats} compact />
+            </div>
+          )}
 
           <p className="border-t border-white/15 pt-2.5 font-mono text-[11px] opacity-80">
             {t.reference} · voyage {t.tripCode}
@@ -286,6 +353,138 @@ function ResultPanel({ result, onScanNext }: ResultPanelProps) {
   );
 }
 
+// ---------- Aperçu multi-passagers : sélection des voyageurs présents ----------
+
+interface PreviewPanelProps {
+  preview: ScanResultDTO;
+  onConfirm: (seatNumbers: string[]) => void;
+  onCancel: () => void;
+  submitting: boolean;
+}
+
+function PreviewPanel({ preview, onConfirm, onCancel, submitting }: PreviewPanelProps) {
+  const t = preview.ticket;
+  const seats = useMemo(() => t?.seats ?? [], [t]);
+  const pending = useMemo(() => seats.filter((s) => s.boardedAt === null), [seats]);
+  const [selected, setSelected] = useState<string[]>(() => pending.map((s) => s.seatNumber));
+
+  const toggle = (seatNumber: string, checked: boolean) =>
+    setSelected((prev) => (checked ? [...prev, seatNumber] : prev.filter((s) => s !== seatNumber)));
+
+  const allSelected = selected.length === pending.length;
+
+  return (
+    <div
+      role="status"
+      aria-live="assertive"
+      className="nzoko-fade-up overflow-hidden rounded-2xl border-2 border-primary/40 bg-background shadow-lg"
+    >
+      <div className="flex items-center gap-4 p-4 sm:p-5">
+        <span className="flex size-14 shrink-0 items-center justify-center rounded-2xl bg-primary/10">
+          <Users className="size-8 text-primary" strokeWidth={1.75} aria-hidden />
+        </span>
+        <div className="min-w-0">
+          <p className="text-lg font-bold leading-tight tracking-wide sm:text-xl">BILLET GROUPE VALIDE</p>
+          <p className="mt-0.5 text-sm text-muted-foreground">
+            {seats.length} places · sélectionnez les voyageurs présents, puis validez l&apos;embarquement.
+          </p>
+        </div>
+      </div>
+
+      {t && (
+        <div className="space-y-4 border-t bg-muted/40 p-4 sm:p-5">
+          <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm">
+            <span className="font-mono text-xs text-muted-foreground">{t.reference}</span>
+            <span className="font-semibold">{t.originCityName} → {t.destinationCityName}</span>
+            <span className="flex items-center gap-1 text-muted-foreground">
+              <Clock className="size-3.5" aria-hidden /> {formatDateTime(t.departureTime)}
+            </span>
+          </div>
+
+          <ul className="space-y-1.5" aria-label="Sélection des voyageurs">
+            {seats.map((s) => {
+              const alreadyBoarded = s.boardedAt !== null;
+              return (
+                <li
+                  key={s.seatNumber}
+                  className={cn(
+                    "flex items-center gap-3 rounded-xl border px-3 py-2.5 transition-colors",
+                    alreadyBoarded
+                      ? "border-emerald-200 bg-emerald-50 dark:border-emerald-900 dark:bg-emerald-950/40"
+                      : "bg-background hover:bg-muted/60"
+                  )}
+                >
+                  {alreadyBoarded ? (
+                    <CheckCircle2 className="size-5 shrink-0 text-emerald-600" aria-label="Déjà embarqué" />
+                  ) : (
+                    <Checkbox
+                      id={`seat-check-${s.seatNumber}`}
+                      checked={selected.includes(s.seatNumber)}
+                      onCheckedChange={(c) => toggle(s.seatNumber, c === true)}
+                      className="size-5"
+                      aria-label={`Passager présent — place ${s.seatNumber}`}
+                    />
+                  )}
+                  <Label
+                    htmlFor={alreadyBoarded ? undefined : `seat-check-${s.seatNumber}`}
+                    className="min-w-0 flex-1 cursor-pointer flex-col items-start gap-0"
+                  >
+                    <span className="block truncate text-sm font-semibold leading-tight">
+                      {s.passengerName}
+                      {s.isBuyer && <span className="ml-1.5 text-[10px] font-normal text-muted-foreground">(acheteur·e)</span>}
+                    </span>
+                    <span className="block text-[11px] leading-tight text-muted-foreground">
+                      Place {s.seatNumber}
+                      {s.seatType === "VIP" ? " · VIP" : ""}
+                      {s.boardedAt !== null ? ` · déjà à bord (${formatTime(s.boardedAt)})` : ""}
+                    </span>
+                  </Label>
+                </li>
+              );
+            })}
+          </ul>
+
+          <div className="flex flex-col gap-2 sm:flex-row">
+            <Button
+              size="lg"
+              className="h-12 flex-1 font-bold"
+              disabled={submitting || selected.length === 0}
+              onClick={() => onConfirm(selected)}
+            >
+              {submitting ? (
+                <Loader2 className="size-5 animate-spin" aria-hidden />
+              ) : (
+                <CheckCircle2 className="size-5" aria-hidden />
+              )}
+              Valider l&apos;embarquement ({selected.length}/{pending.length})
+            </Button>
+            <Button
+              type="button"
+              size="lg"
+              variant="outline"
+              className="h-12 sm:w-40"
+              disabled={submitting}
+              onClick={() => setSelected(allSelected ? [] : pending.map((s) => s.seatNumber))}
+            >
+              {allSelected ? "Tout décocher" : "Tout cocher"}
+            </Button>
+          </div>
+          <p className="text-[11px] text-muted-foreground">
+            Les passagers absents garderont leur place « payée » — ils pourront être embarqués plus tard
+            en rescannant ce même billet.
+          </p>
+        </div>
+      )}
+
+      <div className="border-t p-4">
+        <Button onClick={onCancel} variant="secondary" size="lg" className="h-12 w-full" disabled={submitting}>
+          Annuler — scanner suivant
+        </Button>
+      </div>
+    </div>
+  );
+}
+
 // ---------- Vue principale ----------
 
 export default function CheckerView() {
@@ -296,7 +495,10 @@ export default function CheckerView() {
   const [code, setCode] = useState("");
   const [scanning, setScanning] = useState(false);
   const [result, setResult] = useState<ScanResultDTO | null>(null);
+  const [preview, setPreview] = useState<ScanResultDTO | null>(null);
+  const [submitting, setSubmitting] = useState(false);
   const [history, setHistory] = useState<HistoryEntry[]>([]);
+  const previewCodeRef = useRef<string>("");
 
   const [trips, setTrips] = useState<BoardingTripDTO[] | null>(null);
   const [tripsLoading, setTripsLoading] = useState(false);
@@ -378,6 +580,29 @@ export default function CheckerView() {
   }, [agencyName]);
 
   // ---------- Validation d'un billet (BLOQUÉE hors-ligne, jamais sur donnée locale) ----------
+  // Billet groupe (multi-places) : 1) aperçu SANS mutation → 2) sélection des
+  // voyageurs présents → 3) embarquement des places cochées seulement.
+  // Place unique : embarquement immédiat (flux rapide historique).
+
+  const pushHistory = useCallback((codeScanned: string, res: ScanResultDTO) => {
+    setHistory((prev) =>
+      [
+        {
+          id: `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+          code: codeScanned,
+          label: res.ticket?.boardingNumber ?? codeScanned,
+          result: res.result,
+          at: new Date().toISOString(),
+        },
+        ...prev,
+      ].slice(0, HISTORY_MAX)
+    );
+    if (res.result === "VALID") {
+      toast.success(res.message || "Embarquement validé.");
+    } else if (res.result === "ALREADY_USED") {
+      toast.error("Billet déjà utilisé — embarquement refusé.");
+    }
+  }, []);
 
   const handleScan = useCallback(
     async (raw: string) => {
@@ -391,26 +616,20 @@ export default function CheckerView() {
       }
       setScanning(true);
       setResult(null);
+      setPreview(null);
       try {
-        const res = await api.checker.scan(clean);
-        setResult(res);
-        setHistory((prev) =>
-          [
-            {
-              id: `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
-              code: clean,
-              label: res.ticket?.boardingNumber ?? clean,
-              result: res.result,
-              at: new Date().toISOString(),
-            },
-            ...prev,
-          ].slice(0, HISTORY_MAX)
-        );
-        if (res.result === "VALID") {
-          toast.success(`Embarquement validé — ${res.ticket?.passengerName ?? "passager"} à bord.`);
-        } else if (res.result === "ALREADY_USED") {
-          toast.error("Billet déjà utilisé — embarquement refusé.");
+        // Aperçu : vérifie le billet et renvoie la liste des voyageurs nommés
+        // SANS embarquer — permet la sélection quand le billet couvre N places.
+        const probe = await api.checker.scan(clean, { preview: true });
+        if (probe.result === "VALID" && probe.preview && (probe.ticket?.seats.length ?? 0) > 1) {
+          previewCodeRef.current = clean;
+          setPreview(probe);
+          return;
         }
+        // Place unique (ou refus : déjà utilisé, impayé…) → embarquement direct.
+        const res = probe.preview ? await api.checker.scan(clean) : probe;
+        setResult(res);
+        pushHistory(clean, res);
       } catch (err) {
         if (err instanceof ApiClientError && err.status === 429) {
           toast.error("Trop de scans — patientez un instant avant de réessayer.");
@@ -421,7 +640,27 @@ export default function CheckerView() {
         setScanning(false);
       }
     },
-    [online]
+    [online, pushHistory]
+  );
+
+  // Confirmation de l'aperçu : embarquement des SEULES places cochées.
+  const confirmBoard = useCallback(
+    async (seatNumbers: string[]) => {
+      const clean = previewCodeRef.current;
+      if (!clean || seatNumbers.length === 0) return;
+      setSubmitting(true);
+      try {
+        const res = await api.checker.scan(clean, { seatNumbers });
+        setPreview(null);
+        setResult(res);
+        pushHistory(clean, res);
+      } catch (err) {
+        toast.error(err instanceof ApiClientError ? err.message : "Une erreur est survenue.");
+      } finally {
+        setSubmitting(false);
+      }
+    },
+    [pushHistory]
   );
 
   const handleQrCode = useCallback(
@@ -440,6 +679,7 @@ export default function CheckerView() {
   const scanNext = useCallback(() => {
     setCode("");
     setResult(null);
+    setPreview(null);
     inputRef.current?.focus();
   }, []);
 
@@ -581,7 +821,15 @@ export default function CheckerView() {
             </CardContent>
           </Card>
         )}
-        {!scanning && result && <ResultPanel result={result} onScanNext={scanNext} />}
+        {!scanning && preview && !result && (
+          <PreviewPanel
+            preview={preview}
+            onConfirm={(seatNumbers) => void confirmBoard(seatNumbers)}
+            onCancel={scanNext}
+            submitting={submitting}
+          />
+        )}
+        {!scanning && !preview && result && <ResultPanel result={result} onScanNext={scanNext} />}
       </div>
 
       {/* ---------- Historique de session ---------- */}

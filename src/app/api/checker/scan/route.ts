@@ -12,6 +12,9 @@ import { scanAndBoard } from "@/services/tickets";
 
 const scanSchema = z.object({
   code: z.string().min(1, "Code de billet requis.").max(120),
+  // Extension passagers nommés (§24) : embarquement sélectif par place.
+  preview: z.boolean().optional(),
+  seatNumbers: z.array(z.string().trim().min(1).max(10)).max(12).optional(),
 });
 
 export async function POST(req: NextRequest) {
@@ -21,15 +24,19 @@ export async function POST(req: NextRequest) {
     const ip = getClientIp(req);
     enforceRateLimit(`checker:${ip}:${auth.userId}`, RATE_LIMITS.checker.limit, RATE_LIMITS.checker.windowMs);
 
-    const { code } = scanSchema.parse(await req.json().catch(() => null));
+    const { code, preview, seatNumbers } = scanSchema.parse(await req.json().catch(() => null));
 
-    const result = await scanAndBoard(code, {
-      checkerUserId: auth.userId,
-      checkerName: auth.sessionUser.fullName,
-      checkerAgencyId: auth.agencyId,
-      isGlobal: GLOBAL_ROLES.includes(auth.role),
-      ip,
-    });
+    const result = await scanAndBoard(
+      code,
+      {
+        checkerUserId: auth.userId,
+        checkerName: auth.sessionUser.fullName,
+        checkerAgencyId: auth.agencyId,
+        isGlobal: GLOBAL_ROLES.includes(auth.role),
+        ip,
+      },
+      { preview, seatNumbers }
+    );
 
     if (result.result === "WRONG_AGENCY" || result.result === "PAYMENT_NOT_CONFIRMED") {
       await logSecurity({

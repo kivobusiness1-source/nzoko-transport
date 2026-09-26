@@ -57,7 +57,12 @@ export async function POST(req: NextRequest) {
     //    (ex. CASH guichet) → paiement créé PUIS confirmé idempotemment.
     if (isServiceAuth(req)) {
       const payload = serviceSchema.parse(parsed);
-      const booking = await db.booking.findUnique({ where: { id: payload.bookingId }, include: { payment: true } });
+      // Identifiant souple : id interne OU référence publique NZK-2026-… (§3.7).
+      const isRef = payload.bookingId.startsWith("NZK-");
+      const booking = await db.booking.findUnique({
+        where: isRef ? { bookingReference: payload.bookingId } : { id: payload.bookingId },
+        include: { payment: true },
+      });
       if (!booking) throw new ApiError(404, ERROR_CODES.NOT_FOUND, "Réservation introuvable.");
       if (booking.status === "CANCELLED" || booking.status === "EXPIRED") {
         throw new ApiError(409, ERROR_CODES.CONFLICT, "Cette réservation ne peut plus être payée.");

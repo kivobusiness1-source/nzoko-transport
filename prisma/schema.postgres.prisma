@@ -564,6 +564,10 @@ model SeatOccupancy {
   passenger   Passenger? @relation("OccupancyPassenger", fields: [passengerId], references: [id])
   status      String     @default("HELD") // HELD (verrou temporaire) | BOOKED (confirmé/paid)
   expiresAt   DateTime?  // fin du verrou quand HELD
+  // Embarquement PAR PLACE (extension §24) : horizon du passage du voyageur.
+  // null = pas encore embarqué. Fallback héritage : ticket USED sans boardedAt
+  // = groupe embarqué avant l'extension (réservations antérieures).
+  boardedAt   DateTime?
   createdAt   DateTime   @default(now())
 
   @@unique([tripId, seatId]) // ⚠️ verrou critique anti-concurrence (TripSeat)

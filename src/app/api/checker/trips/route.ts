@@ -26,22 +26,32 @@ export async function GET(req: NextRequest) {
       include: {
         route: { include: { originCity: true, destinationCity: true } },
         bus: { include: { seatLayout: { include: { seats: true } } } },
-        occupancies: { where: { status: "BOOKED" }, select: { id: true } },
+        occupancies: {
+          where: { status: "BOOKED" },
+          select: { id: true, boardedAt: true, bookingId: true, booking: { select: { ticket: { select: { status: true } } } } },
+        },
       },
       orderBy: { departureTime: "asc" },
     });
 
-    // Billets embarqués (USED) par voyage — comptage regroupé côté serveur
-    const tripIds = trips.map((t) => t.id);
-    const usedTickets = tripIds.length
-      ? await db.ticket.findMany({
-          where: { status: "USED", booking: { tripId: { in: tripIds } } },
-          select: { booking: { select: { tripId: true } } },
-        })
-      : [];
+    // Passagers embarqués PAR PLACE (§24) : occupancy.boardedAt fait foi —
+    // fallback héritage (ticket USED) UNIQUEMENT si AUCUNE place de la
+    // réservation n'est datée. Comptage en places (1 billet = N places).
+    const bookingsWithBoarded = new Set<string>();
+    for (const t of trips) {
+      for (const o of t.occupancies) {
+        if (o.boardedAt !== null) bookingsWithBoarded.add(o.bookingId);
+      }
+    }
     const boardedByTrip = new Map<string, number>();
-    for (const t of usedTickets) {
-      boardedByTrip.set(t.booking.tripId, (boardedByTrip.get(t.booking.tripId) ?? 0) + 1);
+    for (const t of trips) {
+      let boarded = 0;
+      for (const o of t.occupancies) {
+        if (o.boardedAt !== null || (o.booking.ticket?.status === "USED" && !bookingsWithBoarded.has(o.bookingId))) {
+          boarded++;
+        }
+      }
+      if (boarded > 0) boardedByTrip.set(t.id, boarded);
     }
 
     const data = trips.map((t) => ({

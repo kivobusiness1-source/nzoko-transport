@@ -242,7 +242,15 @@ export const api = {
   // CHECKER
   // ============================================================
   checker: {
-    scan: (code: string) => request<ScanResultDTO>("/checker/scan", { method: "POST", body: JSON.stringify({ code }) }),
+    /** Aperçu (preview) ou embarquement (seatNumbers ciblés = sélection du groupe). */
+    scan: (
+      code: string,
+      opts?: { preview?: boolean; seatNumbers?: string[] }
+    ) =>
+      request<ScanResultDTO>("/checker/scan", {
+        method: "POST",
+        body: JSON.stringify({ code, ...opts }),
+      }),
     trips: () => request<BoardingTripDTO[]>("/checker/trips"),
   },
 

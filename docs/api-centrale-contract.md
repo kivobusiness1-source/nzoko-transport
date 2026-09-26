@@ -244,6 +244,35 @@ Le bouton « J'ai payé » n'est JAMAIS une preuve.
   DOIT être documentée dans ce fichier et validée par les deux équipes.
 - Incompatibilité détectée → signaler, ne JAMAIS inventer une solution locale.
 
+### 6.1 Extension documentée — embarquement PAR PLACE (passagers nommés, §24)
+
+> Extension rétro-compatible, en vigueur à compter de la version de ce
+> document. Aucun champ existant n'est supprimé ni renommé.
+
+- **`SeatOccupancy.boardedAt`** (datetime, nullable) : horizon d'embarquement
+  de LA place. `null` = passager pas encore monté à bord. Le statut
+  contractuel `BOARDED` d'une place est désormais dérivé de `boardedAt`
+  (fallback héritage : ticket `USED` pour les groupes embarqués avant
+  l'extension — les deux sites doivent appliquer le MÊME fallback).
+- **`POST /api/checker/scan`** (endpoint interne checker, auth cookie
+  agent + `checker:scan`, rate-limité) accepte deux options optionnelles :
+  - `preview: true` → exécute TOUTES les vérifications (agence, billet,
+    paiement, voyage) SANS aucune mutation ; répond `VALID` + `preview:true`
+    avec la liste des places. Un groupe déjà entièrement embarqué répond
+    `ALREADY_USED`.
+  - `seatNumbers: ["01","03"]` → n'embarque QUE ces places (les autres
+    restent `PAID`, embarquables plus tard en rescannant le même billet,
+    même si le ticket est déjà `USED`). Absent = tout le groupe embarque
+    (comportement historique).
+- **`ScanResultDTO.ticket.seats[]`** (nouveau champ, toujours présent) :
+  `{ seatNumber, seatType, passengerName, isBuyer, boardedAt }[]` — LE
+  passager de CHAQUE place (extension passagers nommés §7). Les champs
+  historiques `passengerName`/`seatNumber` restent = acheteur + place
+  principale (compat SITE AGENCES).
+- **Événements** : un `TICKET_BOARDED` est émis PAR PLACE embarquée
+  (payload `{ reference, seatNumber }`) — le plan de sièges temps réel des
+  deux sites reflète chaque passager individuellement.
+
 ## 7. Variables d'environnement
 
 | Variable | Rôle |

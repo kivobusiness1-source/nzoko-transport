@@ -383,7 +383,7 @@ export function PassengerStep({ trip, seatMap, seatIds, submitting, onSubmit }: 
                     Quartier d&apos;arrêt à {trip.destinationCityName}{" "}
                     <span className="font-normal text-muted-foreground">(optionnel)</span>
                   </label>
-                  <Select value={neighborhoodId || undefined} onValueChange={setNeighborhoodId}>
+                  <Select value={neighborhoodId || ""} onValueChange={setNeighborhoodId}>
                     <SelectTrigger
                       id="drop-off-neighborhood"
                       className="mt-2 h-11 w-full bg-background"

@@ -32,13 +32,19 @@ export async function GET(req: NextRequest) {
       include: {
         route: { include: { originCity: true, destinationCity: true } },
         bus: true,
-        bookings: {
-          where: { status: "CONFIRMED" },
+        occupancies: {
+          where: { booking: { status: "CONFIRMED" } },
           include: {
             seat: true,
             passenger: { select: { firstName: true, lastName: true } },
-            ticket: { select: { status: true } },
-            dropOffNeighborhood: { select: { name: true } },
+            booking: {
+              select: {
+                bookingReference: true,
+                dropOffNeighborhood: { select: { name: true } },
+                ticket: { select: { status: true } },
+                passenger: { select: { firstName: true, lastName: true } },
+              },
+            },
           },
           orderBy: { seat: { seatNumber: "asc" } },
         },
@@ -47,13 +53,25 @@ export async function GET(req: NextRequest) {
     });
 
     const data = trips.map((t) => {
-      const passengers = t.bookings.map((b) => ({
-        seatNumber: b.seat.seatNumber,
-        passengerName: `${b.passenger.firstName} ${b.passenger.lastName}`,
-        boarded: b.ticket?.status === "USED",
-        reference: b.bookingReference,
-        dropOffNeighborhoodName: b.dropOffNeighborhood?.name ?? null,
-      }));
+      // Passagers PAR PLACE (§24 — passagers nommés) : chaque place porte SON
+      // voyageur. Fallback héritage (ticket USED) UNIQUEMENT si AUCUNE place
+      // de la réservation n'est datée (embarquement partiel sinon faussé).
+      const bookingsWithBoarded = new Set(
+        t.occupancies.filter((o) => o.boardedAt !== null).map((o) => o.bookingId)
+      );
+      const passengers = t.occupancies.map((o) => {
+        // Passager de LA place, à défaut l'acheteur de la réservation.
+        const passenger = o.passenger ?? o.booking.passenger;
+        return {
+          seatNumber: o.seat.seatNumber,
+          passengerName: `${passenger.firstName} ${passenger.lastName}`.trim() || "Passager",
+          boarded:
+            o.boardedAt !== null ||
+            (o.booking.ticket?.status === "USED" && !bookingsWithBoarded.has(o.bookingId)),
+          reference: o.booking.bookingReference,
+          dropOffNeighborhoodName: o.booking.dropOffNeighborhood?.name ?? null,
+        };
+      });
       return {
         id: t.id,
         code: t.code,

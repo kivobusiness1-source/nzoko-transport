@@ -434,10 +434,23 @@ export interface TripContactsDTO {
 // ---------- CHECKER ----------
 export type ScanResultCode = "VALID" | "ALREADY_USED" | "INVALID" | "PAYMENT_NOT_CONFIRMED" | "TRIP_CANCELLED" | "WRONG_AGENCY";
 
+/** Une place du groupe au scan d'embarquement (extension passagers nommés §24). */
+export interface ScanSeatDTO {
+  seatNumber: string;
+  seatType: SeatType;
+  passengerName: string;
+  /** true = passager acheteur (contact de référence de la réservation). */
+  isBuyer: boolean;
+  /** null = passager pas encore embarqué. */
+  boardedAt: string | null;
+}
+
 export interface ScanResultDTO {
   result: ScanResultCode;
   message: string;
   boarded: boolean;
+  /** true = aperçu SANS mutation : vérifications passées, embarquement à confirmer. */
+  preview?: boolean;
   ticket: {
     reference: string;
     token: string;
@@ -456,6 +469,8 @@ export interface ScanResultDTO {
     agencyAddress: string | null;
     checkedAt: string | null;
     checkedByName: string | null;
+    /** Toutes les places du billet avec LEUR passager nommé (multi-passagers §24). */
+    seats: ScanSeatDTO[];
   } | null;
 }
 
