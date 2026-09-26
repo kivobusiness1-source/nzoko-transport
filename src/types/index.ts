@@ -236,6 +236,11 @@ export interface CreateBookingInput {
   seatIds?: string[];
   /** Passager complet (flux historique) — requis si `customer` absent. */
   passenger?: PassengerInput;
+  /** Passagers NOMMÉS par place (extension §24, alignés par index sur
+   *  seatIds) — chaque place peut porter un voyageur différent (famille,
+   *  groupe). Phone optionnel : le serveur utilise le téléphone de
+   *  l'acheteur comme contact de repli. */
+  passengers?: Array<Omit<PassengerInput, "phone"> & { phone?: string }>;
   /** Client simplifié (contrat §7) — utilisé si passenger absent. */
   customer?: HoldCustomerInput;
   channel?: "WEB" | "AGENT";
@@ -271,8 +276,9 @@ export interface BookingDTO {
     agencyName: string;
   };
   seat: { id: string; seatNumber: string; type: SeatType };
-  /** Toutes les places de la réservation (multi-sièges, contrat §7). */
-  seats: { id: string; seatNumber: string; type: SeatType }[];
+  /** Toutes les places de la réservation (multi-sièges, contrat §7) —
+   *  avec le passager nommé de chaque place. */
+  seats: { id: string; seatNumber: string; type: SeatType; passenger: { firstName: string; lastName: string } | null }[];
   passenger: { id: string; firstName: string; lastName: string; phone: string; documentNumber: string | null };
   dropOffNeighborhood?: { id: string; name: string; cityName: string } | null;
   agencyName: string | null;

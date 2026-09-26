@@ -496,7 +496,8 @@ model Passenger {
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
 
-  bookings Booking[]
+  bookings      Booking[]
+  occupancies   SeatOccupancy[] @relation("OccupancyPassenger")
 
   @@index([phone])
   @@index([email])
@@ -551,19 +552,23 @@ model Booking {
 // Statut exposé via l'API centrale : AVAILABLE (absence de ligne / verrou
 // expiré) | HELD | PAID (= BOOKED) | BOARDED (ticket USED) | CANCELLED.
 model SeatOccupancy {
-  id        String    @id @default(cuid())
-  tripId    String
-  trip      Trip      @relation(fields: [tripId], references: [id], onDelete: Cascade)
-  seatId    String
-  seat      Seat      @relation(fields: [seatId], references: [id])
-  bookingId String // PLUS unique : une réservation multi-sièges partage son id sur N lignes
-  booking   Booking   @relation(fields: [bookingId], references: [id], onDelete: Cascade)
-  status    String    @default("HELD") // HELD (verrou temporaire) | BOOKED (confirmé/paid)
-  expiresAt DateTime? // fin du verrou quand HELD
-  createdAt DateTime  @default(now())
+  id          String     @id @default(cuid())
+  tripId      String
+  trip        Trip       @relation(fields: [tripId], references: [id], onDelete: Cascade)
+  seatId      String
+  seat        Seat       @relation(fields: [seatId], references: [id])
+  bookingId   String // PLUS unique : une réservation multi-sièges partage son id sur N lignes
+  booking     Booking    @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+  // Passager de LA place (multi-passagers nommés) — null = passager acheteur
+  passengerId String?
+  passenger   Passenger? @relation("OccupancyPassenger", fields: [passengerId], references: [id])
+  status      String     @default("HELD") // HELD (verrou temporaire) | BOOKED (confirmé/paid)
+  expiresAt   DateTime?  // fin du verrou quand HELD
+  createdAt   DateTime   @default(now())
 
   @@unique([tripId, seatId]) // ⚠️ verrou critique anti-concurrence (TripSeat)
   @@index([bookingId])
+  @@index([passengerId])
   @@index([expiresAt])
   @@index([status])
 }

@@ -1,17 +1,17 @@
 "use client";
 
 // ============================================================
-// Océan du Nord — Étape 4 : informations passager (react-hook-form + Zod)
-// La création de la réservation (verrou du siège) est déléguée au parent.
-// Inclut le choix OPTIONNEL du quartier d'arrêt à la destination
-// (quartiers configurés dans l'admin → Parc → Quartiers).
+// Océan du Nord — Étape 4 : informations passagers (react-hook-form + Zod)
+// MULTI-PLACES : 1 carte acheteur (formulaire complet) + 1 carte compacte
+// par place supplémentaire (passager nommé — extension contrat §24).
+// La création de la réservation (verrou des sièges) est déléguée au parent.
 // ============================================================
 
 import { useEffect, useState } from "react";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useForm } from "react-hook-form";
 import { z } from "zod";
-import { Bus, IdCard, Lock, Mail, MapPin, Phone, Sparkles, User } from "lucide-react";
+import { Bus, IdCard, Lock, Mail, MapPin, Phone, Sparkles, User, Users } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
@@ -53,7 +53,8 @@ interface PassengerStepProps {
   /** Places sélectionnées (multi-sièges, contrat §7). */
   seatIds: string[];
   submitting: boolean;
-  onSubmit: (passenger: PassengerInput, dropOffNeighborhoodId?: string) => void;
+  /** Passagers NOMMÉS par place (index 0 = acheteur, extension §24). */
+  onSubmit: (passengers: PassengerInput[], dropOffNeighborhoodId?: string) => void;
 }
 
 export function PassengerStep({ trip, seatMap, seatIds, submitting, onSubmit }: PassengerStepProps) {
@@ -61,6 +62,26 @@ export function PassengerStep({ trip, seatMap, seatIds, submitting, onSubmit }: 
   const total = trip.price * selectedSeats.length;
   const seatsLabel = selectedSeats.map((s) => s.seatNumber).join(", ");
   const session = useApp((s) => s.session);
+  // Passagers nommés des places 2..N (la place 1 = l'acheteur). Tél. acheteur
+  // = contact de repli côté serveur — pas besoin de le ressaisir ici.
+  // Initialisé AU MONTAGE avec le bon nombre de cartes (seatCount - 1).
+  const [extras, setExtras] = useState<{ firstName: string; lastName: string }[]>(() =>
+    Array.from({ length: Math.max(0, selectedSeats.length - 1) }, () => ({ firstName: "", lastName: "" }))
+  );
+  const [extraErrors, setExtraErrors] = useState<Record<number, string>>({});
+
+  // Réinitialisation des cartes si le nombre de places change — pattern React
+  // officiel « ajuster l'état pendant le rendu » (même pattern que les quartiers).
+  const seatCount = selectedSeats.length;
+  const [lastSeatCount, setLastSeatCount] = useState(seatCount);
+  if (lastSeatCount !== seatCount) {
+    setLastSeatCount(seatCount);
+    setExtras((prev) =>
+      Array.from({ length: Math.max(0, seatCount - 1) }, (_, i) => prev[i] ?? { firstName: "", lastName: "" })
+    );
+    setExtraErrors({});
+  }
+
   // Client connecté : formulaire pré-rempli (éditable) depuis la session.
   const connectedClient = session?.role === "PASSENGER" ? session : null;
 
@@ -106,7 +127,20 @@ export function PassengerStep({ trip, seatMap, seatIds, submitting, onSubmit }: 
   });
 
   const submit = (values: PassengerFormValues) => {
-    onSubmit(
+    // Validation des passagers nommés des places 2..N (prénom/nom requis).
+    const errs: Record<number, string> = {};
+    extras.forEach((ex, i) => {
+      if (ex.firstName.trim().length < 2 || ex.lastName.trim().length < 2) {
+        errs[i] = "Prénom et nom requis (2 caractères minimum).";
+      }
+    });
+    if (Object.keys(errs).length > 0) {
+      setExtraErrors(errs);
+      return;
+    }
+    setExtraErrors({});
+    // passengers[0] = l'acheteur (place 1), les suivants = cartes nommées.
+    const passengers = [
       {
         firstName: values.firstName.trim(),
         lastName: values.lastName.trim(),
@@ -114,8 +148,9 @@ export function PassengerStep({ trip, seatMap, seatIds, submitting, onSubmit }: 
         email: values.email?.trim() ? values.email.trim() : undefined,
         documentNumber: values.documentNumber?.trim() ? values.documentNumber.trim() : undefined,
       },
-      neighborhoodId || undefined
-    );
+      ...extras.map((ex) => ({ firstName: ex.firstName.trim(), lastName: ex.lastName.trim() })),
+    ];
+    onSubmit(passengers as PassengerInput[], neighborhoodId || undefined);
   };
 
   return (
@@ -158,7 +193,9 @@ export function PassengerStep({ trip, seatMap, seatIds, submitting, onSubmit }: 
 
       <Card>
         <CardHeader>
-          <CardTitle className="text-base">Informations du passager</CardTitle>
+          <CardTitle className="text-base">
+            {selectedSeats.length > 1 ? "Acheteur (passager 1 · place " + selectedSeats[0]?.seatNumber + ")" : "Informations du passager"}
+          </CardTitle>
           <p className="text-sm text-muted-foreground">
             Ces informations figurent sur le billet et sont vérifiées à l&apos;embarquement.
           </p>
@@ -273,6 +310,65 @@ export function PassengerStep({ trip, seatMap, seatIds, submitting, onSubmit }: 
                   )}
                 />
               </div>
+
+              {/* Passagers nommés des places 2..N (extension contrat §24).
+                  La place 1 porte le nom de l'acheteur (formulaire ci-dessus). */}
+              {extras.map((ex, i) => {
+                const seat = selectedSeats[i + 1];
+                return (
+                  <div key={seat?.id ?? i} className="rounded-lg border bg-muted/30 p-3 sm:p-4">
+                    <div className="mb-2.5 flex items-center justify-between gap-2">
+                      <p className="flex items-center gap-1.5 text-sm font-medium">
+                        <Users className="size-4 shrink-0 text-primary" aria-hidden />
+                        Passager {i + 2} · place{" "}
+                        <span className="rounded bg-primary/10 px-1.5 py-0.5 font-bold text-primary">
+                          {seat?.seatNumber ?? "?"}
+                        </span>
+                      </p>
+                      <p className="hidden text-[11px] text-muted-foreground sm:block">Contact : téléphone de l&apos;acheteur</p>
+                    </div>
+                    <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                      <div>
+                        <label htmlFor={`extra-first-${i}`} className="text-sm font-medium">
+                          Prénom <span className="text-red-500" aria-hidden>*</span>
+                        </label>
+                        <Input
+                          id={`extra-first-${i}`}
+                          value={ex.firstName}
+                          onChange={(e) =>
+                            setExtras((prev) => prev.map((p, j) => (j === i ? { ...p, firstName: e.target.value } : p)))
+                          }
+                          autoComplete="off"
+                          className="mt-1.5 h-11"
+                          placeholder="Ex : Paul"
+                          aria-invalid={Boolean(extraErrors[i])}
+                        />
+                      </div>
+                      <div>
+                        <label htmlFor={`extra-last-${i}`} className="text-sm font-medium">
+                          Nom <span className="text-red-500" aria-hidden>*</span>
+                        </label>
+                        <Input
+                          id={`extra-last-${i}`}
+                          value={ex.lastName}
+                          onChange={(e) =>
+                            setExtras((prev) => prev.map((p, j) => (j === i ? { ...p, lastName: e.target.value } : p)))
+                          }
+                          autoComplete="off"
+                          className="mt-1.5 h-11"
+                          placeholder="Ex : Mbemba"
+                          aria-invalid={Boolean(extraErrors[i])}
+                        />
+                      </div>
+                    </div>
+                    {extraErrors[i] && (
+                      <p role="alert" className="mt-2 text-sm text-red-600 dark:text-red-400">
+                        {extraErrors[i]}
+                      </p>
+                    )}
+                  </div>
+                );
+              })}
 
               {/* Quartier d'arrêt à la destination — quartiers configurés
                   dans l'admin (Parc → Quartiers). Optionnel : sans choix,

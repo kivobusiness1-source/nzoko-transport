@@ -274,7 +274,10 @@ export interface CreateBookingContext {
 const bookingInclude = {
   trip: { include: { route: { include: { originCity: true, destinationCity: true } }, bus: true, agency: true } },
   seat: true,
-  occupancies: { include: { seat: true }, orderBy: { seat: { seatNumber: "asc" as const } } },
+  occupancies: {
+    include: { seat: true, passenger: { select: { firstName: true, lastName: true } } },
+    orderBy: { seat: { seatNumber: "asc" as const } },
+  },
   passenger: true,
   agency: true,
   createdBy: true,
@@ -398,6 +401,22 @@ export async function createBooking(input: CreateBookingInput, ctx: CreateBookin
   // Téléphone passager : normalisé E.164 digits (compatibilité MoMo OK)
   const passengerPhone = normalizePhone(p.phone) ?? p.phone.trim();
 
+  // Passagers NOMMÉS par place (extension §24) : alignés par index sur les
+  // places ; l'acheteur est le fallback (place sans passager nommé). Le
+  // téléphone de l'acheteur sert de contact de repli (Passenger.phone requis).
+  const seatPassengers = seats.map((_, index) => {
+    const named = input.passengers?.[index];
+    if (!named?.firstName?.trim() || !named?.lastName?.trim()) return null;
+    const phone = normalizePhone(named.phone ?? p.phone) ?? passengerPhone;
+    return {
+      firstName: named.firstName.trim(),
+      lastName: named.lastName.trim(),
+      phone,
+      email: named.email?.trim() || null,
+      documentNumber: named.documentNumber?.trim() || null,
+    };
+  });
+
   const expiresAt = new Date(now.getTime() + SEAT_HOLD_MINUTES * 60 * 1000);
 
   try {
@@ -464,11 +483,40 @@ export async function createBooking(input: CreateBookingInput, ctx: CreateBookin
       // rejette TOUTE double réservation simultanée, quel que soit le nombre
       // de clients parallèles — UNE seule transaction gagne, les autres
       // reçoivent 409 SEAT_ALREADY_TAKEN (rollback complet du groupe).
+      // Passagers nommés : chaque place est liée à SON passager (créé ou
+      // réutilisé par téléphone+nom) — null = passager acheteur.
+      const seatPassengerIds: (string | null)[] = [];
+      for (let i = 0; i < seats.length; i++) {
+        const sp = seatPassengers[i];
+        if (!sp) {
+          seatPassengerIds.push(null);
+          continue;
+        }
+        const existingSp = await tx.passenger.findFirst({
+          where: { phone: sp.phone, lastName: sp.lastName },
+        });
+        const id = existingSp
+          ? existingSp.id
+          : (
+              await tx.passenger.create({
+                data: {
+                  firstName: sp.firstName,
+                  lastName: sp.lastName,
+                  phone: sp.phone,
+                  email: sp.email,
+                  documentNumber: sp.documentNumber,
+                },
+              })
+            ).id;
+        seatPassengerIds.push(id);
+      }
+
       await tx.seatOccupancy.createMany({
-        data: seats.map((s) => ({
+        data: seats.map((s, i) => ({
           tripId: trip.id,
           seatId: s.id,
           bookingId: booking.id,
+          passengerId: seatPassengerIds[i],
           status: "HELD",
           expiresAt,
         })),
@@ -639,10 +687,17 @@ export function toBookingDTO(b: BookingWithRelations | BookingWithOptionalDropOf
   // Places de la réservation (multi-sièges) : occupancies triées par numéro.
   // Tolère l'absence de l'include (listes partielles) → repli sur la place principale.
   const occupancyRows = "occupancies" in b && Array.isArray(b.occupancies) ? b.occupancies : [];
+  const buyer = { firstName: b.passenger.firstName, lastName: b.passenger.lastName };
   const allSeats =
     occupancyRows.length > 0
-      ? occupancyRows.map((o) => ({ id: o.seat.id, seatNumber: o.seat.seatNumber, type: o.seat.type as "STANDARD" | "VIP" }))
-      : [{ id: b.seat.id, seatNumber: b.seat.seatNumber, type: b.seat.type as "STANDARD" | "VIP" }];
+      ? occupancyRows.map((o) => ({
+          id: o.seat.id,
+          seatNumber: o.seat.seatNumber,
+          type: o.seat.type as "STANDARD" | "VIP",
+          // Passager nommé de la place, sinon l'acheteur (fallback).
+          passenger: o.passenger ?? buyer,
+        }))
+      : [{ id: b.seat.id, seatNumber: b.seat.seatNumber, type: b.seat.type as "STANDARD" | "VIP", passenger: buyer }];
   const contractMap: Record<string, "HELD" | "CONFIRMED" | "CANCELLED" | "EXPIRED"> = {
     PENDING: "HELD",
     CONFIRMED: "CONFIRMED",
@@ -693,7 +748,7 @@ type BookingDetailWithRelations = Prisma.BookingGetPayload<{
   include: {
     trip: { include: { route: { include: { originCity: true; destinationCity: true } }, bus: true, agency: true } };
     seat: true;
-    occupancies: { include: { seat: true }, orderBy: { seat: { seatNumber: "asc" } } };
+    occupancies: { include: { seat: true, passenger: { select: { firstName: true; lastName: true } } }, orderBy: { seat: { seatNumber: "asc" } } };
     passenger: true;
     agency: true;
     createdBy: true;

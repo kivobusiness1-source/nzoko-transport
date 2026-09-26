@@ -71,7 +71,7 @@ export function TicketCard({ detail, channel, onNewBooking }: TicketCardProps) {
       <div class="row"><span>Départ</span><b>${formatDate(detail.trip.departureTime)} · ${formatTime(detail.trip.departureTime)}</b></div>
       <div class="row"><span>Arrivée estimée</span><b>${formatTime(detail.trip.estimatedArrivalTime)}</b></div>
       <div class="row"><span>Bus</span><b>${detail.trip.busRegistration} · ${detail.trip.agencyName}</b></div>
-      <div class="row"><span>Passager</span><b>${detail.passenger.firstName} ${detail.passenger.lastName}</b></div>
+      <div class="row"><span>Passagers</span><b>${detail.seats.map((s) => `${s.passenger?.firstName ?? detail.passenger.firstName} ${s.passenger?.lastName ?? detail.passenger.lastName} (${s.seatNumber})`).join(" · ")}</b></div>
       ${detail.dropOffNeighborhood ? `<div class="row"><span>Arrêt demandé</span><b>${detail.dropOffNeighborhood.name} (${detail.trip.destinationCityName})</b></div>` : ""}
       <div class="seat">${detail.seats.length > 1 ? "PLACES " : "SIÈGE "}${detail.seats.map((s) => s.seatNumber).join(" · ")}${detail.seat.type === "VIP" ? " · VIP" : ""}</div>
       ${qrDataUrl ? `<div class="qr"><img src="${qrDataUrl}" alt="QR"></div>` : ""}
@@ -171,15 +171,26 @@ export function TicketCard({ detail, channel, onNewBooking }: TicketCardProps) {
             )}
           </div>
 
-          {/* Passager + siège */}
-          <div className="flex items-center justify-between rounded-xl border border-dashed p-4">
+          {/* Passagers (nommés par place) + sièges */}
+          <div className="flex items-start justify-between gap-3 rounded-xl border border-dashed p-4">
             <div className="min-w-0">
               <p className="flex items-center gap-1.5 text-[11px] uppercase tracking-wide text-muted-foreground">
-                <User className="size-3.5" aria-hidden /> Passager
+                <User className="size-3.5" aria-hidden /> {detail.seats.length > 1 ? `Passagers (${detail.seats.length})` : "Passager"}
               </p>
-              <p className="truncate text-base font-bold">
-                {detail.passenger.firstName} {detail.passenger.lastName}
-              </p>
+              {detail.seats.length > 1 ? (
+                <ul className="mt-1 space-y-0.5">
+                  {detail.seats.map((s) => (
+                    <li key={s.id} className="truncate text-sm">
+                      <span className="font-semibold">{s.passenger?.firstName} {s.passenger?.lastName}</span>
+                      <span className="ml-1.5 rounded bg-primary/10 px-1 py-0.5 text-[10px] font-bold text-primary">{s.seatNumber}</span>
+                    </li>
+                  ))}
+                </ul>
+              ) : (
+                <p className="truncate text-base font-bold">
+                  {detail.passenger.firstName} {detail.passenger.lastName}
+                </p>
+              )}
               <p className="mt-0.5 text-xs text-muted-foreground">{detail.trip.agencyName} · {formatMoney(detail.amount)}</p>
             </div>
             <div className="shrink-0 text-center">

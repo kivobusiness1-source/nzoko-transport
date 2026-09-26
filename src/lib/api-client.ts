@@ -157,13 +157,15 @@ export const api = {
   bookings: {
     /** Contrat §7 — réservation temporaire multi-sièges (hold 10 min).
      *  idempotencyKey : généré UNE FOIS par commande côté client (useRef) et
-     *  réutilisé à chaque nouvelle tentative d'envoi (contrat §16). */
+     *  réutilisé à chaque nouvelle tentative d'envoi (contrat §16).
+     *  passengers : extension §24 — passagers nommés par place (index = place). */
     hold: (input: {
       tripId: string;
       seatIds: string[];
       agencyId?: string;
       customer?: { name: string; phone: string; email?: string };
       passenger?: { firstName: string; lastName: string; phone: string; email?: string; documentNumber?: string };
+      passengers?: { firstName: string; lastName: string; phone?: string; email?: string; documentNumber?: string }[];
       promoCode?: string;
       dropOffNeighborhoodId?: string;
     }, idempotencyKey?: string) =>

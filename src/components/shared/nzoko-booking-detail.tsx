@@ -134,8 +134,29 @@ export function NzokoBookingDetail({ detail, onCancel, cancelLoading, className 
 
       {/* Passager + siège */}
       <section aria-label="Passager et siège">
-        <h3 className="mb-1 text-xs font-semibold uppercase tracking-wider text-muted-foreground">Passager</h3>
-        <InfoRow icon={User} label="Nom" value={`${detail.passenger.firstName} ${detail.passenger.lastName}`} />
+        <h3 className="mb-1 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+          {detail.seats && detail.seats.length > 1 ? "Passagers" : "Passager"}
+        </h3>
+        {detail.seats && detail.seats.length > 1 ? (
+          // Multi-passagers nommés : chaque place porte SON voyageur (§24).
+          <div className="space-y-1">
+            {detail.seats.map((s) => (
+              <div key={s.id} className="flex items-center gap-2 text-sm">
+                <span className="rounded bg-primary/10 px-1.5 py-0.5 text-[11px] font-bold text-primary">
+                  {s.seatNumber}
+                </span>
+                <span className="font-medium">
+                  {s.passenger?.firstName} {s.passenger?.lastName}
+                </span>
+                {s.passenger && s.passenger.firstName === detail.passenger.firstName && s.passenger.lastName === detail.passenger.lastName && (
+                  <span className="text-[11px] text-muted-foreground">(acheteur·e)</span>
+                )}
+              </div>
+            ))}
+          </div>
+        ) : (
+          <InfoRow icon={User} label="Nom" value={`${detail.passenger.firstName} ${detail.passenger.lastName}`} />
+        )}
         <InfoRow icon={Phone} label="Téléphone" value={detail.passenger.phone} />
         <InfoRow
           icon={TicketIcon}

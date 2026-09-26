@@ -223,18 +223,20 @@ export default function BookingFlow({ channel }: { channel: "WEB" | "AGENT" }) {
   }, [step, trip, trip?.id]);
 
   const createBooking = useCallback(
-    async (passenger: PassengerInput, dropOffNeighborhoodId?: string) => {
-      if (!trip || seatIds.length === 0) return;
+    async (passengers: PassengerInput[], dropOffNeighborhoodId?: string) => {
+      if (!trip || seatIds.length === 0 || passengers.length === 0) return;
       setSubmitting(true);
       try {
         // Contrat §7 : hold multi-sièges + agence choisie (filtre « Trouver
         // mon agence » = canal de vente de la réservation) + clé idempotente.
+        // Extension §24 : passagers nommés par place (passengers[0] = acheteur).
         const created = await api.bookings.hold(
           {
             tripId: trip.id,
             seatIds,
             agencyId: agency?.id,
-            passenger,
+            passenger: passengers[0],
+            passengers,
             dropOffNeighborhoodId,
           },
           holdIdempotencyKeyRef.current

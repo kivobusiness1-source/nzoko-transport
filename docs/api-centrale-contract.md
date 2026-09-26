@@ -123,6 +123,12 @@ Header recommandé : `Idempotency-Key: <uuid>`.
 ```
 - `customer` (contrat minimal) OU `passenger` complet
   `{firstName, lastName, phone, email?, documentNumber?}` — les deux acceptés.
+- **Extension documentée §24 — `passengers[]` (multi-passagers nommés)** :
+  tableau aligné par index sur `seatIds`, chaque élément
+  `{firstName, lastName, phone?, email?, documentNumber?}`. Le téléphone de
+  l'acheteur sert de contact de repli. Réponse : `seats[i].passenger = {firstName, lastName}`.
+  Si `passengers` est absent, toutes les places portent le passager acheteur
+  (comportement §7 strict).
 - **Validations serveur (§7.1-9)** : voyage existant + réservable ;
   agence existante + ACTIVE ; places appartenant au bus du voyage ;
   disponibilité ; idempotence ; téléphone normalisé E.164.

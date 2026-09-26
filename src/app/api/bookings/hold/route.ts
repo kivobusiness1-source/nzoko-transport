@@ -47,6 +47,20 @@ const holdSchema = z.object({
   agencyId: z.string().trim().min(1).max(60).optional(),
   customer: customerSchema.optional(),
   passenger: passengerSchema.optional(),
+  // Extension §24 — passagers nommés par place (alignés sur seatIds).
+  // Phone OPTIONNEL : le serveur utilise le téléphone de l'acheteur en repli.
+  passengers: z
+    .array(
+      passengerSchema.extend({
+        phone: z
+          .string()
+          .trim()
+          .regex(/^(\+|00|\d)[\d\s.-]+$/, "Numéro de téléphone invalide.")
+          .optional(),
+      })
+    )
+    .max(6)
+    .optional(),
   promoCode: z.string().trim().min(3).max(40).optional(),
   dropOffNeighborhoodId: z.string().trim().min(1).max(60).optional(),
 });
@@ -88,6 +102,7 @@ export async function POST(req: NextRequest) {
         seatIds: input.seatIds,
         agencyId: input.agencyId,
         passenger: input.passenger,
+        passengers: input.passengers,
         customer: input.customer,
         promoCode: input.promoCode,
         dropOffNeighborhoodId: input.dropOffNeighborhoodId,

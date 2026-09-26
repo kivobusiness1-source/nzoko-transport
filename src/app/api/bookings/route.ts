@@ -28,7 +28,9 @@ const bookingSchema = z.object({
   // Multi-sièges (contrat §7) — sinon siège unique historique.
   seatId: z.string().trim().min(1, "Siège requis.").optional(),
   seatIds: z.array(z.string().trim().min(1)).min(1).max(6).optional(),
-  passenger: passengerSchema,
+  passenger: passengerSchema.optional(),
+  // Extension §24 — passagers nommés par place (alignés sur seatIds).
+  passengers: z.array(passengerSchema.partial({ phone: true })).max(6).optional(),
   customer: z
     .object({
       name: z.string().trim().min(2).max(120),
