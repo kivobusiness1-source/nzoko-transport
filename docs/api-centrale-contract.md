@@ -228,6 +228,42 @@ humaine (guichet/comptable, via §3.11 canal service). Le SITE AGENCES peut
 interroger ce endpoint avant d'initier un paiement (§3.10/§3.11) pour ne
 proposer à ses guichets que les canaux réellement actifs.
 
+### 3.15 `GET /api/events/client/stream` — flux SSE des événements (§14/§15)
+NOUVEAU (extension documentée §24 AVANT usage — lecteurs : SITE CLIENT + SITE AGENCES).
+Variante Server-Sent Events de §3.13, MÊMES filtres (`tripId=`, `bookingId=`
+id OU référence, `types=A,B`) et MÊME modèle de sécurité (payloads SANS PII).
+Le polling §3.13 RESTE LA RÉFÉRENCE : le SSE est un ajout optionnel — tout
+consommateur doit savoir retomber sur §3.13 si le flux échoue.
+
+```
+GET /api/events/client/stream?tripId=…&types=SEAT_HELD,SEAT_PAID
+Accept: text/event-stream          (implicite avec EventSource)
+```
+Réponse `200` `Content-Type: text/event-stream; charset=utf-8` :
+```
+retry: 5000                          ← délai de reconnexion conseillé
+data: {"type":"RESYNC","at":"…"}     ← envoyé À CHAQUE (re)connexion
+data: {…événement §3.13…}            ← 1 frame par événement
+: ping                               ← heartbeat ~15 s
+```
+- **Frames SANS champ `event:`** (data-only) : consommables avec
+  `EventSource.onmessage` ; le JSON porte `type` (vocabulaire §3.13).
+- **Curseur** : chaque frame d'événement porte `id:` = id BDD ; à la
+  reconnexion, `Last-Event-ID` est repris automatiquement comme curseur
+  (équivalent de `since=` §3.13).
+- **RESYNC** : après toute ouverture/reconnexion, recharger la vérité
+  serveur (`GET /api/trips/{id}/seats` / `GET /api/bookings/{id}`) — règle
+  §15 inchangée : JAMAIS d'application locale des deltas.
+- **Cycle de vie** : le serveur ferme le flux après ~4 min (propre, fin de
+  stream) ; EventSource se reconnecte seul (`retry: 5000`). Heartbeats
+  `: ping` toutes les ~15 s (anti-timeout proxy). Latence de poussée ≤ ~3 s.
+- **Compatibilité** : `Cache-Control: no-cache, no-transform`,
+  `X-Accel-Buffering: no` (proxies). Si le flux ne s'ouvre pas (proxy
+  restrictif, réseau d'entreprise), utiliser §3.13 — comportement identique.
+- **Usage typique SITE CLIENT** : plan de sièges temps réel (étape siège) et
+  écran « paiement en attente au guichet » — `PAYMENT_SUCCESS` fait avancer
+  le client à son billet sans manipulation (canal §3.11).
+
 ---
 
 ## 4. Cycle de vie (§4/§10/§12)

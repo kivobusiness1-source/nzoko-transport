@@ -20,6 +20,7 @@ import { Label } from "@/components/ui/label";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { NzokoCountdown } from "@/components/shared/nzoko-countdown";
 import { api, ApiClientError, hasPerm } from "@/lib/api-client";
+import { useDomainEvents } from "@/hooks/use-domain-events";
 import { PAYMENT_PROVIDER_LABELS } from "@/lib/constants";
 import type { PaymentProvider } from "@/lib/constants";
 import { useApp } from "@/lib/store";
@@ -168,6 +169,37 @@ export function PaymentStep({ channel, booking, onPaid }: PaymentStepProps) {
       setError(apiError(err, "Impossible de récupérer le billet."));
     }
   }, [booking.bookingReference, onPaid]);
+
+  // ---- Temps réel (contrat §3.15) : guichet encaisse → billet apparaît ----
+  // Pendant une attente PENDING (espèces / carte / virement confirmés par le
+  // guichet via le canal service §3.11), on écoute les événements de LA
+  // réservation : PAYMENT_SUCCESS fait avancer le client à son billet sans
+  // aucune manipulation. RESYNC (ouverture/reconnexion du flux) re-vérifie
+  // la vérité serveur — couvre un webhook passé avant l'ouverture du flux.
+  const verifyPaidFromServer = useCallback(async () => {
+    try {
+      const d = await api.bookings.get(booking.bookingReference);
+      const paid = d.status === "CONFIRMED" || d.payments.some((p) => p.status === "SUCCESS");
+      if (paid) onPaid(d);
+    } catch {
+      // silencieux — la prochaine occurrence re-vérifiera
+    }
+  }, [booking.bookingReference, onPaid]);
+
+  const onBookingEvent = useCallback(
+    (e: { type: string }) => {
+      if (e.type === "PAYMENT_SUCCESS" || e.type === "RESYNC") void verifyPaidFromServer();
+    },
+    [verifyPaidFromServer]
+  );
+
+  useDomainEvents({
+    params:
+      payment?.status === "PENDING"
+        ? { bookingId: booking.id, types: ["PAYMENT_SUCCESS", "PAYMENT_FAILED", "BOOKING_CONFIRMED"] }
+        : null,
+    onEvent: onBookingEvent,
+  });
 
   const createPayment = async () => {
     setError(null);

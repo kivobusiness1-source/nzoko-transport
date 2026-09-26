@@ -22,6 +22,7 @@ import { SeatMap } from "@/features/booking/seat-map";
 import { TicketCard } from "@/features/booking/ticket-card";
 import { TripCard } from "@/features/booking/trip-card";
 import { api, ApiClientError } from "@/lib/api-client";
+import { useDomainEvents, type StreamedEvent } from "@/hooks/use-domain-events";
 import { addDaysStr, todayStr } from "@/lib/dates";
 import { formatDayLabel, formatTime } from "@/lib/format";
 import { useApp } from "@/lib/store";
@@ -185,42 +186,47 @@ export default function BookingFlow({ channel }: { channel: "WEB" | "AGENT" }) {
     []
   );
 
-  // ---------- TEMPS RÉEL (contrat §15) ----------
+  // ---------- TEMPS RÉEL (contrat §3.13/§3.15) ----------
   // Tant que le plan de sièges est affiché, on écoute les événements du
   // voyage : tout changement serveur (hold, paiement, annulation, embarquement
   // d'un autre client) déclenche un rechargement du plan — le SERVEUR reste
   // la source de vérité, jamais le cache frontend.
+  // Transport : SSE (poussée ~3 s) avec repli automatique en polling 5 s
+  // (hook useDomainEvents — §3.15).
+  const seatEventTypes = ["SEAT_HELD", "SEAT_RELEASED", "SEAT_PAID", "SEAT_CANCELLED", "BOOKING_CREATED", "BOOKING_CANCELLED", "TICKET_BOARDED"];
+  const onSeatEvent = useCallback(
+    (_e: StreamedEvent) => {
+      // RESYNC (reconnexion) ou événement du voyage → vérité serveur.
+      if (trip) void loadSeatMap(trip.id);
+    },
+    [trip, loadSeatMap]
+  );
+  const eventsTransport = useDomainEvents({
+    params: step === 3 && trip ? { tripId: trip.id, types: seatEventTypes } : null,
+    onEvent: onSeatEvent,
+  });
+
+  // Réconciliation sélection ↔ vérité serveur (§8) : si une place
+  // sélectionnée vient d'être prise par un autre client (hold/paiement)
+  // pendant que l'écran est ouvert, on la retire de la sélection et on
+  // prévient — l'utilisateur ne découvre pas le 409 à l'étape suivante.
   useEffect(() => {
-    if (step !== 3 || !trip) return;
-    let cancelled = false;
-    let timer: ReturnType<typeof setTimeout> | null = null;
-    let cursor: string | undefined;
-    const poll = async () => {
-      try {
-        const res = await api.events.list({
-          tripId: trip.id,
-          since: cursor,
-          types: ["SEAT_HELD", "SEAT_RELEASED", "SEAT_PAID", "SEAT_CANCELLED", "BOOKING_CREATED", "BOOKING_CANCELLED", "TICKET_BOARDED"],
-        });
-        if (cancelled) return;
-        cursor = res.cursor ?? cursor;
-        if (res.events.length > 0) {
-          // On recharge la vérité serveur (GET /api/trips/{id}/seats) —
-          // JAMAIS d'application locale des deltas (§15).
-          setSeatMap(await api.trips.seats(trip.id));
-        }
-      } catch {
-        // réseau/polling : silencieux, la prochaine itération réessaie
-      } finally {
-        if (!cancelled) timer = setTimeout(poll, 5000);
-      }
-    };
-    timer = setTimeout(poll, 5000);
-    return () => {
-      cancelled = true;
-      if (timer) clearTimeout(timer);
-    };
-  }, [step, trip, trip?.id]);
+    if (step !== 3 || !seatMap || seatIds.length === 0) return;
+    const taken = seatIds.filter((id) => {
+      const seat = seatMap.seats.find((s) => s.id === id);
+      return seat && seat.status !== "AVAILABLE" && seat.status !== "CANCELLED";
+    });
+    if (taken.length === 0) return;
+    const numbers = taken
+      .map((id) => seatMap.seats.find((s) => s.id === id)?.seatNumber ?? "?")
+      .join(", ");
+    setSeatIds((prev) => prev.filter((id) => !taken.includes(id)));
+    toast.info(
+      taken.length === 1
+        ? `La place ${numbers} vient d'être prise par un autre client — sélection mise à jour.`
+        : `Les places ${numbers} viennent d'être prises par d'autres clients — sélection mise à jour.`
+    );
+  }, [step, seatMap, seatIds]);
 
   const createBooking = useCallback(
     async (passengers: PassengerInput[], dropOffNeighborhoodId?: string) => {
@@ -530,9 +536,35 @@ export default function BookingFlow({ channel }: { channel: "WEB" | "AGENT" }) {
             <div className="space-y-3">
               {trip && (
                 <div className="rounded-xl border bg-muted/30 px-4 py-3 text-sm">
-                  <p className="font-semibold">
-                    {trip.originCityName} → {trip.destinationCityName} · départ {formatTime(trip.departureTime)}
-                  </p>
+                  <div className="flex items-center justify-between gap-2">
+                    <p className="font-semibold">
+                      {trip.originCityName} → {trip.destinationCityName} · départ {formatTime(trip.departureTime)}
+                    </p>
+                    {/* Temps réel §3.15 : le plan est rafraîchi automatiquement */}
+                    <span
+                      className={cn(
+                        "inline-flex shrink-0 items-center gap-1.5 rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide",
+                        eventsTransport === "polling"
+                          ? "bg-muted text-muted-foreground"
+                          : "bg-primary/10 text-primary"
+                      )}
+                      title={
+                        eventsTransport === "sse"
+                          ? "Temps réel actif — les places prises par d'autres clients apparaissent automatiquement."
+                          : eventsTransport === "polling"
+                            ? "Mises à jour régulières (4 s)."
+                            : "Connexion au flux temps réel…"
+                      }
+                    >
+                      <span className="relative flex size-1.5">
+                        {eventsTransport !== "polling" && (
+                          <span className="absolute inline-flex size-full animate-ping rounded-full bg-primary/60 motion-reduce:hidden" />
+                        )}
+                        <span className={cn("relative inline-flex size-1.5 rounded-full", eventsTransport === "polling" ? "bg-muted-foreground/50" : "bg-primary")} />
+                      </span>
+                      {eventsTransport === "sse" ? "Direct" : eventsTransport === "polling" ? "M-à-j 4 s" : "…"}
+                    </span>
+                  </div>
                   <p className="mt-0.5 text-xs text-muted-foreground">
                     {trip.busRegistration} · {trip.busBrand} {trip.busModel}
                   </p>

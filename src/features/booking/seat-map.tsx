@@ -126,6 +126,36 @@ function Legend() {
   );
 }
 
+/** Contrôle d'actualisation : bouton libellé + heure du dernier rafraîchissement
+ *  (renforce la confiance « c'est l'état réel du serveur » — §3.15). */
+function RefreshControl({ onRefresh, busy, seatMap }: { onRefresh: () => void; busy: boolean; seatMap: SeatMapDTO | null }) {
+  // Horodatage dérivé du rendu : recalculé uniquement quand une NOUVELLE
+  // carte arrive du serveur (identité d'objet différente) — ni effet ni
+  // état supplémentaire (chargement initial, poussée SSE, refresh manuel).
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- dépendance VOLONTAIRE à l'identité de seatMap (clé de re-calcul)
+  const at = useMemo(() => new Date(), [seatMap]);
+
+  return (
+    <div className="flex shrink-0 flex-col items-end gap-0.5">
+      <Button
+        variant="ghost"
+        size="sm"
+        onClick={onRefresh}
+        disabled={busy}
+        className="h-8 gap-1.5 rounded-full px-2.5 text-xs text-muted-foreground transition-colors hover:bg-primary/10 hover:text-primary"
+      >
+        <RefreshCw className={cn("h-3.5 w-3.5", busy && "animate-spin")} aria-hidden />
+        Actualiser
+      </Button>
+      {seatMap && (
+        <span className="pr-1 text-[10px] tabular-nums text-muted-foreground/70" aria-hidden>
+          à jour {at.toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" })}
+        </span>
+      )}
+    </div>
+  );
+}
+
 export function SeatMap({ seatMap, loading, selectedSeatIds, onSelect, onRefresh, maxSeats = 6 }: SeatMapProps) {
   const rows = useMemo(() => {
     if (!seatMap) return [];
@@ -189,11 +219,7 @@ export function SeatMap({ seatMap, loading, selectedSeatIds, onSelect, onRefresh
             </p>
           )}
         </div>
-        {onRefresh && (
-          <Button variant="ghost" size="icon" onClick={onRefresh} aria-label="Actualiser le plan des sièges" className="size-9">
-            <RefreshCw className="h-4 w-4" aria-hidden />
-          </Button>
-        )}
+        {onRefresh && <RefreshControl onRefresh={onRefresh} busy={loading} seatMap={seatMap} />}
       </CardHeader>
       <CardContent className="space-y-4">
         {/* « Carrosserie » du bus : cadre arrondi, dégradé de paroi, ombre

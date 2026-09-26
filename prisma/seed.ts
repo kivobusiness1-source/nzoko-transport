@@ -164,13 +164,15 @@ async function main(): Promise<void> {
 
   // ---------- Villes (Congo-Brazzaville) ----------
   const cityData = [
-    { name: "Pointe-Noire", country: "CG" },
-    { name: "Brazzaville", country: "CG" },
-    { name: "Dolisie", country: "CG" },
-    { name: "Nkayi", country: "CG" },
-    { name: "Ouesso", country: "CG" },
-    { name: "Gamboma", country: "CG" },
-    { name: "Owando", country: "CG" },
+    // Coordonnées GPS réelles (centres-villes, Congo-Brazzaville) —
+    // alimentent la carte publique et le finder « Trouver mon agence ».
+    { name: "Pointe-Noire", country: "CG", latitude: -4.7761, longitude: 11.8635 },
+    { name: "Brazzaville", country: "CG", latitude: -4.2634, longitude: 15.2429 },
+    { name: "Dolisie", country: "CG", latitude: -4.1981, longitude: 12.4464 },
+    { name: "Nkayi", country: "CG", latitude: -4.1736, longitude: 12.8669 },
+    { name: "Ouesso", country: "CG", latitude: 1.613, longitude: 16.055 },
+    { name: "Gamboma", country: "CG", latitude: -1.8833, longitude: 15.1333 },
+    { name: "Owando", country: "CG", latitude: -0.4814, longitude: 15.6577 },
   ];
   const cities = new Map<string, string>();
   for (const c of cityData) {
@@ -188,6 +190,11 @@ async function main(): Promise<void> {
       address: "Boulevard Charles de Gaulle, Pointe-Noire",
       phone: "+242 06 123 45 67",
       email: "kivobusiness1+agence-pointenoire@gmail.com",
+      latitude: -4.7921,
+      longitude: 11.8554,
+      openingTime: "06:00",
+      closingTime: "20:00",
+      description: "Guichets, vente de billets et embarquement — centre-ville de Pointe-Noire.",
     },
   });
   const agencyBZV = await db.agency.create({
@@ -198,6 +205,11 @@ async function main(): Promise<void> {
       address: "Avenue Marien Ngouabi, Brazzaville",
       phone: "+242 06 765 43 21",
       email: "kivobusiness1+agence-brazzaville@gmail.com",
+      latitude: -4.2694,
+      longitude: 15.2713,
+      openingTime: "06:00",
+      closingTime: "20:00",
+      description: "Guichets, vente de billets et embarquement — centre-ville de Brazzaville.",
     },
   });
   console.log("✓ 2 agences");

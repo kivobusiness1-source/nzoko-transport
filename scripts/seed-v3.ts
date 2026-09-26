@@ -1,5 +1,5 @@
 // ============================================================
-// NZOKO TRANSPORT — SEED V3 (idempotent)
+// OCÉAN DU NORD (ex-NZOKO Transport) — SEED V3 (idempotent)
 // Architecture géographique multi-agences :
 //   City (slug + GPS) → Neighborhood (quartiers PN/BZV)
 //   → Agency (quartier + GPS + horaires + manager)
@@ -95,55 +95,55 @@ async function main() {
 
   const agencySpecs = [
     {
-      code: "PNR-CENTRE", name: "NZOKO Pointe-Noire Centre-ville", city: "Pointe-Noire", hood: "Centre-ville",
+      code: "PNR-CENTRE", name: "Océan du Nord Pointe-Noire Centre", city: "Pointe-Noire", hood: "Centre-ville",
       lat: -4.7787, lng: 11.8437, phone: "+242055550101", address: "Boulevard Charles de Gaulle, face à la Place du Centre",
       desc: "Agence principale de Pointe-Noire — vente au guichet, espèces et Mobile Money, salle d'attente climatisée.",
       open: "05:30", close: "20:30", managerId: managerPn?.id,
     },
     {
-      code: "PNR-TIETIE", name: "NZOKO Agence Tié-Tié", city: "Pointe-Noire", hood: "Tié-Tié",
+      code: "PNR-TIETIE", name: "Océan du Nord Agence Tié-Tié", city: "Pointe-Noire", hood: "Tié-Tié",
       lat: -4.7517, lng: 11.867, phone: "+242055550102", address: "Avenue de la Paix, marché de Tié-Tié",
       desc: "Agence de quartier au cœur de Tié-Tié — idéale pour les passagers du centre-est.",
       open: "06:00", close: "19:30", managerId: null,
     },
     {
-      code: "PNR-LOANDJILI", name: "NZOKO Agence Loandjili", city: "Pointe-Noire", hood: "Loandjili",
+      code: "PNR-LOANDJILI", name: "Océan du Nord Agence Loandjili", city: "Pointe-Noire", hood: "Loandjili",
       lat: -4.7142, lng: 11.9042, phone: "+242055550103", address: "Route nationale, carrefour Loandjili",
       desc: "Agence de l'est de Pointe-Noire — départ direct vers la RN1.",
       open: "06:00", close: "19:00", managerId: null,
     },
     {
-      code: "PNR-NGOYO", name: "NZOKO Agence Ngoyo", city: "Pointe-Noire", hood: "Ngoyo",
+      code: "PNR-NGOYO", name: "Océan du Nord Agence Ngoyo", city: "Pointe-Noire", hood: "Ngoyo",
       lat: -4.7586, lng: 11.8794, phone: "+242055550104", address: "Boulevard de l'Aéroport, Ngoyo",
       desc: "Agence proche de l'aéroport — service VIP, navette de correspondance.",
       open: "06:00", close: "19:00", managerId: null,
     },
     {
-      code: "PNR-MONGO", name: "NZOKO Agence Mongo-Mpoukou", city: "Pointe-Noire", hood: "Mongo-Mpoukou",
+      code: "PNR-MONGO", name: "Océan du Nord Agence Mongo-Mpoukou", city: "Pointe-Noire", hood: "Mongo-Mpoukou",
       lat: -4.9206, lng: 11.9028, phone: "+242055550105", address: "Route de Diosso, Mongo-Mpoukou",
       desc: "Agence du nord de Pointe-Noire — parking gratuit sécurisé.",
       open: "06:30", close: "18:30", managerId: null,
     },
     {
-      code: "BZV-CENTRE", name: "NZOKO Brazzaville Centre (Plateau)", city: "Brazzaville", hood: "Centre-ville (Plateau)",
+      code: "BZV-CENTRE", name: "Océan du Nord Brazzaville Centre", city: "Brazzaville", hood: "Centre-ville (Plateau)",
       lat: -4.2694, lng: 15.2747, phone: "+242055550201", address: "Boulevard Denis Sassou N'Guesso, Plateau",
       desc: "Agence principale de Brazzaville — guichets, espèces et Mobile Money.",
       open: "05:30", close: "20:30", managerId: managerBzv?.id,
     },
     {
-      code: "BZV-POTOPOTO", name: "NZOKO Agence Poto-Poto", city: "Brazzaville", hood: "Poto-Poto",
+      code: "BZV-POTOPOTO", name: "Océan du Nord Agence Poto-Poto", city: "Brazzaville", hood: "Poto-Poto",
       lat: -4.2594, lng: 15.2725, phone: "+242055550202", address: "Avenue de la Liberté, Poto-Poto",
       desc: "Agence centrale de Poto-Poto — à 5 min du Plateau.",
       open: "06:00", close: "19:30", managerId: null,
     },
     {
-      code: "BZV-BACONGO", name: "NZOKO Agence Bacongo", city: "Brazzaville", hood: "Bacongo",
+      code: "BZV-BACONGO", name: "Océan du Nord Agence Bacongo", city: "Brazzaville", hood: "Bacongo",
       lat: -4.2869, lng: 15.2583, phone: "+242055550203", address: "Boulevard Maréchal Lyautey, Bacongo",
       desc: "Agence du sud de Brazzaville — vente au guichet et retrait de billets.",
       open: "06:00", close: "19:00", managerId: null,
     },
     {
-      code: "BZV-TALANGAI", name: "NZOKO Agence Talangaï", city: "Brazzaville", hood: "Talangaï",
+      code: "BZV-TALANGAI", name: "Océan du Nord Agence Talangaï", city: "Brazzaville", hood: "Talangaï",
       lat: -4.2361, lng: 15.2594, phone: "+242055550204", address: "Avenue de l'Oubangui, Talangaï",
       desc: "Agence du nord de Brazzaville — départ direct vers la RN2.",
       open: "06:00", close: "19:00", managerId: null,
@@ -313,7 +313,7 @@ async function main() {
   const faqs: Faq[] = [
     {
       title: "Réserver un billet en ligne",
-      question: "Comment réserver un billet NZOKO ?",
+      question: "Comment réserver un billet Océan du Nord ?",
       answer:
         "Rendez-vous sur la page d'accueil puis « Réserver ». Choisissez la ville de départ, la destination et la date : les voyages disponibles s'affichent avec le prix et le nombre de places. Sélectionnez votre siège sur le plan, renseignez nom, prénom et téléphone, puis payez. Aucun compte n'est nécessaire.",
       category: "RESERVATION",
@@ -405,7 +405,7 @@ async function main() {
       title: "Sécurité du paiement Mobile Money",
       question: "Le paiement Mobile Money est-il sécurisé ?",
       answer:
-        "Oui. Vous confirmez le paiement directement dans l'application MTN Mobile Money sur votre téléphone : le code secret ne circule jamais sur notre site. En cas de doute ou de message suspect prétendant venir de NZOKO, ne partagez aucun code et signalez-le à votre agence.",
+        "Oui. Vous confirmez le paiement directement dans l'application MTN Mobile Money sur votre téléphone : le code secret ne circule jamais sur notre site. En cas de doute ou de message suspect prétendant venir de Océan du Nord, ne partagez aucun code et signalez-le à votre agence.",
       category: "PAIEMENT",
       keywords: "securite, securise, arnaque, code momo, code secret, fraude, usurpation",
       priority: 70,
@@ -439,7 +439,7 @@ async function main() {
     },
     {
       title: "Trouver l'agence la plus proche",
-      question: "Où se trouve l'agence NZOKO la plus proche ?",
+      question: "Où se trouve l'agence Océan du Nord la plus proche ?",
       answer:
         "Sur le site, cliquez sur « Trouver mon agence » : avec votre autorisation, votre position est utilisée pour détecter votre quartier et vous proposer l'agence ouverte la plus proche avec des places disponibles. Si vous refusez la géolocalisation, vous pouvez choisir votre agence manuellement. Les positions ne sont jamais enregistrées.",
       category: "GPS",
@@ -486,7 +486,7 @@ async function main() {
       title: "Programme de fidélité",
       question: "Comment fonctionne le programme de fidélité ?",
       answer:
-        "Créez un compte client et voyagez : chaque voyage payé vous rapporte 100 points. Les paliers : BRONZE dès 0 point, SILVER à 1 000 points, GOLD à 5 000 points et VIP à 15 000 points cumulés. Vos points sont ensuite échangeables contre des réductions (jusqu'à 10 %) ou des billets gratuits, sur validation de l'équipe NZOKO.",
+        "Créez un compte client et voyagez : chaque voyage payé vous rapporte 100 points. Les paliers : BRONZE dès 0 point, SILVER à 1 000 points, GOLD à 5 000 points et VIP à 15 000 points cumulés. Vos points sont ensuite échangeables contre des réductions (jusqu'à 10 %) ou des billets gratuits, sur validation de l'équipe Océan du Nord.",
       category: "FIDELITE",
       keywords: "fidelite, fidele, points, fidélité, cumul, palier, bronze, silver, gold, vip palier, reduction, recompense, carte fidelite",
       priority: 85,
@@ -510,10 +510,10 @@ async function main() {
       priority: 80,
     },
     {
-      title: "Contacter NZOKO Transport",
-      question: "Comment contacter NZOKO Transport ?",
+      title: "Contacter Océan du Nord",
+      question: "Comment contacter Océan du Nord ?",
       answer:
-        "Le plus rapide : passez à l'agence NZOKO la plus proche de vous (le bouton « Trouver mon agence » vous la propose). Vous pouvez aussi utiliser la rubrique réclamations de votre espace client, ou appeler le numéro affiché sur la page d'accueil. Nos agences sont ouvertes tous les jours.",
+        "Le plus rapide : passez à l'agence Océan du Nord la plus proche de vous (le bouton « Trouver mon agence » vous la propose). Vous pouvez aussi utiliser la rubrique réclamations de votre espace client, ou appeler le numéro affiché sur la page d'accueil. Nos agences sont ouvertes tous les jours.",
       category: "CONTACT",
       keywords: "contacter, contact, telephone, appeler, numero, joindre, whatsapp, email, adresse, ou appeler",
       priority: 95,
@@ -540,7 +540,7 @@ async function main() {
       title: "Agences de Pointe-Noire",
       question: "Quelles agences avez-vous à Pointe-Noire ?",
       answer:
-        "NZOKO dispose de plusieurs agences à Pointe-Noire : Centre-ville (boulevard Charles de Gaulle), Tié-Tié (avenue de la Paix), Loandjili (route nationale), Ngoyo (boulevard de l'Aéroport) et Mongo-Mpoukou (route de Diosso). Toutes vendent les mêmes voyages selon les disponibilités — le bouton « Trouver mon agence » vous indique la plus proche avec des places.",
+        "Océan du Nord dispose de plusieurs agences à Pointe-Noire : Centre-ville (boulevard Charles de Gaulle), Tié-Tié (avenue de la Paix), Loandjili (route nationale), Ngoyo (boulevard de l'Aéroport) et Mongo-Mpoukou (route de Diosso). Toutes vendent les mêmes voyages selon les disponibilités — le bouton « Trouver mon agence » vous indique la plus proche avec des places.",
       category: "AGENCES",
       keywords: "agences pointe-noire, agence pointe noire, ou acheter pointe-noire, guichet pointe-noire, tie-tie, loandjili, ngoyo, mongo-mpoukou, centre-ville pointe-noire",
       priority: 70,
@@ -550,7 +550,7 @@ async function main() {
       title: "Agences de Brazzaville",
       question: "Quelles agences avez-vous à Brazzaville ?",
       answer:
-        "À Brazzaville, NZOKO est présent au Centre-ville (Plateau, boulevard Denis Sassou N'Guesso), à Poto-Poto (avenue de la Liberté), à Bacongo (boulevard Maréchal Lyautey) et à Talangaï (avenue de l'Oubangui). Le bouton « Trouver mon agence » détecte votre quartier et vous propose l'agence la plus proche avec des places disponibles.",
+        "À Brazzaville, Océan du Nord est présent au Centre-ville (Plateau, boulevard Denis Sassou N'Guesso), à Poto-Poto (avenue de la Liberté), à Bacongo (boulevard Maréchal Lyautey) et à Talangaï (avenue de l'Oubangui). Le bouton « Trouver mon agence » détecte votre quartier et vous propose l'agence la plus proche avec des places disponibles.",
       category: "AGCES_PLACEHOLDER",
       keywords: "agences brazzaville, agence brazzaville, ou acheter brazzaville, guichet brazzaville, plateau, poto-poto, bacongo, talangai, ouenze, moungali",
       priority: 70,

@@ -540,10 +540,18 @@ export function AgencyFinder({
                   ))}
                 </div>
               ) : displayed.length === 0 ? (
-                <p className="rounded-lg bg-muted/40 px-3 py-4 text-center text-sm text-muted-foreground">
-                  Aucune agence trouvée{result?.source === "manual" && manualCity ? ` à ${manualCity.name}` : " à proximité"}.
-                  Choisissez une autre ville ou continuez sans agence.
-                </p>
+                <div className="flex flex-col items-center gap-1.5 rounded-xl border border-dashed bg-muted/30 px-4 py-6 text-center">
+                  <span className="flex size-9 items-center justify-center rounded-full bg-muted/70">
+                    <MapPin className="size-4 text-muted-foreground/70" aria-hidden />
+                  </span>
+                  <p className="text-sm font-medium">
+                    Aucune agence trouvée
+                    {result?.source === "manual" && manualCity ? ` à ${manualCity.name}` : " à proximité"}.
+                  </p>
+                  <p className="text-xs leading-relaxed text-muted-foreground">
+                    Choisissez une autre ville ci-dessous ou continuez sans agence — vous pourrez la modifier avant de payer.
+                  </p>
+                </div>
               ) : (
                 <ul
                   className="nzoko-scroll max-h-96 space-y-2.5 overflow-y-auto pr-1"
