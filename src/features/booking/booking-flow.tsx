@@ -8,7 +8,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import { toast } from "sonner";
-import { CalendarSearch, ChevronLeft, Check, Search, Ticket, XCircle } from "lucide-react";
+import { CalendarSearch, ChevronLeft, Check, MapPin, Search, Ticket, XCircle } from "lucide-react";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -40,6 +40,22 @@ const BACK_LABELS: Record<number, string> = {
 
 function errMessage(err: unknown): string {
   return err instanceof ApiClientError ? err.message : "Une erreur est survenue.";
+}
+
+/**
+ * Anti-tempête de toasts : un même message d'erreur n'est affiché qu'une
+ * fois par fenêtre glissante (12 s). Les rafraîchissements temps réel du
+ * plan de sièges (SSE/polling) peuvent échouer en rafale (429, réseau
+ * faible) — sans ce garde-fou, l'utilisateur recevait une pile de toasts
+ * identiques pour un seul problème.
+ */
+const lastToastAt = new Map<string, number>();
+function toastErrorThrottled(message: string): void {
+  const now = Date.now();
+  const last = lastToastAt.get(message) ?? 0;
+  if (now - last < 12_000) return;
+  lastToastAt.set(message, now);
+  toast.error(message);
 }
 
 export default function BookingFlow({ channel }: { channel: "WEB" | "AGENT" }) {
@@ -153,8 +169,14 @@ export default function BookingFlow({ channel }: { channel: "WEB" | "AGENT" }) {
     try {
       setSeatMap(await api.trips.seats(tripId));
     } catch (err) {
-      toast.error(errMessage(err));
-      setSeatMap(null);
+      // Dégradation gracieuse : si une carte est déjà affichée, un échec de
+      // RAFRAÎCHISSEMENT (429 ponctuel, réseau faible, hold expiré…) ne doit
+      // PAS détruire l'écran — on garde la dernière vérité serveur connue.
+      // Un plan n'est mis à null qu'en cas d'échec du CHARGEMENT initial.
+      // (Bug QA J+0 : un 429 de rate-limit affichait « Plan indisponible »
+      // + une pile de 7 toasts identiques à un client légitime.)
+      setSeatMap((prev) => prev); // volontaire : l'état précédent reste la vérité affichée
+      toastErrorThrottled(errMessage(err));
     } finally {
       setSeatLoading(false);
     }
@@ -164,6 +186,9 @@ export default function BookingFlow({ channel }: { channel: "WEB" | "AGENT" }) {
     (t: TripSearchDTO) => {
       setTrip(t);
       setSeatIds([]);
+      // Nouveau voyage → on repart d'une carte vierge : si le chargement
+      // initial échoue, on ne doit PAS afficher la carte de l'ANCIEN voyage.
+      setSeatMap(null);
       setStep(3);
       loadSeatMap(t.id);
     },
@@ -445,14 +470,21 @@ export default function BookingFlow({ channel }: { channel: "WEB" | "AGENT" }) {
 
           {step === 2 && (
             <div className="space-y-3">
-              <div className="rounded-xl border bg-muted/30 px-4 py-3">
-                <p className="text-sm font-semibold">
+              <div className="relative overflow-hidden rounded-xl border bg-gradient-to-r from-primary/10 via-primary/5 to-transparent px-4 py-3">
+                <p className="flex items-center gap-1.5 text-sm font-semibold">
+                  <MapPin className="size-3.5 shrink-0 text-primary" aria-hidden />
                   {trips && trips.length > 0 ? tripRouteLabel(search, cities) : "Recherche"}
                 </p>
                 <p className="mt-0.5 flex items-center gap-1.5 text-xs text-muted-foreground">
-                  <CalendarSearch className="size-3.5 shrink-0" aria-hidden />
-                  {formatDayLabel(`${search.date}T12:00:00`)}
-                  {trips && <span className="ml-1">· {trips.length} voyage{trips.length > 1 ? "s" : ""}</span>}
+                  <span className="inline-flex items-center gap-1 rounded-full bg-background/80 px-2 py-0.5 font-medium ring-1 ring-border/60">
+                    <CalendarSearch className="size-3" aria-hidden />
+                    {formatDayLabel(`${search.date}T12:00:00`)}
+                  </span>
+                  {trips && (
+                    <span className="font-medium">
+                      · {trips.length} voyage{trips.length > 1 ? "s" : ""} trouvé{trips.length > 1 ? "s" : ""}
+                    </span>
+                  )}
                 </p>
               </div>
 

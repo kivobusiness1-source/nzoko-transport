@@ -55,7 +55,10 @@ export async function GET(req: NextRequest) {
   try {
     // Limiteur sur la POIGNÉE DE MAIN uniquement (reconnexions ≤ 1 / 4 min
     // par client en usage normal — les frames suivants ne re-passent pas ici).
-    enforceRateLimit(`events-stream:${getClientIp(req)}`, RATE_LIMITS.public.limit, RATE_LIMITS.public.windowMs);
+    // Seau DÉDIÉ (eventsStream) : une navigation publique intense ne doit
+    // jamais affamer la poignée de main, et une poignée refusée ne doit pas
+    // priver le client de sa navigation (429 → EventSource re-tente vite).
+    enforceRateLimit(`events-stream:${getClientIp(req)}`, RATE_LIMITS.eventsStream.limit, RATE_LIMITS.eventsStream.windowMs);
 
     const { searchParams } = new URL(req.url);
     const tripId = searchParams.get("tripId");

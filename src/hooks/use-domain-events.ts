@@ -74,6 +74,14 @@ export function useDomainEvents({ params, onEvent, pollMs = 5000 }: UseDomainEve
     let source: EventSource | null = null;
     let pollTimer: ReturnType<typeof setTimeout> | null = null;
     let cursor: string | undefined;
+    // Résilience anti-tempête : si la poignée de main SSE échoue plusieurs
+    // fois de suite (429, proxy fermé…), EventSource re-tente VITE et sans
+    // plafond — on bascule au repli polling au lieu de marteler le serveur.
+    let failedHandshakes = 0;
+    // Backoff du repli polling : chaque échec consécutif double l'intervalle
+    // (pollMs → 2× → 4× … plafonné) ; un succès réinitialise. Un 429 ponctuel
+    // dégrade donc la fréquence en douceur au lieu de pilonner.
+    let consecutivePollErrors = 0;
 
     const handle = (e: StreamedEvent) => {
       if (cancelled) return;
@@ -91,11 +99,17 @@ export function useDomainEvents({ params, onEvent, pollMs = 5000 }: UseDomainEve
           const res = await api.events.list({ ...parsed, since: cursor });
           if (cancelled) return;
           cursor = res.cursor ?? cursor;
+          consecutivePollErrors = 0;
           for (const ev of res.events) handle(ev);
         } catch {
-          // réseau ponctuel → la prochaine itération réessaie
+          // réseau ponctuel / 429 → on ESPACE la prochaine itération
+          // (backoff exponentiel plafonné) au lieu de réessayer à cadence fixe.
+          consecutivePollErrors = Math.min(consecutivePollErrors + 1, 5);
         }
-        if (!cancelled) pollTimer = setTimeout(poll, pollMs);
+        if (!cancelled) {
+          const backoff = Math.min(pollMs * 2 ** consecutivePollErrors, 30_000);
+          pollTimer = setTimeout(poll, backoff);
+        }
       };
       pollTimer = setTimeout(poll, 300);
     };
@@ -107,6 +121,7 @@ export function useDomainEvents({ params, onEvent, pollMs = 5000 }: UseDomainEve
         // onopen = connexion SSE réellement établie (callback externe —
         // jamais un setState synchrone dans le corps de l'effet).
         source.onopen = () => {
+          failedHandshakes = 0; // connexion saine — la tolérance repart à zéro
           if (!cancelled) setTransport("sse");
         };
         source.onmessage = (msg) => {
@@ -119,8 +134,12 @@ export function useDomainEvents({ params, onEvent, pollMs = 5000 }: UseDomainEve
         source.onerror = () => {
           // readyState CLOSED = reconnect impossible (proxy, 5xx persistants)
           // → bascule définitive vers le polling. Sinon EventSource
-          // re-connecte tout seul (Last-Event-ID repris par le serveur).
-          if (source && source.readyState === EventSource.CLOSED) {
+          // re-connecte tout seul (Last-Event-ID repris par le serveur)…
+          // MAIS seulement tant que les échecs restent rares : au-delà de
+          // 3 poignées de main consécutives ratées (429 en rafale, proxy
+          // hostile), on arrête le martèlement → repli polling avec backoff.
+          failedHandshakes += 1;
+          if (source && (source.readyState === EventSource.CLOSED || failedHandshakes >= 3)) {
             source.close();
             source = null;
             startPolling();

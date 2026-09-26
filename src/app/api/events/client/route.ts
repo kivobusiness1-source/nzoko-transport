@@ -22,7 +22,9 @@ import { DOMAIN_EVENT_TYPES } from "@/services/domain-events";
 
 export async function GET(req: NextRequest) {
   try {
-    enforceRateLimit(`events:${getClientIp(req)}`, RATE_LIMITS.public.limit, RATE_LIMITS.public.windowMs);
+    // Seau DÉDIÉ (events) : le repli polling (12 req/min/écran) ne doit pas
+    // entrer en compétition avec la navigation générale (seau `public`).
+    enforceRateLimit(`events:${getClientIp(req)}`, RATE_LIMITS.events.limit, RATE_LIMITS.events.windowMs);
     const { searchParams } = new URL(req.url);
     const since = searchParams.get("since");
     const tripId = searchParams.get("tripId");

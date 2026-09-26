@@ -415,7 +415,20 @@ export const RATE_LIMITS = {
   bookingDetail: { limit: 15, windowMs: 60 * 1000 }, // suivi billet par référence
   search: { limit: 30, windowMs: 60 * 1000 }, // recherche de voyages
   ticketQr: { limit: 30, windowMs: 60 * 1000 }, // QR d'un billet (token secret)
-  seatMap: { limit: 20, windowMs: 60 * 1000 }, // plan de sièges (releaseExpiredHolds + requêtes)
+  // Plan de sièges : l'écran temps réel (contrat §15) re-télécharge la carte
+  // à chaque événement/RESYNC SSE et le repli polling rafraîchit toutes les
+  // 5 s (12/min). Cadence NORMALE d'un client assis sur l'écran ≈ 15/min :
+  // le plafond tolère cette cadence (usage légitime) tout en bloquant le
+  // scrapping massif (crawlers >> 60/min/trip). Bug QA J+0 : 20/min tuait
+  // l'écran « Plan indisponible » après ~2 min d'attente légitime.
+  seatMap: { limit: 60, windowMs: 60 * 1000 },
+  // Flux d'événements §3.13/§3.15 — seaux DÉDIÉS : la poignée de main SSE et
+  // le repli polling ne doivent pas entrer en compétition avec la navigation
+  // générale (seau `public`) ni se nuire l'un à l'autre. Usage normal :
+  // 1 poignée/4 min/écran (reconnexion EventSource), 12 req/min/écran en
+  // polling — marges généreuses, le flood reste bloqué.
+  eventsStream: { limit: 30, windowMs: 60 * 1000 }, // poignée de main SSE uniquement
+  events: { limit: 60, windowMs: 60 * 1000 }, // polling §3.13 (repli + API client)
   // Annulation voyage — contacts passagers (données personnelles → accès journalisé)
   tripContacts: { limit: 10, windowMs: 60 * 1000 },
   // Webhook générique signé HMAC (anti brute-force de la signature)
