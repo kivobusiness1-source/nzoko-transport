@@ -82,7 +82,13 @@ export function TripCard({ trip, onSelect }: TripCardProps) {
             <p className="mt-1 text-[11px] font-medium text-muted-foreground">{formatDuration(trip.durationMinutes)}</p>
           </div>
           <div className="text-right">
-            <p className="text-lg font-bold tabular-nums leading-none">{formatTime(trip.estimatedArrivalTime)}</p>
+            <p className="text-lg font-bold tabular-nums leading-none">
+              {formatTime(trip.estimatedArrivalTime)}
+              {/* Voyage de nuit traversant minuit → mention explicite du jour +1. */}
+              {new Date(trip.estimatedArrivalTime) < new Date(trip.departureTime) && (
+                <span className="ml-1 align-middle text-[10px] font-semibold text-muted-foreground">J+1</span>
+              )}
+            </p>
             <p className="mt-0.5 text-[11px] text-muted-foreground">Arrivée</p>
           </div>
         </div>

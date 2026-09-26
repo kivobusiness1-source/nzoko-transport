@@ -269,6 +269,10 @@ Le bouton « J'ai payé » n'est JAMAIS une preuve.
   passager de CHAQUE place (extension passagers nommés §7). Les champs
   historiques `passengerName`/`seatNumber` restent = acheteur + place
   principale (compat SITE AGENCES).
+- **`GET /api/bookings/{id}`** : `seats[].boardedAt` (datetime|null, champ
+  additionnel) ajouté à chaque place du groupe — brut, sans repli ; le
+  client applique le même fallback héritage que l'API (ticket `USED` et
+  aucune place datée = groupe embarqué).
 - **Événements** : un `TICKET_BOARDED` est émis PAR PLACE embarquée
   (payload `{ reference, seatNumber }`) — le plan de sièges temps réel des
   deux sites reflète chaque passager individuellement.

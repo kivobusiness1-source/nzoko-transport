@@ -709,8 +709,11 @@ export function toBookingDTO(b: BookingWithRelations | BookingWithOptionalDropOf
           type: o.seat.type as "STANDARD" | "VIP",
           // Passager nommé de la place, sinon l'acheteur (fallback).
           passenger: o.passenger ?? buyer,
+          // Embarquement PAR PLACE (§6.1) : brut, sans fallback — le client
+          // applique le même repli héritage que l'API (ticket USED).
+          boardedAt: "boardedAt" in o && o.boardedAt ? o.boardedAt.toISOString() : null,
         }))
-      : [{ id: b.seat.id, seatNumber: b.seat.seatNumber, type: b.seat.type as "STANDARD" | "VIP", passenger: buyer }];
+      : [{ id: b.seat.id, seatNumber: b.seat.seatNumber, type: b.seat.type as "STANDARD" | "VIP", passenger: buyer, boardedAt: null }];
   const contractMap: Record<string, "HELD" | "CONFIRMED" | "CANCELLED" | "EXPIRED"> = {
     PENDING: "HELD",
     CONFIRMED: "CONFIRMED",

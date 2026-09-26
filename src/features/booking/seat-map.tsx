@@ -42,20 +42,21 @@ interface SeatButtonProps {
 /** Style par statut contractuel (§6 — le front n'invente JAMAIS un état :
  *  il affiche celui renvoyé par le serveur, source unique de vérité). */
 function seatStyle(seat: SeatMapSeatDTO, selected: boolean): string {
-  if (selected) return "nzoko-pulse border-primary bg-primary text-primary-foreground";
+  if (selected)
+    return "nzoko-seat-pop border-primary bg-primary text-primary-foreground shadow-md shadow-primary/40 ring-2 ring-primary/40 ring-offset-1 ring-offset-background";
   switch (seat.status) {
     case "HELD":
-      return "cursor-not-allowed border-amber-300 bg-amber-100 text-amber-700 dark:border-amber-700 dark:bg-amber-950/50 dark:text-amber-300";
+      return "cursor-not-allowed border-amber-300 bg-amber-100 text-amber-700 opacity-80 dark:border-amber-700 dark:bg-amber-950/50 dark:text-amber-300";
     case "PAID":
       return "cursor-not-allowed border-red-300 bg-red-100 text-red-700 dark:border-red-800 dark:bg-red-950/50 dark:text-red-300";
     case "BOARDED":
       return "cursor-not-allowed border-zinc-400 bg-zinc-700 text-zinc-200 dark:border-zinc-600 dark:bg-zinc-800 dark:text-zinc-300";
     case "CANCELLED":
-      return "border-input bg-muted text-foreground hover:border-primary/40 hover:bg-primary/10";
+      return "border-input bg-muted text-foreground hover:-translate-y-0.5 hover:border-primary/40 hover:bg-primary/10 hover:shadow-md";
     default: // AVAILABLE
       return seat.type === "VIP"
-        ? "border-orange-400 bg-orange-50 text-orange-700 hover:bg-orange-100 dark:border-orange-600 dark:bg-orange-950/40 dark:text-orange-300"
-        : "border-input bg-muted text-foreground hover:border-primary/40 hover:bg-primary/10";
+        ? "border-orange-400 bg-gradient-to-br from-orange-50 to-amber-100 text-orange-700 hover:-translate-y-0.5 hover:bg-orange-100 hover:shadow-md motion-safe:transition-transform dark:border-orange-600 dark:from-orange-950/40 dark:to-amber-950/30 dark:text-orange-300"
+        : "border-input bg-muted text-foreground hover:-translate-y-0.5 hover:border-primary/40 hover:bg-primary/10 hover:shadow-md motion-safe:transition-transform";
   }
 }
 
@@ -90,7 +91,7 @@ function SeatButton({ seat, selected, selectionFull, onSelect }: SeatButtonProps
       aria-pressed={selected}
       title={`Siège ${seat.seatNumber} — ${selected ? "sélectionné" : STATUS_LABELS[seat.status]}`}
       className={cn(
-        "flex size-10 items-center justify-center rounded-lg border text-xs font-semibold transition-all outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50",
+        "flex size-10 items-center justify-center rounded-lg border text-xs font-semibold transition-all outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50 active:scale-95 motion-safe:hover:scale-[1.04]",
         seatStyle(seat, selected)
       )}
     >
@@ -104,17 +105,20 @@ const MAX_SELECTION_LABEL = "6";
 function Legend() {
   const items = [
     { label: "Disponible", className: "border-input bg-muted" },
-    { label: "VIP", className: "border-orange-400 bg-orange-50 dark:border-orange-600 dark:bg-orange-950/40" },
-    { label: "Sélectionné", className: "border-primary bg-primary" },
+    { label: "VIP", className: "border-orange-400 bg-gradient-to-br from-orange-50 to-amber-100 dark:border-orange-600 dark:from-orange-950/40 dark:to-amber-950/30" },
+    { label: "Sélectionné", className: "border-primary bg-primary shadow-sm shadow-primary/40" },
     { label: "Hold en cours", className: "border-amber-300 bg-amber-100 dark:border-amber-700 dark:bg-amber-950/50" },
     { label: "Payé", className: "border-red-300 bg-red-100 dark:border-red-800 dark:bg-red-950/50" },
     { label: "Embarqué", className: "border-zinc-400 bg-zinc-700" },
   ];
   return (
-    <ul className="flex flex-wrap items-center gap-x-4 gap-y-2">
+    <ul className="flex flex-wrap items-center gap-1.5" aria-label="Légende du plan des sièges">
       {items.map((item) => (
-        <li key={item.label} className="flex items-center gap-1.5 text-[11px] text-muted-foreground">
-          <span className={cn("size-3.5 rounded border", item.className)} aria-hidden />
+        <li
+          key={item.label}
+          className="flex items-center gap-1.5 rounded-full border border-border/60 bg-background/60 px-2.5 py-1 text-[11px] font-medium text-muted-foreground"
+        >
+          <span className={cn("size-3 rounded-[4px] border", item.className)} aria-hidden />
           {item.label}
         </li>
       ))}

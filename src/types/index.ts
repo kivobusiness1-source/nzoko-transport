@@ -277,8 +277,8 @@ export interface BookingDTO {
   };
   seat: { id: string; seatNumber: string; type: SeatType };
   /** Toutes les places de la réservation (multi-sièges, contrat §7) —
-   *  avec le passager nommé de chaque place. */
-  seats: { id: string; seatNumber: string; type: SeatType; passenger: { firstName: string; lastName: string } | null }[];
+   *  avec le passager nommé de chaque place et son embarquement (§6.1). */
+  seats: { id: string; seatNumber: string; type: SeatType; passenger: { firstName: string; lastName: string } | null; boardedAt: string | null }[];
   passenger: { id: string; firstName: string; lastName: string; phone: string; documentNumber: string | null };
   dropOffNeighborhood?: { id: string; name: string; cityName: string } | null;
   agencyName: string | null;

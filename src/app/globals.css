@@ -160,3 +160,19 @@
 .nzoko-pulse {
   animation: nzoko-pulse-ring 1.8s ease-out infinite;
 }
+/* Sélection d'une place du plan : un seul « pop » (pas d'animation infinie,
+   fatigante pendant le choix multi-sièges) + transition douce au déselection. */
+@keyframes nzoko-seat-pop {
+  0% { transform: scale(0.82); }
+  60% { transform: scale(1.1); }
+  100% { transform: scale(1); }
+}
+.nzoko-seat-pop {
+  animation: nzoko-seat-pop 0.25s ease-out both;
+}
+@media (prefers-reduced-motion: reduce) {
+  .nzoko-seat-pop,
+  .nzoko-pulse {
+    animation: none;
+  }
+}

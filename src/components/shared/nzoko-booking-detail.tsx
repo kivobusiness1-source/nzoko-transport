@@ -5,7 +5,7 @@
 // Timeline : réservée → payée → billet émis → embarquée
 // ============================================================
 
-import { Bus, Calendar, Clock, CreditCard, MapPin, Phone, Ticket as TicketIcon, User, XCircle } from "lucide-react";
+import { Bus, Calendar, CheckCircle2, Clock, CreditCard, MapPin, Phone, Ticket as TicketIcon, User, XCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 import { BookingStatusBadge, PaymentStatusBadge } from "@/components/shared/nzoko-badge";
@@ -24,13 +24,77 @@ interface NzokoBookingDetailProps {
   className?: string;
 }
 
+// ------------------------------------------------------------
+// Embarquement PAR PLACE (contrat §6.1) — même règle de repli que l'API :
+// données par place font foi ; fallback héritage (ticket USED) UNIQUEMENT
+// si AUCUNE place n'est datée (groupe embarqué avant l'extension).
+// ------------------------------------------------------------
+
+function seatBoarded(detail: BookingDetailDTO, boardedAt: string | null): boolean {
+  if (boardedAt !== null) return true;
+  if (detail.ticket?.status !== "USED") return false;
+  return !(detail.seats ?? []).some((s) => s.boardedAt !== null);
+}
+
+/** Liste des voyageurs du groupe avec leur statut d'embarquement individuel. */
+function BoardingRoster({ detail }: { detail: BookingDetailDTO }) {
+  const showBoarding = detail.ticket !== null && detail.ticket.status !== "CANCELLED";
+  return (
+    <ul className="space-y-1" aria-label="Voyageurs et embarquement">
+      {(detail.seats ?? []).map((s) => {
+        const boarded = seatBoarded(detail, s.boardedAt);
+        const isBuyer =
+          s.passenger?.firstName === detail.passenger.firstName &&
+          s.passenger?.lastName === detail.passenger.lastName;
+        return (
+          <li
+            key={s.id}
+            className={cn(
+              "flex items-center gap-2 rounded-lg border px-2 py-1.5 text-sm transition-colors",
+              boarded ? "border-emerald-200 bg-emerald-50 dark:border-emerald-900 dark:bg-emerald-950/40" : "bg-background"
+            )}
+          >
+            <span
+              className={cn(
+                "rounded px-1.5 py-0.5 font-mono text-[11px] font-bold",
+                boarded ? "bg-emerald-600 text-white" : "bg-primary/10 text-primary"
+              )}
+            >
+              {s.seatNumber}
+            </span>
+            <span className="min-w-0 flex-1 truncate font-medium" title={`${s.passenger?.firstName ?? ""} ${s.passenger?.lastName ?? ""}`}>
+              {s.passenger?.firstName} {s.passenger?.lastName}
+              {isBuyer && <span className="ml-1.5 text-[11px] font-normal text-muted-foreground">(acheteur·e)</span>}
+            </span>
+            {showBoarding &&
+              (boarded ? (
+                <span className="flex shrink-0 items-center gap-1 text-[11px] font-semibold text-emerald-700 dark:text-emerald-400">
+                  <CheckCircle2 className="size-3.5" aria-hidden />
+                  À bord{s.boardedAt ? ` ${formatTime(s.boardedAt)}` : ""}
+                  <span className="sr-only"> — passager embarqué</span>
+                </span>
+              ) : (
+                <span className="flex shrink-0 items-center gap-1 text-[11px] font-medium text-muted-foreground">
+                  <Clock className="size-3.5" aria-hidden />
+                  En attente
+                  <span className="sr-only"> — passager non encore embarqué</span>
+                </span>
+              ))}
+          </li>
+        );
+      })}
+    </ul>
+  );
+}
+
 function Timeline({ detail }: { detail: BookingDetailDTO }) {
   const paid =
     detail.payments.some((p) => p.status === "SUCCESS") ||
     detail.status === "CONFIRMED" ||
     detail.status === "COMPLETED";
   const ticketIssued = detail.ticket !== null && detail.ticket.status !== "CANCELLED";
-  const boarded = detail.ticket?.status === "USED";
+  // Embarquée = TOUTES les places à bord (§6.1, même repli que l'API).
+  const boarded = detail.ticket?.status === "USED" && (detail.seats ?? []).every((s) => seatBoarded(detail, s.boardedAt));
   const dead = detail.status === "CANCELLED" || detail.status === "EXPIRED";
 
   const steps = [
@@ -39,13 +103,17 @@ function Timeline({ detail }: { detail: BookingDetailDTO }) {
     { key: "ticket", label: "Billet émis", done: ticketIssued },
     { key: "boarded", label: "Embarquée", done: boarded },
   ];
+  // Embarquement partiel : badge « k/N à bord » sous l'étape 4 (§6.1).
+  const groupSeats = detail.seats ?? [];
+  const boardedCount = groupSeats.filter((s) => seatBoarded(detail, s.boardedAt)).length;
+  const partialBoarding = ticketIssued && boardedCount > 0 && boardedCount < groupSeats.length;
 
   return (
-    <ol className="flex items-center" aria-label="Progression de la réservation">
+    <ol className="flex items-start" aria-label="Progression de la réservation">
       {steps.map((s, i) => {
         const isLast = i === steps.length - 1;
         return (
-          <li key={s.key} className={cn("flex items-center", !isLast && "flex-1")}>
+          <li key={s.key} className={cn("flex items-start", !isLast && "flex-1")}>
             <div className="flex flex-col items-center gap-1">
               <span
                 className={cn(
@@ -68,11 +136,24 @@ function Timeline({ detail }: { detail: BookingDetailDTO }) {
               >
                 {s.label}
               </span>
+              {s.key === "boarded" && partialBoarding && (
+                <span
+                  className={cn(
+                    "rounded-full bg-amber-100 px-1.5 py-0.5 text-[9px] font-bold text-amber-800 dark:bg-amber-950/60 dark:text-amber-300",
+                    dead && "hidden"
+                  )}
+                >
+                  {boardedCount}/{groupSeats.length} à bord
+                </span>
+              )}
               <span className="sr-only">{s.done ? "étape atteinte" : "étape non atteinte"}</span>
             </div>
             {!isLast && (
               <span
-                className={cn("mx-1 mb-4 h-0.5 flex-1 rounded", s.done && steps[i + 1]?.done ? "bg-primary" : "bg-zinc-200")}
+                className={cn(
+                  "mx-1 mt-[11px] h-0.5 flex-1 self-start rounded",
+                  s.done && steps[i + 1]?.done ? "bg-primary" : "bg-zinc-200"
+                )}
                 aria-hidden
               />
             )}
@@ -125,7 +206,16 @@ export function NzokoBookingDetail({ detail, onCancel, cancelLoading, className 
         </div>
         <div className="mt-2 space-y-0">
           <InfoRow icon={Calendar} label="Départ" value={formatDateTime(detail.trip.departureTime)} />
-          <InfoRow icon={Clock} label="Arrivée estimée" value={formatTime(detail.trip.estimatedArrivalTime)} />
+          <InfoRow
+            icon={Clock}
+            label="Arrivée estimée"
+            // Voyage de nuit traversant minuit → mention explicite du jour +1.
+            value={
+              new Date(detail.trip.estimatedArrivalTime) < new Date(detail.trip.departureTime)
+                ? `${formatTime(detail.trip.estimatedArrivalTime)} (J+1)`
+                : formatTime(detail.trip.estimatedArrivalTime)
+            }
+          />
           <InfoRow icon={Bus} label="Bus" value={`${detail.trip.busRegistration} · ${detail.trip.agencyName}`} />
         </div>
       </section>
@@ -138,22 +228,9 @@ export function NzokoBookingDetail({ detail, onCancel, cancelLoading, className 
           {detail.seats && detail.seats.length > 1 ? "Passagers" : "Passager"}
         </h3>
         {detail.seats && detail.seats.length > 1 ? (
-          // Multi-passagers nommés : chaque place porte SON voyageur (§24).
-          <div className="space-y-1">
-            {detail.seats.map((s) => (
-              <div key={s.id} className="flex items-center gap-2 text-sm">
-                <span className="rounded bg-primary/10 px-1.5 py-0.5 text-[11px] font-bold text-primary">
-                  {s.seatNumber}
-                </span>
-                <span className="font-medium">
-                  {s.passenger?.firstName} {s.passenger?.lastName}
-                </span>
-                {s.passenger && s.passenger.firstName === detail.passenger.firstName && s.passenger.lastName === detail.passenger.lastName && (
-                  <span className="text-[11px] text-muted-foreground">(acheteur·e)</span>
-                )}
-              </div>
-            ))}
-          </div>
+          // Multi-passagers nommés : chaque place porte SON voyageur (§24)
+          // + statut d'embarquement individuel (§6.1, fallback ticket USED).
+          <BoardingRoster detail={detail} />
         ) : (
           <InfoRow icon={User} label="Nom" value={`${detail.passenger.firstName} ${detail.passenger.lastName}`} />
         )}
