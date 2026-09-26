@@ -1,5 +1,5 @@
 // ============================================================
-// NZOKO TRANSPORT — Moteur de réservation
+// OCÉAN DU NORD — Moteur de réservation
 // Verrouillage serveur des sièges via SeatOccupancy (unique tripId+seatId)
 // La disponibilité est TOUJOURS calculée par voyage, jamais globalement.
 // ============================================================

@@ -1,7 +1,7 @@
 "use client";
 
 // ============================================================
-// NZOKO — Dépenses : ce mois / cette année / total + graphique
+// Océan du Nord — Dépenses : ce mois / cette année / total + graphique
 // en barres (recharts) des 12 derniers mois + récapitulatif
 // des voyages payés (montant + date).
 // ============================================================

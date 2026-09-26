@@ -1,7 +1,7 @@
 "use client";
 
 // ============================================================
-// NZOKO — Onglet « Paiements en attente » du guichet agent
+// Océan du Nord — Onglet « Paiements en attente » du guichet agent
 // Réservations PENDING : chrono + encaissement espèces / Mobile Money.
 // ============================================================
 

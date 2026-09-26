@@ -1,5 +1,5 @@
 // ============================================================
-// NZOKO TRANSPORT — Espace client : helpers & mappers partagés
+// OCÉAN DU NORD — Espace client : helpers & mappers partagés
 // Résolution des passagers liés à un compte client (userId OU
 // téléphone — billets achetés avant la création du compte),
 // mappers DTO réclamations / récompenses, prochains départs.

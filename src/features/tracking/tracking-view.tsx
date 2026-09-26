@@ -1,7 +1,7 @@
 "use client";
 
 // ============================================================
-// NZOKO — Suivi de billet par référence (public)
+// Océan du Nord — Suivi de billet par référence (public)
 // ============================================================
 
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -223,7 +223,7 @@ export default function TrackingView() {
                     </p>
                     <p className="mt-1 text-sm leading-relaxed text-amber-800 dark:text-amber-300">
                       Votre siège est bloqué jusqu&apos;à expiration du délai. Finalisez le paiement au guichet
-                      {detail.agencyName ? ` ${detail.agencyName}` : " NZOKO"} avec cette référence, ou via Mobile Money
+                      {detail.agencyName ? ` ${detail.agencyName}` : " Océan du Nord"} avec cette référence, ou via Mobile Money
                       depuis votre confirmation.
                     </p>
                   </div>

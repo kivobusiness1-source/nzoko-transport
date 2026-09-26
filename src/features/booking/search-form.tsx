@@ -1,7 +1,7 @@
 "use client";
 
 // ============================================================
-// NZOKO — Formulaire de recherche de voyages (Départ / Destination / Date)
+// Océan du Nord — Formulaire de recherche de voyages (Départ / Destination / Date)
 // Composant CONTRÔLÉ : l'état appartient au parent (accueil, étape 1 du tunnel).
 // ============================================================
 

@@ -1,5 +1,5 @@
 // ============================================================
-// NZOKO TRANSPORT — Audit & journalisation de sécurité
+// OCÉAN DU NORD — Audit & journalisation de sécurité
 // ============================================================
 
 import { db } from "@/lib/db";

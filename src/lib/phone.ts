@@ -1,5 +1,5 @@
 // ============================================================
-// NZOKO TRANSPORT — Normalisation des téléphones congolais
+// OCÉAN DU NORD — Normalisation des téléphones congolais
 // Pure & isomorphe (client + serveur).
 // Format canonique : E.164 digits SANS "+" → "242061234567".
 // Congo-Brazzaville : indicatif 242, mobiles 0X XX XX XX XX.

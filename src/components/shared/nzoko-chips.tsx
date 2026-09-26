@@ -1,7 +1,7 @@
 "use client";
 
 // ============================================================
-// NZOKO TRANSPORT — Onglets horizontaux scrollables (chips)
+// OCÉAN DU NORD — Onglets horizontaux scrollables (chips)
 // Sticky sous le header global (h-14) — mobile & desktop.
 // ============================================================
 

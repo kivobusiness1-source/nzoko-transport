@@ -102,3 +102,49 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     return routeError(err, "PATCH /api/admin/buses/[id]");
   }
 }
+
+// DELETE — suppression d'un bus de SON agence (chef d'agence / superadmin).
+// Un bus rattaché à des voyages ne peut PAS être supprimé (intégrité
+// historique des billets) : le mettre hors service (statut OUT_OF_SERVICE).
+export async function DELETE(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+  try {
+    assertSameOriginPost(req);
+    const { id } = await params;
+    const auth = assertPermission(assertAuthenticated(await getAuth(req)), "bus:manage");
+    const ip = getClientIp(req);
+
+    const existing = await db.bus.findUnique({ where: { id }, select: { id: true, registrationNumber: true, agencyId: true } });
+    if (!existing) throw new ApiError(404, ERROR_CODES.NOT_FOUND, "Bus introuvable.");
+
+    // Scope agence : un non-global ne supprime que les bus de son agence
+    resolveAgencyScope(auth, existing.agencyId);
+
+    const tripCount = await db.trip.count({ where: { busId: id } });
+    if (tripCount > 0) {
+      throw new ApiError(
+        409,
+        ERROR_CODES.CONFLICT,
+        `Impossible de supprimer ${existing.registrationNumber} : ${tripCount} voyage(s) y sont rattachés. Mettez-le plutôt hors service.`,
+      );
+    }
+
+    // Séances GPS ouvertes sur ce bus → clôture propre avant suppression.
+    await db.trackingSession.updateMany({
+      where: { busId: id, status: { in: ["ACTIVE", "PAUSED"] } },
+      data: { status: "COMPLETED", endedAt: new Date() },
+    });
+
+    await db.bus.delete({ where: { id } });
+    await logAudit({
+      userId: auth.userId,
+      action: "BUS_DELETED",
+      entity: "Bus",
+      entityId: id,
+      metadata: { registration: existing.registrationNumber, agencyId: existing.agencyId },
+      ipAddress: ip,
+    });
+    return ok({ deleted: true, id });
+  } catch (err) {
+    return routeError(err, "DELETE /api/admin/buses/[id]");
+  }
+}

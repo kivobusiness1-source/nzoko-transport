@@ -1,7 +1,7 @@
 "use client";
 
 // ============================================================
-// NZOKO TRANSPORT — Contacts passagers d'un voyage annulé
+// OCÉAN DU NORD — Contacts passagers d'un voyage annulé
 // Outil agent/agence : prévenir chaque client par WhatsApp
 // (wa.me, message pré-rempli) ou par appel (tel:), plus message
 // de diffusion générique pour les groupes WhatsApp.

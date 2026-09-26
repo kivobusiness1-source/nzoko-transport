@@ -1,7 +1,7 @@
 "use client";
 
 // ============================================================
-// NZOKO — Onglet « Réservations » du guichet agent
+// Océan du Nord — Onglet « Réservations » du guichet agent
 // Recherche, filtre statut, pagination, dialog détail + annulation.
 // ============================================================
 

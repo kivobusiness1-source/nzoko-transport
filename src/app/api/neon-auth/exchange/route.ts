@@ -1,16 +1,16 @@
-// POST /api/neon-auth/exchange — pont universel session Neon → NZOKO.
+// POST /api/neon-auth/exchange — pont universel session Neon → Océan du Nord.
 //
 // Pré-requis : le navigateur s'est authentifié via le proxy /api/auth/*
 // (SDK @neondatabase/auth) → un cookie de session Neon (signé par
 // NEON_AUTH_COOKIE_SECRET) est présent. Valable pour TOUS les rôles :
-// clients (téléphone + OTP ou e-mail) comme équipes NZOKO (pont
+// clients (téléphone + OTP ou e-mail) comme équipes Océan du Nord (pont
 // d'import /api/auth/login).
 //
 // La route :
 //  1. lit la session Neon (auth.getSession()),
 //  2. REFUSE le compte de service (outil de provisioning, pas un
 //     utilisateur) et les comptes locaux inactifs,
-//  3. retrouve/provisionne le miroir User (le rôle NZOKO — relu en
+//  3. retrouve/provisionne le miroir User (le rôle Océan du Nord — relu en
 //     base, JAMAIS depuis le navigateur — est conservé : PASSENGER,
 //     AGENT, ADMIN…),
 //  4. délivre le cookie applicatif nzoko_session opaque — tout le
@@ -126,7 +126,7 @@ export async function POST(req: NextRequest) {
         throw new ApiError(
           409,
           ERROR_CODES.VALIDATION_ERROR,
-          "Ce numéro de téléphone est déjà lié à un autre compte NZOKO. Connectez-vous avec ce numéro ou choisissez-en un autre."
+          "Ce numéro de téléphone est déjà lié à un autre compte Océan du Nord. Connectez-vous avec ce numéro ou choisissez-en un autre."
         );
       }
       if (!owner) {
@@ -134,7 +134,7 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    // 4. Session applicative NZOKO (cookie opaque HttpOnly habituel)
+    // 4. Session applicative Océan du Nord (cookie opaque HttpOnly habituel)
     const { token, expiresAt } = await createSession(mirror.id, ip, getUserAgent(req));
     await db.user.update({ where: { id: mirror.id }, data: { lastLoginAt: new Date() } });
 

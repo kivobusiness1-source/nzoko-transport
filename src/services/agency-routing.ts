@@ -1,5 +1,5 @@
 // ============================================================
-// NZOKO TRANSPORT — AgencyRoutingService (V3)
+// OCÉAN DU NORD — AgencyRoutingService (V3)
 // Le MÊME moteur d'attribution d'agence pour tous les canaux :
 // site public, guichet agent, assistant IA.
 //
@@ -301,7 +301,7 @@ export async function findNearbyAgencies(query: AgencyRoutingQuery): Promise<Age
   const accuracyKm = accuracyM !== null ? Math.max(1, Math.round(accuracyM / 1000)) : null;
   let neighborhoodLabel = "";
   if (approximate) {
-    neighborhoodLabel = detectedCity ? `Voici les agences NZOKO de ${detectedCity.name}.` : "Agences NZOKO de la ville choisie.";
+    neighborhoodLabel = detectedCity ? `Voici les agences Océan du Nord de ${detectedCity.name}.` : "Agences Océan du Nord de la ville choisie.";
   } else if (neighborhood && tooLowAccuracy) {
     neighborhoodLabel = `Position GPS trop imprécise (± ${accuracyKm} km) pour identifier votre quartier.`;
   } else if (neighborhood && lowAccuracy) {
@@ -311,7 +311,7 @@ export async function findNearbyAgencies(query: AgencyRoutingQuery): Promise<Age
   }
   const message =
     rows.length === 0
-      ? "Aucune agence NZOKO active et géolocalisée pour le moment. Vous pouvez choisir votre ville manuellement."
+      ? "Aucune agence Océan du Nord active et géolocalisée pour le moment. Vous pouvez choisir votre ville manuellement."
       : recommended && recommended.status === "OPEN"
         ? `${neighborhoodLabel} Nous vous proposons l'agence ${recommended.name}${recommended.distanceLabel ? ` à environ ${recommended.distanceLabel}` : ""}.`
         : `${neighborhoodLabel} Aucune agence ouverte à proximité immédiate ; voici les agences les plus proches.`;

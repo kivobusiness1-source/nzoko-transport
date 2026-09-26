@@ -1,7 +1,7 @@
 "use client";
 
 // ============================================================
-// NZOKO — Carte KPI espace client : icône en carré coloré,
+// Océan du Nord — Carte KPI espace client : icône en carré coloré,
 // valeur XL semibold, libellé muted (aperçu & dépenses).
 // ============================================================
 

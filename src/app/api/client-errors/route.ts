@@ -4,7 +4,7 @@ import { assertSameOriginPost, getClientIp, getUserAgent } from "@/lib/api-respo
 import { checkRateLimit } from "@/lib/rate-limit";
 
 // ============================================================
-// NZOKO TRANSPORT — POST /api/client-errors
+// OCÉAN DU NORD — POST /api/client-errors
 // Télémétrie des erreurs navigateur (cf. src/lib/client-telemetry.ts) :
 // le journal part dans dev.log (développement) / stdout (Vercel).
 // CONTRAT : répond TOUJOURS 204 silencieux — même en cas de rejet

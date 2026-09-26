@@ -1,7 +1,7 @@
 "use client";
 
 // ============================================================
-// NZOKO — Bouton copier (références NZK-…, tokens, etc.)
+// Océan du Nord — Bouton copier (références NZK-…, tokens, etc.)
 // ============================================================
 
 import { useState } from "react";

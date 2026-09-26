@@ -1,7 +1,7 @@
 "use client";
 
 // ============================================================
-// NZOKO TRANSPORT — Panneau de rapports (admin & finance)
+// OCÉAN DU NORD — Panneau de rapports (admin & finance)
 // Type + période + totaux + lignes + export CSV
 // ============================================================
 

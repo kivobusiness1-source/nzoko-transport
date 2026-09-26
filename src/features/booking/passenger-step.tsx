@@ -1,7 +1,7 @@
 "use client";
 
 // ============================================================
-// NZOKO — Étape 4 : informations passager (react-hook-form + Zod)
+// Océan du Nord — Étape 4 : informations passager (react-hook-form + Zod)
 // La création de la réservation (verrou du siège) est déléguée au parent.
 // Inclut le choix OPTIONNEL du quartier d'arrêt à la destination
 // (quartiers configurés dans l'admin → Parc → Quartiers).

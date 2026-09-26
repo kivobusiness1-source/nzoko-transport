@@ -1,7 +1,7 @@
 "use client";
 
 // ============================================================
-// NZOKO — Étape 6 : billet électronique (QR, référence, impression)
+// Océan du Nord — Étape 6 : billet électronique (QR, référence, impression)
 // ============================================================
 
 import { motion } from "framer-motion";
@@ -43,7 +43,7 @@ export function TicketCard({ detail, channel, onNewBooking }: TicketCardProps) {
       return;
     }
     w.document.write(`<!DOCTYPE html>
-<html lang="fr"><head><meta charset="utf-8"><title>Billet ${detail.bookingReference} — NZOKO</title>
+<html lang="fr"><head><meta charset="utf-8"><title>Billet ${detail.bookingReference} — Océan du Nord</title>
 <style>
   *{box-sizing:border-box;margin:0;padding:0}
   body{font-family:Arial,Helvetica,sans-serif;color:#1a2e1a;background:#fff;padding:16px}
@@ -64,7 +64,7 @@ export function TicketCard({ detail, channel, onNewBooking }: TicketCardProps) {
   .foot{font-size:10px;text-align:center;color:#4b6b4b;padding:10px}
 </style></head><body>
   <div class="ticket">
-    <div class="head"><div><div class="brand">NZOKO TRANSPORT</div><div class="sub">Billet électronique</div></div></div>
+    <div class="head"><div><div class="brand">OCÉAN DU NORD</div><div class="sub">Billet électronique</div></div></div>
     <div class="body">
       <div class="route">${detail.trip.originCityName} <span>→</span> ${detail.trip.destinationCityName}</div>
       <div class="row"><span>Départ</span><b>${formatDate(detail.trip.departureTime)} · ${formatTime(detail.trip.departureTime)}</b></div>
@@ -125,14 +125,14 @@ export function TicketCard({ detail, channel, onNewBooking }: TicketCardProps) {
   return (
     <motion.div initial={{ opacity: 0, scale: 0.98 }} animate={{ opacity: 1, scale: 1 }} transition={{ duration: 0.3 }} className="space-y-4">
       <Card className="overflow-hidden border-primary/20 shadow-lg shadow-primary/10">
-        {/* Bandeau NZOKO */}
+        {/* Bandeau Océan du Nord */}
         <div className="nzoko-hero flex items-center justify-between px-5 py-4 text-white">
           <div className="flex items-center gap-2.5">
             <span className="flex size-10 items-center justify-center rounded-xl bg-white/15">
               <Bus className="size-5" aria-hidden />
             </span>
             <div>
-              <p className="text-sm font-bold leading-tight">NZOKO TRANSPORT</p>
+              <p className="text-sm font-bold leading-tight">OCÉAN DU NORD</p>
               <p className="text-[10px] uppercase tracking-[0.2em] text-white/80">Billet électronique</p>
             </div>
           </div>

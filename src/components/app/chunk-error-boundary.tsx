@@ -1,7 +1,7 @@
 "use client";
 
 // ============================================================
-// NZOKO TRANSPORT — ErrorBoundary de récupération des modules
+// OCÉAN DU NORD — ErrorBoundary de récupération des modules
 // asynchrones (React.lazy / code-splitting Turbopack).
 //
 // Contexte (incident récurrent) : après un redémarrage du serveur
@@ -80,7 +80,7 @@ export class ChunkErrorBoundary extends Component<ChunkErrorBoundaryProps, Chunk
     const haystack = `${error.name}: ${error.message} ${error.stack?.slice(0, 400) ?? ""}`;
     const chunkRelated = isChunkLoadError(haystack);
     console.error(
-      `[NZOKO] ${chunkRelated ? "Chunk/module introuvable (serveur redémarré ?)" : "Erreur d'affichage de la vue"} :`,
+      `[Océan du Nord] ${chunkRelated ? "Chunk/module introuvable (serveur redémarré ?)" : "Erreur d'affichage de la vue"} :`,
       error.message,
       info.componentStack ?? ""
     );

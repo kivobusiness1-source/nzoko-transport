@@ -1,12 +1,12 @@
 // ============================================================
-// NZOKO TRANSPORT — Compte de service admin Neon Auth
+// OCÉAN DU NORD — Compte de service admin Neon Auth
 // ============================================================
 // Le provisioning serveur (créer le compte Neon d'un client qui se
 // connecte pour la PREMIÈRE fois par téléphone + OTP, importer à la
 // volée les comptes internes existants) utilise le plugin Admin du
 // service managé — qui exige une SESSION admin (cookies HttpOnly).
 //
-// NZOKO détient donc un COMPTE DE SERVICE :
+// Océan du Nord détient donc un COMPTE DE SERVICE :
 //  - créé une fois (script scripts/neon-create-service-account.ts ou
 //    inscription dans l'onglet E-mail de l'application) ;
 //  - vérifié par e-mail (le code arrive dans la boîte du propriétaire) ;
@@ -17,12 +17,12 @@
 // mise en cache et rafraîchie automatiquement.
 //
 // Sécurité :
-//  - le rôle « admin » Neon Auth ne donne AUCUN droit NZOKO : les
+//  - le rôle « admin » Neon Auth ne donne AUCUN droit Océan du Nord : les
 //    rôles/permissions métier vivent dans notre base (User.roleId) et
 //    sont relus côté serveur à chaque requête ;
 //  - le compte de service est REFUSÉ par /api/neon-auth/exchange et par
 //    le pont d'import (isNeonServiceAccount) — il ne peut jamais devenir
-//    une session utilisateur NZOKO ;
+//    une session utilisateur Océan du Nord ;
 //  - les mots de passe transmis (import à la volée) ne sont JAMAIS
 //    journalisés ni stockés : transmis au service Neon puis oubliés.
 // ============================================================
@@ -235,7 +235,7 @@ export interface ImportAccountResult {
 
 /**
  * Pont d'import « à la volée » : crée (ou met à jour le mot de passe du)
- * compte Neon d'un utilisateur NZOKO EXISTANT dont le mot de passe local
+ * compte Neon d'un utilisateur Océan du Nord EXISTANT dont le mot de passe local
  * bcrypt vient d'être vérifié côté serveur. Le mot de passe n'est jamais
  * stocké ni journalisé — il est transmis au service Neon puis oublié.
  */

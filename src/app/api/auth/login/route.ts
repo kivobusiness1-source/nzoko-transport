@@ -6,7 +6,7 @@
 //  signIn.email via le proxy /api/auth/sign-in/email, puis échange la
 //  session via /api/neon-auth/exchange). Cette route n'est plus qu'un
 //  PONT DE MIGRATION : quand Neon répond « identifiants inconnus » et
-//  que l'identifiant correspond à un compte interne NZOKO dont le mot
+//  que l'identifiant correspond à un compte interne Océan du Nord dont le mot
 //  passe local bcrypt est correct, le compte est importé vers Neon
 //  (même mot de passe) — migration transparente, zéro friction, zéro
 //  utilisateur perdu. Aucune session locale n'est délivrée ici.
@@ -99,7 +99,7 @@ export async function POST(req: NextRequest) {
           throw new ApiError(
             400,
             ERROR_CODES.VALIDATION_ERROR,
-            "Votre compte Supabase n'a pas de téléphone NZOKO associé. Contactez le support pour finaliser votre compte client."
+            "Votre compte Supabase n'a pas de téléphone Océan du Nord associé. Contactez le support pour finaliser votre compte client."
           );
         }
 
@@ -129,7 +129,7 @@ export async function POST(req: NextRequest) {
             userAgent: getUserAgent(req),
             details: { reason: "compte interne via Supabase", method: "supabase" },
           });
-          throw new ApiError(403, ERROR_CODES.FORBIDDEN, "Ce compte doit utiliser la connexion interne (mot de passe NZOKO).");
+          throw new ApiError(403, ERROR_CODES.FORBIDDEN, "Ce compte doit utiliser la connexion interne (mot de passe Océan du Nord).");
         }
 
         const { token, expiresAt } = await createSession(user.id, ip, getUserAgent(req));
@@ -165,7 +165,7 @@ export async function POST(req: NextRequest) {
         return setSessionCookie(res, token, expiresAt);
       }
       // Identifiants Supabase invalides → on continue vers le login local
-      // (comptes internes NZOKO : admin, guichet, agence…).
+      // (comptes internes Océan du Nord : admin, guichet, agence…).
     }
 
     // ============================================================

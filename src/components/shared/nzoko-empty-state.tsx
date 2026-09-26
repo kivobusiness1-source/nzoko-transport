@@ -1,7 +1,7 @@
 "use client";
 
 // ============================================================
-// NZOKO TRANSPORT — État vide réutilisable
+// OCÉAN DU NORD — État vide réutilisable
 // ============================================================
 
 import type { ReactNode } from "react";

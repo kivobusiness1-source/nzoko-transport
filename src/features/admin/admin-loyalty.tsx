@@ -1,7 +1,7 @@
 "use client";
 
 // ============================================================
-// NZOKO — Admin : Clients & fidélité (3 sous-sections)
+// Océan du Nord — Admin : Clients & fidélité (3 sous-sections)
 // 1. Statistiques (clients, points, évaluations, paliers)
 // 2. Clients (recherche, activité, paliers)
 // 3. Récompenses & campagnes (rachats à valider + réactivation)
@@ -525,7 +525,7 @@ function CampaignCard() {
             onChange={(e) => setMessage(e.target.value.slice(0, 300))}
             rows={4}
             maxLength={300}
-            placeholder="Ex : Revenez voyager avec NZOKO : vos 100 points vous attendent…"
+            placeholder="Ex : Revenez voyager avec Océan du Nord : vos 100 points vous attendent…"
           />
           <p className="mt-1 text-right text-[11px] text-muted-foreground">{message.length}/300</p>
         </div>

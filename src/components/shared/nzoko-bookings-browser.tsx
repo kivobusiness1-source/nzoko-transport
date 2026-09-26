@@ -1,7 +1,7 @@
 "use client";
 
 // ============================================================
-// NZOKO TRANSPORT — Navigateur de réservations (admin & agence)
+// OCÉAN DU NORD — Navigateur de réservations (admin & agence)
 // Filtres + cards mobiles + table md + pagination + détail
 // ============================================================
 

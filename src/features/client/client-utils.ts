@@ -1,5 +1,5 @@
 // ============================================================
-// NZOKO — Utilitaires espace client (fidélité, dates, formats)
+// Océan du Nord — Utilitaires espace client (fidélité, dates, formats)
 // Pur et typé — aucun accès API.
 // ============================================================
 
@@ -18,7 +18,7 @@ export interface TierInfo {
 /** Définition du palier (🥉🥈🥇💎) — repli Bronze si inconnu. */
 export function tierDef(tier: LoyaltyTier): TierInfo {
   const found = LOYALTY.tiers.find((t) => t.key === tier);
-  return found ?? { key: "BRONZE", label: "NZOKO Bronze", icon: "🥉", min: 0, max: 999 };
+  return found ?? { key: "BRONZE", label: "ONC Bronze", icon: "🥉", min: 0, max: 999 };
 }
 
 /** Progression vers le palier suivant (0-100) + palier cible (null au sommet). */

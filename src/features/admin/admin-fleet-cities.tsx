@@ -1,7 +1,7 @@
 "use client";
 
 // ============================================================
-// NZOKO TRANSPORT — Parc : villes (toggle + création)
+// OCÉAN DU NORD — Parc : villes (toggle + création)
 // ============================================================
 
 import { useState } from "react";
@@ -126,7 +126,7 @@ function AdminCityForm({ onClose, onCreated }: { onClose: () => void; onCreated:
       <DialogContent className="sm:max-w-sm">
         <DialogHeader>
           <DialogTitle>Nouvelle ville</DialogTitle>
-          <DialogDescription>Ajoutez une ville desservie au réseau NZOKO.</DialogDescription>
+          <DialogDescription>Ajoutez une ville desservie au réseau Océan du Nord.</DialogDescription>
         </DialogHeader>
         <form
           className="space-y-4"

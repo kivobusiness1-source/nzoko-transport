@@ -1,7 +1,7 @@
 "use client";
 
 // ============================================================
-// NZOKO TRANSPORT — Pagination compacte (Préc / Suiv)
+// OCÉAN DU NORD — Pagination compacte (Préc / Suiv)
 // ============================================================
 
 import { ChevronLeft, ChevronRight } from "lucide-react";

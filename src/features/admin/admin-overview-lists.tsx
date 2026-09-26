@@ -1,7 +1,7 @@
 "use client";
 
 // ============================================================
-// NZOKO TRANSPORT — Vue d'ensemble admin : listes
+// OCÉAN DU NORD — Vue d'ensemble admin : listes
 // Top routes + dernières réservations + paiements + voyages
 // ============================================================
 

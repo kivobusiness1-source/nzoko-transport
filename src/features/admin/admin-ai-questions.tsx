@@ -1,7 +1,7 @@
 "use client";
 
 // ============================================================
-// NZOKO TRANSPORT — Base IA : journal des questions de
+// OCÉAN DU NORD — Base IA : journal des questions de
 // l'assistant (qualité de service + réponse détail)
 // ============================================================
 

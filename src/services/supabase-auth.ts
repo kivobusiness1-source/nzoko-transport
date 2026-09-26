@@ -1,9 +1,9 @@
 // ============================================================
-// NZOKO TRANSPORT — Intégration Supabase Auth (clients)
+// OCÉAN DU NORD — Intégration Supabase Auth (clients)
 // ============================================================
 // Les COMPTES CLIENTS sont gérés par Supabase (authentification) :
 // inscription, connexion et profil sont délégués à Supabase Auth.
-// Le serveur NZOKO agit en proxy : il ne voit JAMAIS le mot de passe
+// Le serveur Océan du Nord agit en proxy : il ne voit JAMAIS le mot de passe
 // en clair autrement que pour le transmettre à Supabase, et il
 // maintient un « miroir » local (Prisma) indispensable au métier
 // (billets, fidélité, réclamations — clé téléphone).
@@ -16,7 +16,7 @@
 //    comportement strictement identique à l'existant.
 //
 // Le token Supabase n'est PAS persisté côté client : la session
-// applicative reste le cookie opaque NZOKO (HttpOnly).
+// applicative reste le cookie opaque Océan du Nord (HttpOnly).
 // ============================================================
 
 import { createClient, type SupabaseClient, type User as SupabaseAuthUser } from "@supabase/supabase-js";
@@ -58,7 +58,7 @@ export function supabaseAuthMessage(code: string | undefined, message: string): 
     case "over_request_rate_limit":
       return "Trop de tentatives. Patientez quelques instants avant de réessayer.";
     case "user_banned":
-      return "Ce compte a été suspendu. Contactez le support NZOKO.";
+      return "Ce compte a été suspendu. Contactez le support Océan du Nord.";
     case "email_not_confirmed":
       return "Confirmez d'abord votre adresse e-mail (lien envoyé à votre boîte mail).";
     case "phone_not_confirmed":
@@ -131,7 +131,7 @@ export async function upsertClientMirror(input: MirrorInput): Promise<{ id: stri
   await db.notification.create({
     data: {
       userId: user.id,
-      title: "Bienvenue chez NZOKO TRANSPORT 👋",
+      title: "Bienvenue chez OCÉAN DU NORD 👋",
       message: "Votre espace client est prêt : billets, points fidélité et réclamations.",
       type: "SUCCESS",
     },
@@ -145,7 +145,7 @@ export async function ensurePassengerRoleId(): Promise<string> {
   const role = await db.role.upsert({
     where: { code: "PASSENGER" },
     update: {},
-    create: { code: "PASSENGER", name: "Client NZOKO", isSystem: true },
+    create: { code: "PASSENGER", name: "Client Océan du Nord", isSystem: true },
   });
   const wanted: { code: string; name: string }[] = [
     { code: "booking:create", name: "Créer des réservations" },
@@ -175,7 +175,7 @@ export function mirrorDataFromSupabase(su: SupabaseAuthUser): {
 } {
   const meta = (su.user_metadata ?? {}) as Record<string, unknown>;
   const firstName = typeof meta.first_name === "string" && meta.first_name.trim() ? meta.first_name.trim() : "Client";
-  const lastName = typeof meta.last_name === "string" && meta.last_name.trim() ? meta.last_name.trim() : "NZOKO";
+  const lastName = typeof meta.last_name === "string" && meta.last_name.trim() ? meta.last_name.trim() : "Océan du Nord";
   const rawPhone = typeof meta.phone === "string" ? meta.phone : (su.phone ?? "");
   const phone = rawPhone ? normalizePhone(rawPhone) : null;
   return { firstName, lastName, phone };

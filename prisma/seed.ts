@@ -1,5 +1,5 @@
 // ============================================================
-// NZOKO TRANSPORT — Seed initial (configuration opérationnelle)
+// OCÉAN DU NORD — Seed initial (configuration opérationnelle)
 // Rôles/permissions, comptes équipe, villes, agences, bus, chauffeurs,
 // lignes et voyages des 7 prochains jours. AUCUNE donnée fictive
 // (réservations/paiements/dépenses) : démarrage production propre.
@@ -22,7 +22,7 @@ const ROLES = [
   { code: "ACCOUNTANT", name: "Comptable", description: "Finances, dépenses et rapports" },
   { code: "DRIVER", name: "Chauffeur", description: "Consultation de ses voyages" },
   { code: "SUPPORT", name: "Support client", description: "Assistance aux clients" },
-  { code: "PASSENGER", name: "Client NZOKO", description: "Espace client : billets, fidélité, réclamations" },
+  { code: "PASSENGER", name: "Client Océan du Nord", description: "Espace client : billets, fidélité, réclamations" },
 ];
 
 const PERMISSIONS: { code: string; name: string }[] = [
@@ -116,7 +116,7 @@ function dateStr(offsetDays: number): string {
 }
 
 async function main(): Promise<void> {
-  console.log("🌱 Seed NZOKO TRANSPORT — démarrage…");
+  console.log("🌱 Seed OCÉAN DU NORD — démarrage…");
 
   // ---------- Purge ----------
   // Espace client & fidélité (Task ID 10) : purge complète pour installs fraîches
@@ -183,7 +183,7 @@ async function main(): Promise<void> {
   const agencyPN = await db.agency.create({
     data: {
       code: "PNR-CENTRE",
-      name: "NZOKO Pointe-Noire Centre",
+      name: "Océan du Nord Pointe-Noire Centre",
       cityId: cities.get("Pointe-Noire")!,
       address: "Boulevard Charles de Gaulle, Pointe-Noire",
       phone: "+242 06 123 45 67",
@@ -193,7 +193,7 @@ async function main(): Promise<void> {
   const agencyBZV = await db.agency.create({
     data: {
       code: "BZV-CENTRE",
-      name: "NZOKO Brazzaville Centre",
+      name: "Océan du Nord Brazzaville Centre",
       cityId: cities.get("Brazzaville")!,
       address: "Avenue Marien Ngouabi, Brazzaville",
       phone: "+242 06 765 43 21",
@@ -431,7 +431,7 @@ async function main(): Promise<void> {
   // ---------- Notifications ----------
   await db.notification.createMany({
     data: [
-      { userId: users.get("SUPER_ADMIN")!, title: "Bienvenue sur NZOKO", message: "La plateforme est initialisée et prête pour l'exploitation.", type: "INFO" },
+      { userId: users.get("SUPER_ADMIN")!, title: "Bienvenue sur Océan du Nord", message: "La plateforme est initialisée et prête pour l'exploitation.", type: "INFO" },
       { userId: users.get("SUPER_ADMIN")!, title: "Configuration MTN MoMo", message: "Renseignez les clés MOMO_* dans le fichier .env pour activer les paiements Mobile Money (voir README-MOMO.md).", type: "WARNING" },
       { userId: users.get("AGENCY_MANAGER")!, title: "Départs du jour", message: "Vérifiez l'affectation des bus pour les départs de ce soir.", type: "INFO" },
     ],

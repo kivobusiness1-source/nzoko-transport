@@ -1,7 +1,7 @@
 "use client";
 
 // ============================================================
-// NZOKO — Panneau détail d'une réservation (suivi public + guichet agent)
+// Océan du Nord — Panneau détail d'une réservation (suivi public + guichet agent)
 // Timeline : réservée → payée → billet émis → embarquée
 // ============================================================
 

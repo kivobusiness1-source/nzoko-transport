@@ -1,7 +1,7 @@
 "use client";
 
 // ============================================================
-// NZOKO TRANSPORT — Réservations admin (filtre agence si global)
+// OCÉAN DU NORD — Réservations admin (filtre agence si global)
 // ============================================================
 
 import { useApp } from "@/lib/store";

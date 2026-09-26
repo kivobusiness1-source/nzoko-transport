@@ -1,5 +1,5 @@
 // ============================================================
-// NZOKO TRANSPORT — Machine à états du voyage (V5 GPS, §22)
+// OCÉAN DU NORD — Machine à états du voyage (V5 GPS, §22)
 //
 // Le statut MÉTIER du Trip (SCHEDULED | BOARDING | DEPARTED |
 // ARRIVED | COMPLETED | CANCELLED) ne doit JAMAIS être modifié par

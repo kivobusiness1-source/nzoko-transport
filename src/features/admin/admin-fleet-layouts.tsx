@@ -1,7 +1,7 @@
 "use client";
 
 // ============================================================
-// NZOKO TRANSPORT — Parc : configurations de sièges
+// OCÉAN DU NORD — Parc : configurations de sièges
 // Mini-visualisation + création (rows/columns/couloir/VIP)
 // ============================================================
 

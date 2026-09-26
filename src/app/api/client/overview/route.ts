@@ -130,7 +130,7 @@ function emptyStats(): ClientStatsDTO {
     pointsBalance: 0,
     lifetimePoints: 0,
     tier: "BRONZE",
-    nextTier: { key: "SILVER", label: "NZOKO Silver", pointsRemaining: 1000 },
+    nextTier: { key: "SILVER", label: "ONC Silver", pointsRemaining: 1000 },
     favoriteRoute: null,
     personalizedOffer: null,
   };

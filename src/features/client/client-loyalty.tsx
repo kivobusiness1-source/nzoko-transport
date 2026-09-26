@@ -1,7 +1,7 @@
 "use client";
 
 // ============================================================
-// NZOKO — Fidélité : vitrine (solde en héros gradient, paliers,
+// Océan du Nord — Fidélité : vitrine (solde en héros gradient, paliers,
 // prochaine récompense), catalogue des récompenses avec échange,
 // demandes de rachat (code promo copiable) + historique points.
 // ============================================================
@@ -165,7 +165,7 @@ export function ClientLoyalty({ refreshKey }: { refreshKey?: number }) {
       </motion.section>
 
       {/* --- Les 4 paliers --- */}
-      <section aria-label="Les paliers NZOKO">
+      <section aria-label="Les paliers Océan du Nord">
         <h3 className="mb-3 text-sm font-semibold uppercase tracking-wide text-muted-foreground">Les paliers fidélité</h3>
         <div className="grid grid-cols-4 gap-1.5 sm:gap-2">
           {LOYALTY.tiers.map((t) => {
@@ -188,7 +188,7 @@ export function ClientLoyalty({ refreshKey }: { refreshKey?: number }) {
                   {t.icon}
                 </span>
                 <span className={cn("mt-1 truncate text-[10px] font-semibold sm:text-[11px]", isCurrent && "text-primary")}>
-                  {t.label.replace("NZOKO ", "")}
+                  {t.label.replace("Océan du Nord ", "")}
                 </span>
                 <span className="text-[10px] tabular-nums text-muted-foreground">{formatPoints(t.min)} pts</span>
                 {isCurrent && (

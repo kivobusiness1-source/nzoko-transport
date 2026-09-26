@@ -1,7 +1,7 @@
 "use client";
 
 // ============================================================
-// NZOKO TRANSPORT — Onglet admin « Suivi GPS » V4
+// OCÉAN DU NORD — Onglet admin « Suivi GPS » V4
 // Flotte live : barre KPI par état GPS, filtres persistants
 // (agence / état / ligne), carte Leaflet multi-couches (tuiles
 // depuis la config serveur), panneau détail bus (exigence 24),

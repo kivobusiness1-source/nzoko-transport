@@ -1,7 +1,7 @@
 "use client";
 
 // ============================================================
-// NZOKO TRANSPORT — Départs du jour (agence)
+// OCÉAN DU NORD — Départs du jour (agence)
 // ============================================================
 
 import { Bus, CalendarClock } from "lucide-react";

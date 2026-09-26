@@ -1,7 +1,7 @@
 "use client";
 
 // ============================================================
-// NZOKO — Guichet agent : nouvelle vente (tunnel AGENT),
+// Océan du Nord — Guichet agent : nouvelle vente (tunnel AGENT),
 // réservations de l'agence, paiements en attente.
 // ============================================================
 
@@ -14,7 +14,7 @@ import { useApp } from "@/lib/store";
 
 export default function AgentDesk() {
   const session = useApp((s) => s.session);
-  const agencyName = session?.agencyName ?? "NZOKO";
+  const agencyName = session?.agencyName ?? "Océan du Nord";
 
   return (
     <section className="mx-auto w-full max-w-2xl px-4 py-6" aria-label="Guichet agent">

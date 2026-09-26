@@ -1,7 +1,7 @@
 "use client";
 
 // ============================================================
-// NZOKO — Compte à rebours du verrou de réservation (10 min)
+// Océan du Nord — Compte à rebours du verrou de réservation (10 min)
 // Affiche mm:ss, avertit en dessous de 2 minutes, notifie l'expiration.
 // ============================================================
 

@@ -1,7 +1,7 @@
 "use client";
 
 // ============================================================
-// NZOKO TRANSPORT — Suivi GPS V4 : filtres & légende des couches
+// OCÉAN DU NORD — Suivi GPS V4 : filtres & légende des couches
 // Filtres persistants (état React local du parent, conservés
 // pendant la session d'affichage) : agence, état du bus, ligne.
 // Légende : activation des couches carte (bus, agences, arrêts,

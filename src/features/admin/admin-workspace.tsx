@@ -1,7 +1,7 @@
 "use client";
 
 // ============================================================
-// NZOKO TRANSPORT — Espace ADMIN / SUPER_ADMIN — 12 onglets
+// OCÉAN DU NORD — Espace ADMIN / SUPER_ADMIN — 12 onglets
 // Les onglets sont masqués selon les permissions de session ;
 // le serveur revalide systématiquement les accès.
 // ============================================================

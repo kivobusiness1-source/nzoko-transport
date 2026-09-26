@@ -1,7 +1,7 @@
 "use client";
 
 // ============================================================
-// NZOKO TRANSPORT — Transactions financières (paginées)
+// OCÉAN DU NORD — Transactions financières (paginées)
 // ============================================================
 
 import { useState } from "react";

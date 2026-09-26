@@ -9,7 +9,7 @@
 //
 // DURCISSEMENT : liste blanche des seuls endpoints exposés au NAVIGATEUR.
 // Les appels ADMIN (provisioning, import) sont effectués exclusivement par
-// le SERVEUR NZOKO avec le compte de service (src/lib/neon-auth/
+// le SERVEUR Océan du Nord avec le compte de service (src/lib/neon-auth/
 // service-account.ts) — jamais via ce proxy public.
 
 import type { NextRequest } from "next/server";

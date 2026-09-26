@@ -34,7 +34,7 @@ export async function PATCH(req: NextRequest) {
       throw new ApiError(
         400,
         ERROR_CODES.VALIDATION_ERROR,
-        "Votre mot de passe est géré par votre compte Supabase : utilisez « Mot de passe oublié » depuis l'écran de connexion, ou contactez le support NZOKO."
+        "Votre mot de passe est géré par votre compte Supabase : utilisez « Mot de passe oublié » depuis l'écran de connexion, ou contactez le support Océan du Nord."
       );
     }
 

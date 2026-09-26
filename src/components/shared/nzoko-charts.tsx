@@ -1,7 +1,7 @@
 "use client";
 
 // ============================================================
-// NZOKO TRANSPORT — Graphiques recharts génériques (FR)
+// OCÉAN DU NORD — Graphiques recharts génériques (FR)
 // Area / Bar, tooltip FR, axes compacts, 100% responsive.
 // ============================================================
 

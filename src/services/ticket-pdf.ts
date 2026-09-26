@@ -1,5 +1,5 @@
 // ============================================================
-// NZOKO TRANSPORT — Billet PDF (V3)
+// OCÉAN DU NORD — Billet PDF (V3)
 // Génération A4 imprimable avec pdf-lib (serverless-friendly) :
 // logo, passager, voyage, agence (adresse), siège, montant,
 // statut paiement, numéro d'embarquement, QR code, instructions,
@@ -14,10 +14,10 @@ import { db } from "@/lib/db";
 import { ApiError, ERROR_CODES } from "@/lib/api-response";
 import { formatDateTime } from "@/lib/format";
 
-// Palette NZOKO (cohérente avec l'UI Tailwind)
+// Palette Océan du Nord (cohérente avec l'UI Tailwind)
 const INK = rgb(0.09, 0.11, 0.14); // #171C22
 const MUTED = rgb(0.42, 0.45, 0.5);
-const PRIMARY = rgb(0.05, 0.45, 0.36); // vert NZOKO
+const PRIMARY = rgb(0.05, 0.45, 0.36); // vert Océan du Nord
 const PRIMARY_LIGHT = rgb(0.91, 0.96, 0.94);
 const LINE = rgb(0.85, 0.87, 0.89);
 const DANGER = rgb(0.75, 0.15, 0.12);
@@ -111,9 +111,9 @@ export async function renderTicketPdf(token: string): Promise<{ bytes: Uint8Arra
   const trip = b.trip;
 
   const pdf = await PDFDocument.create();
-  pdf.setTitle(`Billet ${b.bookingReference} — NZOKO Transport`);
-  pdf.setAuthor("NZOKO Transport");
-  pdf.setCreator("NZOKO Transport — plateforme officielle");
+  pdf.setTitle(`Billet ${b.bookingReference} — Océan du Nord`);
+  pdf.setAuthor("Océan du Nord");
+  pdf.setCreator("Océan du Nord — plateforme officielle");
 
   const page = pdf.addPage([595.28, 841.89]); // A4 portrait
   currentPage = page;
@@ -138,7 +138,7 @@ export async function renderTicketPdf(token: string): Promise<{ bytes: Uint8Arra
   if (logo) {
     page.drawImage(logo, { x: M, y: page.getHeight() - 74, width: 44, height: 44 });
   }
-  pageDrawText(bold, "NZOKO TRANSPORT", x0(logo), page.getHeight() - 56, 20, WHITE);
+  pageDrawText(bold, "OCÉAN DU NORD", x0(logo), page.getHeight() - 56, 20, WHITE);
   pageDrawText(font, "Compagnie de transport interurbain — Congo-Brazzaville", x0(logo), page.getHeight() - 72, 9, rgb(0.88, 0.96, 0.93));
   pageDrawText(font, "BILLET ÉLECTRONIQUE / BOARDING PASS", M, page.getHeight() - 108, 10, PRIMARY);
 
@@ -254,7 +254,7 @@ export async function renderTicketPdf(token: string): Promise<{ bytes: Uint8Arra
 
   // ---------- Pied de page ----------
   page.drawLine({ start: { x: M, y: 64 }, end: { x: page.getWidth() - M, y: 64 }, thickness: 0.7, color: LINE });
-  pageDrawText(font, "NZOKO Transport — Pointe-Noire · Brazzaville · Dolisie · Nkayi · Ouesso", M, 50, 8, MUTED);
+  pageDrawText(font, "Océan du Nord — Pointe-Noire · Brazzaville · Dolisie · Nkayi · Ouesso", M, 50, 8, MUTED);
   pageDrawText(font, `Émis le ${formatDateTime(ticket.issuedAt)} — Document généré électroniquement.`, M, 38, 8, MUTED);
   pageDrawText(mono, b.bookingReference, page.getWidth() - M - 150, 50, 10, MUTED);
 

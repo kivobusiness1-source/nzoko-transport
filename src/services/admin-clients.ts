@@ -1,5 +1,5 @@
 // ============================================================
-// NZOKO TRANSPORT — Administration : clients & fidélité (lecture)
+// OCÉAN DU NORD — Administration : clients & fidélité (lecture)
 // Résolution complète client ↔ passagers (userId OU téléphone),
 // agrégats voyages/dépenses/points par client — partagé entre
 // /api/admin/clients (liste) et /api/admin/clients/stats.

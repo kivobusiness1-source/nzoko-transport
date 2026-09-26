@@ -1,7 +1,7 @@
 "use client";
 
 // ============================================================
-// NZOKO — Carte voyage (étape 2 du tunnel de réservation)
+// Océan du Nord — Carte voyage (étape 2 du tunnel de réservation)
 // ============================================================
 
 import { ArrowRight, Bus, Clock, MapPin, Users } from "lucide-react";

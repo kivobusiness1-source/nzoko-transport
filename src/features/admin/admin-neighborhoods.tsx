@@ -1,7 +1,7 @@
 "use client";
 
 // ============================================================
-// NZOKO TRANSPORT — Parc : quartiers (CRUD géolocalisé)
+// OCÉAN DU NORD — Parc : quartiers (CRUD géolocalisé)
 // V3 — détection « Vous êtes probablement à [quartier] » et
 // rattachement des agences. Suppression douce si agences.
 // ============================================================

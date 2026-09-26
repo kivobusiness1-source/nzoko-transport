@@ -1,7 +1,7 @@
 "use client";
 
 // ============================================================
-// NZOKO TRANSPORT — Gestion de la permission de géolocalisation
+// OCÉAN DU NORD — Gestion de la permission de géolocalisation
 //
 // Les navigateurs EXIGENT un accord explicite de l'utilisateur avant
 // de transmettre sa position. Quand la popup d'autorisation
@@ -131,7 +131,7 @@ function deniedSteps(platform: GeoPlatform): string[] {
   if (platform === "ios") {
     return [
       "Appuyez sur « aA » ou ℹ à gauche de la barre d'adresse → « Réglages du site web » → « Position » → « Autoriser ».",
-      "Si NZOKO est installée depuis l'écran d'accueil : Réglages de l'iPhone → NZOKO → « Position » → « Autoriser ».",
+      "Si Océan du Nord est installée depuis l'écran d'accueil : Réglages de l'iPhone → Océan du Nord → « Position » → « Autoriser ».",
       "Revenez sur cette page, rechargez-la, puis relancez le suivi.",
     ];
   }
@@ -154,7 +154,7 @@ export function diagnoseGeoBlock(): GeoBlockDiagnosis {
       title: "Page non sécurisée — localisation impossible",
       steps: [
         "Cette page est servie en http:// (sans cadenas 🔒) : les navigateurs bloquent la localisation sur ces adresses et AUCUN réglage ne peut la réactiver ici.",
-        "Ouvrez NZOKO via une adresse sécurisée https:// — la version officielle déployée — ou, en développement, http://localhost:3000 (accepté par les navigateurs).",
+        "Ouvrez Océan du Nord via une adresse sécurisée https:// — la version officielle déployée — ou, en développement, http://localhost:3000 (accepté par les navigateurs).",
         `Adresse actuelle : ${env.origin || "(inconnue)"}`,
       ],
       canOpenNewTab: false,
@@ -181,7 +181,7 @@ export function diagnoseGeoBlock(): GeoBlockDiagnosis {
       steps: [
         "Ce lien a été ouvert dans le navigateur intégré d'une application (WhatsApp, Facebook, Instagram…) qui n'affiche jamais les demandes de localisation.",
         "Ouvrez le menu de l'application (⋮ ou ⇧) et choisissez « Ouvrir dans Chrome » ou « Ouvrir dans Safari ».",
-        "Depuis le vrai navigateur, ouvrez NZOKO puis démarrez le suivi.",
+        "Depuis le vrai navigateur, ouvrez Océan du Nord puis démarrez le suivi.",
       ],
       canOpenNewTab: false,
     };

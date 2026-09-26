@@ -1,5 +1,5 @@
 // ============================================================
-// NZOKO TRANSPORT — Utilitaires date (fuseau Congo UTC+1 fixe)
+// OCÉAN DU NORD — Utilitaires date (fuseau Congo UTC+1 fixe)
 // Partagé client/serveur (aucune dépendance Node)
 // ============================================================
 

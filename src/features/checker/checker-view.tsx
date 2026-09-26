@@ -1,7 +1,7 @@
 "use client";
 
 // ============================================================
-// NZOKO — Espace contrôleur (CHECKER) · V3
+// Océan du Nord — Espace contrôleur (CHECKER) · V3
 // Scan QR caméra (jsQR) + saisie manuelle (token / référence /
 // numéro d'embarquement NZK-XXXXXX) + panneau résultat pro +
 // historique de session + mode hors-ligne dégradé (voyages du
@@ -475,7 +475,7 @@ export default function CheckerView() {
         </div>
       </div>
       <p className="mt-1 text-sm text-muted-foreground">
-        {session ? `${session.fullName} — ${session.roleLabel}` : "Contrôleur NZOKO"}
+        {session ? `${session.fullName} — ${session.roleLabel}` : "Contrôleur Océan du Nord"}
       </p>
 
       {/* Bandeau hors-ligne (mode dégradé : lecture seule) */}

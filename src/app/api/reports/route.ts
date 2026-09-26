@@ -179,7 +179,7 @@ export async function GET(req: NextRequest) {
         status: 200,
         headers: {
           "Content-Type": "text/csv; charset=utf-8",
-          "Content-Disposition": `attachment; filename="nzoko-rapport-${type}.csv"`,
+          "Content-Disposition": `attachment; filename="ocean-du-nord-rapport-${type}.csv"`,
         },
       });
     }

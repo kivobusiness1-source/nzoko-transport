@@ -1,5 +1,5 @@
 // ============================================================
-// NZOKO TRANSPORT — Réponses API normalisées + gestion d'erreurs
+// OCÉAN DU NORD — Réponses API normalisées + gestion d'erreurs
 // Ne JAMAIS exposer stack traces / détails internes au client.
 // ============================================================
 

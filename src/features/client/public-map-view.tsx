@@ -1,7 +1,7 @@
 "use client";
 
 // ============================================================
-// NZOKO — Vue publique « Carte des lignes NZOKO » (exigences 21, 41)
+// Océan du Nord — Vue publique « Carte des lignes Océan du Nord » (exigences 21, 41)
 // Accessible SANS connexion : agences officielles, tracés des
 // lignes interurbaines, arrêts par ville et (si activé côté
 // serveur) positions des bus volontairement minimales.
@@ -173,7 +173,7 @@ export default function PublicMapView() {
   const providerLabel = !config || config.provider === "openstreetmap" ? "OpenStreetMap" : config.provider;
 
   return (
-    <section className="mx-auto w-full max-w-6xl px-4 py-6" aria-label="Carte des lignes NZOKO">
+    <section className="mx-auto w-full max-w-6xl px-4 py-6" aria-label="Carte des lignes Océan du Nord">
       {/* ---------- En-tête de vue ---------- */}
       <div className="flex items-start gap-3">
         <Button
@@ -187,7 +187,7 @@ export default function PublicMapView() {
         </Button>
         <div className="min-w-0 flex-1">
           <h1 className="flex items-center gap-2 text-lg font-bold tracking-tight sm:text-xl">
-            <MapIcon className="size-5 shrink-0 text-primary" aria-hidden /> Carte des lignes NZOKO
+            <MapIcon className="size-5 shrink-0 text-primary" aria-hidden /> Carte des lignes Océan du Nord
           </h1>
           <p className="mt-0.5 text-sm text-muted-foreground">Nos agences, nos trajets interurbains</p>
         </div>

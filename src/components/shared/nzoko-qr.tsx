@@ -1,7 +1,7 @@
 "use client";
 
 // ============================================================
-// NZOKO — Affichage QR (PNG data URL servi par /api/tickets/[token]/qr)
+// Océan du Nord — Affichage QR (PNG data URL servi par /api/tickets/[token]/qr)
 // ============================================================
 
 import { useEffect, useState } from "react";

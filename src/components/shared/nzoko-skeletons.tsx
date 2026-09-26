@@ -1,7 +1,7 @@
 "use client";
 
 // ============================================================
-// NZOKO TRANSPORT — Skeletons de chargement réutilisables
+// OCÉAN DU NORD — Skeletons de chargement réutilisables
 // ============================================================
 
 import { Card } from "@/components/ui/card";

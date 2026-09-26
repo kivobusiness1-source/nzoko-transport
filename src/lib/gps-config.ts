@@ -1,5 +1,5 @@
 // ============================================================
-// NZOKO TRANSPORT — Configuration GPS & cartographie ouverte (V4)
+// OCÉAN DU NORD — Configuration GPS & cartographie ouverte (V4)
 // Source UNIQUE de tuning du système GPS étendu. Isomorphe (client ou
 // serveur), SANS AUCUN SECRET : ne jamais y lire de clé d'API.
 //

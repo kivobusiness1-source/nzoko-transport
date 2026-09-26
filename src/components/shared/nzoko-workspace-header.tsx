@@ -1,7 +1,7 @@
 "use client";
 
 // ============================================================
-// NZOKO TRANSPORT — En-tête d'espace (titre + utilisateur)
+// OCÉAN DU NORD — En-tête d'espace (titre + utilisateur)
 // ============================================================
 
 import type { ReactNode } from "react";

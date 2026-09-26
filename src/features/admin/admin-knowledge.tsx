@@ -1,7 +1,7 @@
 "use client";
 
 // ============================================================
-// NZOKO TRANSPORT — Base IA : FAQ de l'assistant (CRUD)
+// OCÉAN DU NORD — Base IA : FAQ de l'assistant (CRUD)
 // V3 — base de connaissances officielle : le LLM ne répond
 // JAMAIS hors base. La FAQ directe est servie telle quelle.
 // ============================================================

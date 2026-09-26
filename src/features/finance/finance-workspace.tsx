@@ -1,7 +1,7 @@
 "use client";
 
 // ============================================================
-// NZOKO TRANSPORT — Espace COMPTABLE (ACCOUNTANT) — 4 onglets
+// OCÉAN DU NORD — Espace COMPTABLE (ACCOUNTANT) — 4 onglets
 // ============================================================
 
 import { useState } from "react";

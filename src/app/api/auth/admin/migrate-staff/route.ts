@@ -1,5 +1,5 @@
 // POST /api/auth/admin/migrate-staff — MIGRATION PROACTIVE des comptes
-// internes NZOKO vers Neon Auth.
+// internes Océan du Nord vers Neon Auth.
 //
 // Jusqu'ici les comptes staff étaient importés « à la volée » : à la
 // PREMIÈRE connexion de chacun (pont /api/auth/login : bcrypt local →

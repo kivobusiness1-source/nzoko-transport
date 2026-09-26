@@ -1,7 +1,7 @@
 "use client";
 
 // ============================================================
-// NZOKO — Accueil public : hero, recherche, "comment ça marche",
+// Océan du Nord — Accueil public : hero, recherche, "comment ça marche",
 // destinations, bandeau confiance. Mobile-first.
 // ============================================================
 
@@ -70,7 +70,7 @@ const TRUST_ITEMS: TrustItem[] = [
   {
     icon: Building2,
     title: "Agences officielles",
-    text: "Guichets NZOKO à Brazzaville et Pointe-Noire.",
+    text: "Guichets Océan du Nord à Brazzaville et Pointe-Noire.",
   },
 ];
 
@@ -146,7 +146,7 @@ export default function HomeView({ onSearch }: { onSearch: (params: { from: stri
               Réservation de bus<br className="hidden sm:block" /> au Congo-Brazzaville
             </h1>
             <p className="mt-3 max-w-xl text-sm leading-relaxed text-white/85 sm:text-base">
-              Voyagez simplement, voyagez en confiance. Réservez votre place entre Brazzaville, Pointe-Noire,
+              Sécurité, confort, fiabilité. Réservez votre place entre Brazzaville, Pointe-Noire,
               Dolisie, Nkayi, Ouesso et plus. Paiement Mobile Money, billet QR immédiat.
             </p>
           </motion.div>

@@ -1,7 +1,7 @@
 "use client";
 
 // ============================================================
-// NZOKO TRANSPORT — Hook de géolocalisation intelligent (chauffeur)
+// OCÉAN DU NORD — Hook de géolocalisation intelligent (chauffeur)
 //
 // Fréquence pilotée par la CONFIG SERVEUR (GET /api/tracking/config,
 // chargée au démarrage du watch — une seule fois, best-effort ; repli

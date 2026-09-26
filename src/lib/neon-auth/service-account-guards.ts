@@ -1,7 +1,7 @@
 import { db } from "@/lib/db";
 
 // ============================================================
-// NZOKO TRANSPORT — Garde-fou du COMPTE DE SERVICE Neon Auth
+// OCÉAN DU NORD — Garde-fou du COMPTE DE SERVICE Neon Auth
 // (auto-configuration au démarrage)
 // ------------------------------------------------------------
 // Contexte (2026-09-22, cf. worklog Task 41) : le compte de service
@@ -33,7 +33,7 @@ import { db } from "@/lib/db";
 //  - strictement additif (vérifié=true, role='admin' — jamais l'inverse),
 //    idempotent, AUCUNE autre ligne n'est touchée ;
 //  - le rôle « admin » Neon Auth ne confère AUCUN droit applicatif
-//    NZOKO (les rôles métier vivent dans la base NZOKO — User.roleId,
+//    Océan du Nord (les rôles métier vivent dans la base Océan du Nord — User.roleId,
 //    relus côté serveur à chaque requête) et le compte de service est
 //    REFUSÉ comme session utilisateur (isNeonServiceAccount — pont
 //    d'import et /api/neon-auth/exchange) ;

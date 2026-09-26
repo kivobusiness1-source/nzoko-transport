@@ -1,7 +1,7 @@
 "use client";
 
 // ============================================================
-// NZOKO — Mes voyages : historique riche (bande latérale colorée
+// Océan du Nord — Mes voyages : historique riche (bande latérale colorée
 // selon le statut, groupement par mois, référence copiable,
 // évaluations post-voyage via RatingDialog).
 // ============================================================

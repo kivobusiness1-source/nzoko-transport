@@ -1,7 +1,7 @@
 "use client";
 
 // ============================================================
-// NZOKO TRANSPORT — Rapports admin (V3)
+// OCÉAN DU NORD — Rapports admin (V3)
 // Type + période + totaux + lignes + export CSV + impression
 // Types V3 : « Par ville » (ville de départ) et « Par agent »
 // (vendeur guichet, ou « Site web » pour les ventes en ligne).

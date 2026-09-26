@@ -1,7 +1,7 @@
 "use client";
 
 // ============================================================
-// NZOKO — « Trouver mon agence » (GPS client, V3)
+// Océan du Nord — « Trouver mon agence » (GPS client, V3)
 // Panneau optionnel repliable du tunnel de réservation :
 //  1. bouton « Trouver mon agence » → géolocalisation éphémère
 //     (haute précision, réessai auto sur timeout, JAMAIS stockée) ;
@@ -475,7 +475,7 @@ export function AgencyFinder({
                   <MapPin className="size-3.5 shrink-0 text-primary" aria-hidden />
                   {result?.source === "manual" && manualCity
                     ? `Agences de ${manualCity.name}`
-                    : "Agences NZOKO à proximité"}
+                    : "Agences Océan du Nord à proximité"}
                 </p>
                 <Button
                   type="button"

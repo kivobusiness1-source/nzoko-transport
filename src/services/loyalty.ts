@@ -1,5 +1,5 @@
 // ============================================================
-// NZOKO TRANSPORT — Moteur de fidélité (espace client)
+// OCÉAN DU NORD — Moteur de fidélité (espace client)
 // 1 voyage payé = 100 points (LOYALTY.pointsPerTrip).
 // Paliers sur les points cumulés (lifetime) :
 // BRONZE 0+ | SILVER 1 000+ | GOLD 5 000+ | VIP 15 000+.
@@ -128,7 +128,7 @@ export async function awardPointsForBooking(tx: Tx, bookingId: string): Promise<
     data: {
       userId,
       title: "🎉 Points fidélité gagnés",
-      message: `Vous avez gagné ${points} points NZOKO. Solde : ${account.pointsBalance + points} points.`,
+      message: `Vous avez gagné ${points} points Océan du Nord. Solde : ${account.pointsBalance + points} points.`,
       type: "SUCCESS",
     },
   });

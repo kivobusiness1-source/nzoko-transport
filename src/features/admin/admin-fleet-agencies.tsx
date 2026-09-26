@@ -1,7 +1,7 @@
 "use client";
 
 // ============================================================
-// NZOKO TRANSPORT — Parc : agences (liste + création)
+// OCÉAN DU NORD — Parc : agences (liste + création)
 // ============================================================
 
 import { useState } from "react";
@@ -51,7 +51,7 @@ export function AdminFleetAgencies({ refreshKey }: { refreshKey?: number }) {
         {loading && <NzokoListSkeleton count={3} />}
         {error && <NzokoErrorBox error={error} onRetry={reload} />}
         {!loading && !error && agencies.length === 0 && (
-          <NzokoEmptyState icon={Building2} title="Aucune agence" description="Créez la première agence NZOKO." />
+          <NzokoEmptyState icon={Building2} title="Aucune agence" description="Créez la première agence Océan du Nord." />
         )}
         {!loading && !error && agencies.length > 0 && (
           <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">

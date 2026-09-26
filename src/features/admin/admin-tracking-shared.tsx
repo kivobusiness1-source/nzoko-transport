@@ -1,7 +1,7 @@
 "use client";
 
 // ============================================================
-// NZOKO TRANSPORT — Suivi GPS V4 : éléments partagés entre les
+// OCÉAN DU NORD — Suivi GPS V4 : éléments partagés entre les
 // composants de l'onglet admin (KPI, liste, carte, filtres).
 // Couleurs PAR ÉTAT GPS du bus (contrat V4 — @/lib/geo).
 // ============================================================

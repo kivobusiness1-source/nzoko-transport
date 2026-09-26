@@ -32,7 +32,7 @@ export const metadata: Metadata = {
     "réservation billet bus Congo-Brazzaville",
     "transport interurbain Congo",
     "bus Dolisie",
-    "NZOKO",
+    "Océan du Nord",
     "Mobile Money MTN",
   ],
   applicationName: APP_NAME,

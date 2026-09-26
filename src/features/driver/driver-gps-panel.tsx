@@ -1,7 +1,7 @@
 "use client";
 
 // ============================================================
-// NZOKO TRANSPORT — Panneau GPS du chauffeur (mobile-first 320px)
+// OCÉAN DU NORD — Panneau GPS du chauffeur (mobile-first 320px)
 // Démarrage/arrêt du suivi, état du signal, file offline, voyage
 // rattaché. Réconciliation : rechargement en plein trajet → la
 // session est relue et le watch repart automatiquement.
@@ -68,7 +68,7 @@ const GEO_UNAVAILABLE_BLOCK: GeoBlockDiagnosis = {
   title: "Géolocalisation indisponible",
   steps: [
     "Ce navigateur n’expose pas l’API de géolocalisation — aucun site ne peut y obtenir votre position.",
-    "Ouvrez NZOKO depuis un Chrome ou Safari récent, puis redémarrez le suivi.",
+    "Ouvrez Océan du Nord depuis un Chrome ou Safari récent, puis redémarrez le suivi.",
   ],
   canOpenNewTab: false,
 };
@@ -390,7 +390,7 @@ export function DriverGpsPanel({ trips }: { trips: DriverTripDTO[] }) {
           </div>
         ) : (
           <p className="mt-3 text-sm text-muted-foreground">
-            Démarrez le suivi avant de prendre la route — la position du car est transmise aux équipes NZOKO.
+            Démarrez le suivi avant de prendre la route — la position du car est transmise aux équipes Océan du Nord.
           </p>
         )}
 

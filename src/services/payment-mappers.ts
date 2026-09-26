@@ -1,5 +1,5 @@
 // ============================================================
-// NZOKO TRANSPORT — Mappers paiement (DTO)
+// OCÉAN DU NORD — Mappers paiement (DTO)
 // ============================================================
 
 import type { PaymentDTO, PaymentRefundDTO, RefundMode } from "@/types";

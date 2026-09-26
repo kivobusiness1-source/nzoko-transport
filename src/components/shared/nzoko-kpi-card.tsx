@@ -1,7 +1,7 @@
 "use client";
 
 // ============================================================
-// NZOKO TRANSPORT — KPI card réutilisable (dashboards)
+// OCÉAN DU NORD — KPI card réutilisable (dashboards)
 // ============================================================
 
 import type { LucideIcon } from "lucide-react";

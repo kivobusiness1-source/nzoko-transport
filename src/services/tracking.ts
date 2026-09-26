@@ -1,5 +1,5 @@
 // ============================================================
-// NZOKO TRANSPORT — Service suivi GPS temps réel
+// OCÉAN DU NORD — Service suivi GPS temps réel
 // Persistance (Prisma) + émission vers le mini-service socket.io
 // (best-effort : si le service temps réel est absent, les points
 // sont simplement stockés — l'admin bascule en polling).

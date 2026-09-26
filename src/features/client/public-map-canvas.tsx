@@ -1,8 +1,8 @@
 "use client";
 
 // ============================================================
-// NZOKO TRANSPORT — Carte publique des lignes (client only)
-// Composant Leaflet dédié à la vue « Carte des lignes NZOKO » :
+// OCÉAN DU NORD — Carte publique des lignes (client only)
+// Composant Leaflet dédié à la vue « Carte des lignes Océan du Nord » :
 // tuiles ouvertes (config serveur, jamais d'URL en dur), tracés
 // des itinéraires, agences, arrêts par ville et positions bus
 // VOLONTAIREMENT minimales (exigence 41 : aucune donnée chauffeur,
@@ -29,7 +29,7 @@ export const BUS_STATUS_COLORS: Record<BusStatus, string> = {
   GPS_ERROR: "#dc2626",
 };
 
-/** Vert NZOKO des tracés. */
+/** Vert Océan du Nord des tracés. */
 const ROUTE_COLOR = "#059669";
 /** Ambre de surlignage de la ligne sélectionnée. */
 const ROUTE_SELECTED_COLOR = "#f59e0b";
@@ -84,7 +84,7 @@ function routeLinePositions(route: MapRouteDTO, citiesByName: Map<string, CityPo
   return positions;
 }
 
-/** Marqueur agence : pastille blanche à bord vert NZOKO. */
+/** Marqueur agence : pastille blanche à bord vert Océan du Nord. */
 function agencyIcon(): L.DivIcon {
   return L.divIcon({
     className: "",
@@ -243,7 +243,7 @@ export default function PublicMapCanvas({
     <div
       className="overflow-hidden rounded-xl border"
       role="application"
-      aria-label="Carte des lignes NZOKO — agences, itinéraires et bus en circulation"
+      aria-label="Carte des lignes Océan du Nord — agences, itinéraires et bus en circulation"
     >
       <MapContainer
         center={[centerLat, centerLng]}

@@ -1,5 +1,5 @@
 // ============================================================
-// NZOKO TRANSPORT — Contacts passagers d'un voyage annulé
+// OCÉAN DU NORD — Contacts passagers d'un voyage annulé
 // Objectif : permettre à l'agence de PRÉVENIR chaque client
 // (WhatsApp wa.me pré-rempli en français, ou appel tel:) et de
 // traiter les remboursements des billets payés.
@@ -97,13 +97,13 @@ function buildContactMessage(input: {
 
   const contactLine = input.agencyPhone
     ? `Renseignements : ${input.agencyName} au ${input.agencyPhone}.`
-    : "Renseignements : votre agence NZOKO Transport.";
+    : "Renseignements : votre agence Océan du Nord.";
 
   return (
-    `Bonjour ${input.firstName}, NZOKO Transport vous informe que votre voyage ` +
+    `Bonjour ${input.firstName}, Océan du Nord vous informe que votre voyage ` +
     `${input.origin} → ${input.destination} du ${input.departureFr} ` +
     `(réservation ${input.reference}${input.seatLabel ? `, siège ${input.seatLabel}` : ""}) a été annulé. ` +
-    `${refundLine} Nous vous prions de nous excuser pour la gêne occasionnée. ${contactLine} — NZOKO TRANSPORT`
+    `${refundLine} Nous vous prions de nous excuser pour la gêne occasionnée. ${contactLine} — OCÉAN DU NORD`
   );
 }
 
@@ -185,13 +185,13 @@ export async function getTripCancellationContacts(tripId: string): Promise<TripC
 
   const contactLine = trip.agency.phone
     ? `Merci de contacter l'agence ${trip.agency.name} au ${trip.agency.phone}.`
-    : "Merci de contacter votre agence NZOKO Transport.";
+    : "Merci de contacter votre agence Océan du Nord.";
 
   const broadcastMessage =
-    `Bonjour, NZOKO Transport informe les passagers du voyage ${trip.code} ` +
+    `Bonjour, Océan du Nord informe les passagers du voyage ${trip.code} ` +
     `${origin} → ${destination} du ${departureFr} que ce départ a été annulé. ` +
     `Les passagers ayant réglé leur billet seront remboursés sur leur compte Mobile Money. ` +
-    `${contactLine} Nous présentons nos excuses pour la gêne occasionnée. — NZOKO TRANSPORT`;
+    `${contactLine} Nous présentons nos excuses pour la gêne occasionnée. — OCÉAN DU NORD`;
 
   return {
     trip: {

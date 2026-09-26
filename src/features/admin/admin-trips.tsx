@@ -1,7 +1,7 @@
 "use client";
 
 // ============================================================
-// NZOKO TRANSPORT — Voyages admin : liste + gestion des statuts
+// OCÉAN DU NORD — Voyages admin : liste + gestion des statuts
 // (formulaire de création : admin-trip-form.tsx)
 // ============================================================
 

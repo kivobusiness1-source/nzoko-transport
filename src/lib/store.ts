@@ -1,7 +1,7 @@
 "use client";
 
 // ============================================================
-// NZOKO TRANSPORT — État global (zustand) : session + navigation
+// OCÉAN DU NORD — État global (zustand) : session + navigation
 // + persistance courte de la vue (sessionStorage, Task 31) : un
 // rechargement de page ne renvoie PLUS un utilisateur connecté à
 // l'accueil — sa dernière vue (workspace/booking/tracking/map) est

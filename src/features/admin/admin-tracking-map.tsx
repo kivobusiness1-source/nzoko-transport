@@ -1,7 +1,7 @@
 "use client";
 
 // ============================================================
-// NZOKO TRANSPORT — Carte Leaflet du suivi GPS V4 (client only)
+// OCÉAN DU NORD — Carte Leaflet du suivi GPS V4 (client only)
 // Tuiles depuis la configuration serveur (SEULE source légitime),
 // couches togglables : bus (couleur par état GPS), agences,
 // arrêts de lignes, tracés GeoJSON (surlignage de la ligne du
@@ -95,7 +95,7 @@ function busIcon(heading: number | null, background: string): L.DivIcon {
   });
 }
 
-/** Marqueur agence 🏢 : fond blanc, bord vert NZOKO. */
+/** Marqueur agence 🏢 : fond blanc, bord vert Océan du Nord. */
 function agencyIcon(): L.DivIcon {
   return L.divIcon({
     className: "",

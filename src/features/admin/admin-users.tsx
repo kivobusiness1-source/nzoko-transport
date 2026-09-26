@@ -1,7 +1,7 @@
 "use client";
 
 // ============================================================
-// NZOKO TRANSPORT — Utilisateurs (recherche + gestion)
+// OCÉAN DU NORD — Utilisateurs (recherche + gestion)
 // Création, activation/désactivation, réinitialisation mdp
 // ============================================================
 

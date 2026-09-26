@@ -1,7 +1,7 @@
 "use client";
 
 // ============================================================
-// NZOKO TRANSPORT — Parc : routes (timeline + toggle + création)
+// OCÉAN DU NORD — Parc : routes (timeline + toggle + création)
 // ============================================================
 
 import { useState } from "react";

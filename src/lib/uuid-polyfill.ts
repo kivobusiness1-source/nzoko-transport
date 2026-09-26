@@ -1,5 +1,5 @@
 // ============================================================
-// NZOKO TRANSPORT — Polyfill crypto.randomUUID (contextes http://)
+// OCÉAN DU NORD — Polyfill crypto.randomUUID (contextes http://)
 //
 // crypto.randomUUID() n'existe que dans les CONTEXTES SÉCURISÉS
 // (https:// ou localhost). Sur une origine http:// simple (ex. test

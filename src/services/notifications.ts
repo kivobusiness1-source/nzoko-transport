@@ -1,5 +1,5 @@
 // ============================================================
-// NZOKO TRANSPORT — Notifications système planifiées (V3)
+// OCÉAN DU NORD — Notifications système planifiées (V3)
 // Rappels avant départ : chaque passager d'un voyage CONFIRMÉ
 // partant dans moins de 2 h reçoit une notification « Rappel ».
 // Exécuté par le scheduler de maintenance (mini-service 5 min /

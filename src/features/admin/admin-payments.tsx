@@ -1,7 +1,7 @@
 "use client";
 
 // ============================================================
-// NZOKO TRANSPORT — Paiements admin (filtres + liste + remboursements MoMo)
+// OCÉAN DU NORD — Paiements admin (filtres + liste + remboursements MoMo)
 // Remboursements : MTN MoMo (Refund API / transfert de fonds) ou espèces.
 // ============================================================
 

@@ -1,7 +1,7 @@
 "use client";
 
 // ============================================================
-// NZOKO TRANSPORT — Client Neon Auth côté navigateur
+// OCÉAN DU NORD — Client Neon Auth côté navigateur
 // ============================================================
 // Tous les appels (signIn.email, signUp.email, signOut…) partent vers
 // NOTRE origine /api/auth/* (le proxy serveur relaie vers Neon) :

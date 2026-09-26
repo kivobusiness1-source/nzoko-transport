@@ -1,4 +1,4 @@
-// GET /api/agencies/nearby?lat&lng&cityId&accuracy&approximate — agences NZOKO
+// GET /api/agencies/nearby?lat&lng&cityId&accuracy&approximate — agences Océan du Nord
 // proches d'une position (V3 GPS client). Détection quartier/ville + statut
 // ouverture + distance.
 // `accuracy` (m) : précision GPS du navigateur ; `approximate=true` : la

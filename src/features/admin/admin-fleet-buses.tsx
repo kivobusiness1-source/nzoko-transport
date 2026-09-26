@@ -1,15 +1,25 @@
 "use client";
 
 // ============================================================
-// NZOKO TRANSPORT — Parc : Bus (liste + statut + création)
+// OCÉAN DU NORD — Parc : Bus (liste + statut + création)
 // ============================================================
 
 import { useState } from "react";
 import { toast } from "sonner";
-import { Plus, Bus as BusIcon } from "lucide-react";
+import { Plus, Bus as BusIcon, Trash2 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import {
   Select,
   SelectContent,
@@ -32,8 +42,24 @@ export function AdminFleetBuses({ refreshKey }: { refreshKey?: number }) {
   const { data, loading, error, reload } = useApiData(() => api.admin.buses(), { refreshKey });
   const [formOpen, setFormOpen] = useState(false);
   const [busyId, setBusyId] = useState<string | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<BusDTO | null>(null);
 
   const buses = data ?? [];
+
+  const removeBus = async (bus: BusDTO) => {
+    setBusyId(bus.id);
+    try {
+      await api.admin.deleteBus(bus.id);
+      toast.success(`Bus ${bus.registrationNumber} supprimé.`);
+      setDeleteTarget(null);
+      reload();
+    } catch (err) {
+      toast.error(apiErrorMessage(err));
+      setDeleteTarget(null);
+    } finally {
+      setBusyId(null);
+    }
+  };
 
   const updateStatus = async (bus: BusDTO, status: BusStatus) => {
     setBusyId(bus.id);
@@ -99,6 +125,15 @@ export function AdminFleetBuses({ refreshKey }: { refreshKey?: number }) {
                       ))}
                     </SelectContent>
                   </Select>
+                  <Button
+                    variant="outline"
+                    className="h-10 w-full gap-1.5 border-destructive/30 text-destructive hover:bg-destructive/10"
+                    onClick={() => setDeleteTarget(b)}
+                    disabled={busyId === b.id}
+                    aria-label={`Supprimer le bus ${b.registrationNumber}`}
+                  >
+                    <Trash2 className="h-3.5 w-3.5" aria-hidden="true" /> Supprimer
+                  </Button>
                 </Card>
               ))}
             </div>
@@ -127,22 +162,34 @@ export function AdminFleetBuses({ refreshKey }: { refreshKey?: number }) {
                       <TableCell className="text-xs">{b.agencyName ?? "—"}</TableCell>
                       <TableCell className="text-xs">{b.seatLayoutName ?? "—"}</TableCell>
                       <TableCell>
-                        <Select
-                          value={b.status}
-                          onValueChange={(v) => void updateStatus(b, v as BusStatus)}
-                          disabled={busyId === b.id}
-                        >
-                          <SelectTrigger className="h-9 w-40 text-xs" aria-label={`Statut du bus ${b.registrationNumber}`}>
-                            <SelectValue />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {BUS_STATUSES.map((s) => (
-                              <SelectItem key={s} value={s}>
-                                {BUS_STATUS_LABELS[s]}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
+                        <div className="flex items-center gap-2">
+                          <Select
+                            value={b.status}
+                            onValueChange={(v) => void updateStatus(b, v as BusStatus)}
+                            disabled={busyId === b.id}
+                          >
+                            <SelectTrigger className="h-9 w-40 text-xs" aria-label={`Statut du bus ${b.registrationNumber}`}>
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {BUS_STATUSES.map((s) => (
+                                <SelectItem key={s} value={s}>
+                                  {BUS_STATUS_LABELS[s]}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                          <Button
+                            variant="outline"
+                            size="icon"
+                            className="size-9 border-destructive/30 text-destructive hover:bg-destructive/10"
+                            onClick={() => setDeleteTarget(b)}
+                            disabled={busyId === b.id}
+                            aria-label={`Supprimer le bus ${b.registrationNumber}`}
+                          >
+                            <Trash2 className="h-4 w-4" aria-hidden="true" />
+                          </Button>
+                        </div>
                       </TableCell>
                     </TableRow>
                   ))}
@@ -154,6 +201,28 @@ export function AdminFleetBuses({ refreshKey }: { refreshKey?: number }) {
       </div>
 
       {formOpen && <AdminBusForm onClose={() => setFormOpen(false)} onCreated={reload} />}
+
+      <AlertDialog open={deleteTarget !== null} onOpenChange={(o) => !o && setDeleteTarget(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Supprimer le bus {deleteTarget?.registrationNumber} ?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Action définitive. Un bus rattaché à des voyages ne peut pas être supprimé :
+              mettez-le plutôt « Hors service » pour préserver l&apos;historique des billets.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel className="h-11">Annuler</AlertDialogCancel>
+            <AlertDialogAction
+              className="h-11 bg-destructive text-white hover:bg-destructive/90"
+              disabled={busyId !== null}
+              onClick={() => deleteTarget && void removeBus(deleteTarget)}
+            >
+              Supprimer définitivement
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

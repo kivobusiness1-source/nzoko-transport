@@ -1,7 +1,7 @@
 "use client";
 
 // ============================================================
-// NZOKO TRANSPORT — Parc & réseaux (sous-sections)
+// OCÉAN DU NORD — Parc & réseaux (sous-sections)
 // Bus / Configurations sièges / Routes / Villes / Quartiers / Agences
 // ============================================================
 

@@ -1,7 +1,7 @@
 "use client";
 
 // ============================================================
-// NZOKO TRANSPORT — Suivi GPS V4 : panneau de replay du trail
+// OCÉAN DU NORD — Suivi GPS V4 : panneau de replay du trail
 // (exigence 32). Lecture pas-à-pas du trail GPS d'un bus : le
 // minuteur vit dans le parent (admin-tracking.tsx), ce panneau
 // est purement présentationnel + contrôles.

@@ -1,7 +1,7 @@
 "use client";
 
 // ============================================================
-// NZOKO — Résultat d'un scan d'embarquement (plein cadre coloré)
+// Océan du Nord — Résultat d'un scan d'embarquement (plein cadre coloré)
 // ============================================================
 
 import { AlertTriangle, Ban, CheckCircle2, Clock, CreditCard, MapPin, Repeat, User, XCircle } from "lucide-react";

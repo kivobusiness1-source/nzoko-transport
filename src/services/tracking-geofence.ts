@@ -1,5 +1,5 @@
 // ============================================================
-// NZOKO TRANSPORT — Moteur de géofences V5 (§15, §20, §21, §23)
+// OCÉAN DU NORD — Moteur de géofences V5 (§15, §20, §21, §23)
 //
 // Décisions PURES (aucune E/S, testables) + orchestrateur DB avec
 // cache mémoire des arrêts (§25 : pas de requête par position).

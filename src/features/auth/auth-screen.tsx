@@ -1,17 +1,17 @@
 "use client";
 
 // ============================================================
-// NZOKO — Écran de connexion UNIFIÉ (une seule identité)
+// Océan du Nord — Écran de connexion UNIFIÉ (une seule identité)
 // ============================================================
 // Deux moyens de connexion, un seul système d'identité et de session :
 //  • Téléphone (marché congolais, par défaut) : numéro → code à 6
 //    chiffres → session.
-//  • E-mail : mot de passe (équipes NZOKO) ou inscription (clients).
+//  • E-mail : mot de passe (équipes Océan du Nord) ou inscription (clients).
 //
 // Mode NEON (production) — Neon Auth centralise l'identité et la session :
 //  - Téléphone : provisioning silencieux (serveur) → SDK sendOtp →
-//    webhook SMS → SDK verify → session Neon → échange NZOKO ;
-//  - E-mail : SDK signIn.email → session Neon → échange NZOKO ;
+//    webhook SMS → SDK verify → session Neon → échange Océan du Nord ;
+//  - E-mail : SDK signIn.email → session Neon → échange Océan du Nord ;
 //    au premier échec (« identifiants inconnus »), PONT D'IMPORT :
 //    le serveur vérifie l'ancien mot de passe local bcrypt et crée le
 //    compte Neon avec ce même mot de passe (migration transparente) ;
@@ -29,7 +29,7 @@ import { z } from "zod";
 import { toast } from "sonner";
 import { motion } from "framer-motion";
 import {
-  ArrowLeft, ArrowRight, Bell, Bus, CheckCircle2, Eye, EyeOff, Info, KeyRound, Loader2, Lock, LogIn, Mail,
+  ArrowLeft, ArrowRight, Bell, CheckCircle2, Eye, EyeOff, Info, KeyRound, Loader2, Lock, LogIn, Mail,
   MessageSquareText, Phone, ShieldCheck, Star, Ticket, UserPlus, UserRound,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -261,7 +261,7 @@ export default function AuthScreen({ defaultTab = "login" }: { defaultTab?: "log
     setError(null);
     try {
       if (neon) {
-        // Session Neon Auth (cookie signé) → échange applicatif NZOKO
+        // Session Neon Auth (cookie signé) → échange applicatif Océan du Nord
         const { error: sdkError } = await neonAuthCall(() =>
           neonAuthClient.phoneNumber.verify({
             phoneNumber: otpPhone,
@@ -443,7 +443,7 @@ export default function AuthScreen({ defaultTab = "login" }: { defaultTab?: "log
         return;
       }
       // Session immédiate : le téléphone est normalisé puis lié côté
-      // serveur (unicité vérifiée) pendant l'échange Neon → NZOKO.
+      // serveur (unicité vérifiée) pendant l'échange Neon → Océan du Nord.
       onSession(await api.auth.exchangeNeonSession({ phone: values.phone.trim() }));
     } catch (err) {
       const message =
@@ -465,7 +465,7 @@ export default function AuthScreen({ defaultTab = "login" }: { defaultTab?: "log
   // Le SDK managé gère lui-même la popup/redirect OAuth et le vérificateur
   // de session (neon_auth_session_verifier). Au retour sur l'origine, le
   // shell applicatif détecte la session Neon et l'échange contre la
-  // session NZOKO (bootstrap NzokoApp — cf. src/components/app/nzoko-app.tsx).
+  // session Océan du Nord (bootstrap NzokoApp — cf. src/components/app/nzoko-app.tsx).
   // Docs : https://neon.com/docs/auth/guides/setup-oauth — identifiants
   // partagés Neon = développement ; production = application OAuth Google
   // propre (redirect {NEON_AUTH_BASE_URL}/callback/google) + domaines de
@@ -669,12 +669,13 @@ export default function AuthScreen({ defaultTab = "login" }: { defaultTab?: "log
 
           <div className="relative">
             <div className="flex items-center gap-3">
-              <span className="flex size-12 items-center justify-center rounded-2xl bg-white/15 text-white backdrop-blur">
-                <Bus className="size-6" aria-hidden />
+              <span className="flex size-12 items-center justify-center rounded-2xl bg-white/15 backdrop-blur">
+                {/* eslint-disable-next-line @next/next/no-img-element -- logo officiel Océan du Nord */}
+                <img src="/logo.png" alt="" width={48} height={48} className="size-11 rounded-full object-contain" />
               </span>
               <div>
-                <p className="text-xl font-bold tracking-tight text-white">NZOKO</p>
-                <p className="text-[10px] uppercase tracking-[0.2em] text-white/70">Transport</p>
+                <p className="text-xl font-bold tracking-tight text-white">Océan du Nord</p>
+                <p className="text-[10px] uppercase tracking-[0.2em] text-white/70">Transport interurbain</p>
               </div>
             </div>
             <h1 className="mt-8 text-2xl font-bold leading-snug text-white">
@@ -711,8 +712,9 @@ export default function AuthScreen({ defaultTab = "login" }: { defaultTab?: "log
           <CardContent className="p-6 sm:p-8">
             {/* En-tête compact (mobile : le panneau de marque est masqué) */}
             <div className="mb-5 text-center lg:text-left">
-              <span className="nzoko-hero mx-auto flex size-12 items-center justify-center rounded-2xl text-white shadow-md lg:hidden">
-                <Bus className="size-6" aria-hidden />
+              <span className="mx-auto flex size-12 items-center justify-center rounded-2xl shadow-md lg:hidden">
+                {/* eslint-disable-next-line @next/next/no-img-element -- logo officiel Océan du Nord */}
+                <img src="/logo.png" alt="" width={48} height={48} className="size-12 rounded-full object-contain" />
               </span>
               <h2 className="mt-3 text-xl font-bold lg:mt-0">Content de vous revoir</h2>
               <p className="mt-1 text-sm text-muted-foreground">
@@ -1277,7 +1279,7 @@ export default function AuthScreen({ defaultTab = "login" }: { defaultTab?: "log
                             <ShieldCheck className="mt-0.5 size-4 shrink-0" aria-hidden />
                             <span>
                               Vos identifiants sont protégés par <strong>Neon Auth</strong>. À la première connexion,
-                              votre compte NZOKO existant est relié automatiquement.
+                              votre compte Océan du Nord existant est relié automatiquement.
                             </span>
                           </p>
                         )}

@@ -1,7 +1,7 @@
 "use client";
 
 // ============================================================
-// NZOKO TRANSPORT — Gestion des dépenses (agence & finance)
+// OCÉAN DU NORD — Gestion des dépenses (agence & finance)
 // Liste + création + suppression (permission expense:manage)
 // ============================================================
 

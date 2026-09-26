@@ -1,5 +1,5 @@
 // ============================================================
-// NZOKO TRANSPORT — Pipeline d'ingestion GPS V5 (§7-§14, §27, §38)
+// OCÉAN DU NORD — Pipeline d'ingestion GPS V5 (§7-§14, §27, §38)
 //
 // Point d'entrée UNIQUE du traitement des positions (isolées ou
 // lot) : validation → idempotence → écriture → état courant

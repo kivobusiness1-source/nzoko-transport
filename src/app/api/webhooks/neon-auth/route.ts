@@ -1,5 +1,5 @@
 // ============================================================
-// NZOKO TRANSPORT — Webhook Neon Auth (Managed Better Auth)
+// OCÉAN DU NORD — Webhook Neon Auth (Managed Better Auth)
 // ============================================================
 // Dès que ce webhook est configuré dans la console Neon (URL HTTPS
 // publique + événements send.otp / phone_number.verified), le service
@@ -242,7 +242,7 @@ export async function POST(req: Request) {
     }
 
     if (eventType === "user.created" || eventType === "user.before_create") {
-      // Non bloquant : accuser réception (le miroir NZOKO est créé par
+      // Non bloquant : accuser réception (le miroir Océan du Nord est créé par
       // /api/neon-auth/exchange à la première session réelle).
       return Response.json({ ok: true });
     }

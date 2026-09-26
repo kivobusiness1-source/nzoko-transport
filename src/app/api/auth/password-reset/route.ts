@@ -4,7 +4,7 @@
 // exactement comme /api/auth/otp :
 //  - mode NEON (production, NEON_AUTH_MODE=neon) : le plugin Email OTP du
 //    service managé délivre le code (webhook send.otp → livraison e-mail
-//    NZOKO) ; la demande et la réinitialisation sont effectuées ICI côté
+//    Océan du Nord) ; la demande et la réinitialisation sont effectuées ICI côté
 //    serveur (aucun endpoint public supplémentaire : canonisation,
 //    rate limit et audit centralisés) :
 //      action "request" → POST {Neon}/email-otp/send-verification-otp
@@ -165,7 +165,7 @@ async function handleVerifyNeon(email: string, code: string, password: string, i
     throw new ApiError(502, "BAD_GATEWAY", "Le service d'authentification est momentanément indisponible. Réessayez.");
   }
 
-  // Révocation des sessions applicatives NZOKO du compte (reconnexion propre)
+  // Révocation des sessions applicatives Océan du Nord du compte (reconnexion propre)
   await db.session.deleteMany({ where: { user: { email } } }).catch(() => {});
 
   await logSecurity({
@@ -225,7 +225,7 @@ async function handleRequestLocal(email: string, ip: string, req: NextRequest) {
     throw new ApiError(
       502,
       "BAD_GATEWAY",
-      `L'envoi de l'e-mail de réinitialisation a échoué (${result.provider}). Contactez le support NZOKO.`
+      `L'envoi de l'e-mail de réinitialisation a échoué (${result.provider}). Contactez le support Océan du Nord.`
     );
   }
 

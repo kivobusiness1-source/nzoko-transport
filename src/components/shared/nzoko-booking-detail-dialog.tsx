@@ -1,7 +1,7 @@
 "use client";
 
 // ============================================================
-// NZOKO TRANSPORT — Dialog détail réservation (partagé)
+// OCÉAN DU NORD — Dialog détail réservation (partagé)
 // Trip + passager + siège + paiements + billet + annulation
 // ============================================================
 

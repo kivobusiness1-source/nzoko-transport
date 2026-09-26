@@ -1,5 +1,5 @@
 // ============================================================
-// NZOKO TRANSPORT — Journal d'événements GPS V5 (§34, §47)
+// OCÉAN DU NORD — Journal d'événements GPS V5 (§34, §47)
 //
 // TOUT événement important du suivi est persisté dans TrackingEvent
 // (audit + panneau d'alertes Super Admin §35) et diffusé au salon

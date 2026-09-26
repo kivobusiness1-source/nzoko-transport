@@ -1,7 +1,7 @@
 "use client";
 
 // ============================================================
-// NZOKO TRANSPORT — Télémétrie des erreurs navigateur
+// OCÉAN DU NORD — Télémétrie des erreurs navigateur
 //
 // Fire-and-forget vers POST /api/client-errors (journal serveur :
 // dev.log en développement, stdout Vercel en production). Jamais

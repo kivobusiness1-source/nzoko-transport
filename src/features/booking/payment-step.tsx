@@ -1,7 +1,7 @@
 "use client";
 
 // ============================================================
-// NZOKO — Étape 5 : récap + paiement (MTN MoMo, espèces, carte/virement)
+// Océan du Nord — Étape 5 : récap + paiement (MTN MoMo, espèces, carte/virement)
 // Gère : encaissement espèces agent, expiration du verrou, suivi MoMo réel.
 // ============================================================
 
@@ -461,7 +461,7 @@ export function PaymentStep({ channel, booking, onPaid }: PaymentStepProps) {
                     value={promoCode}
                     onChange={(e) => setPromoCode(e.target.value)}
                     className="h-11 pl-9 font-mono"
-                    placeholder="Ex : NZOKO-FID-XXXX"
+                    placeholder="Ex : ONC-FID-XXXX"
                     disabled={promoChecking}
                     autoComplete="off"
                   />

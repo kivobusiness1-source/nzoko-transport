@@ -1,10 +1,10 @@
 // ============================================================
-// NZOKO TRANSPORT — Constantes métier (enums applicatives)
+// OCÉAN DU NORD — Constantes métier (enums applicatives)
 // SQLite ne supporte pas les enums Prisma : validation Zod côté serveur.
 // ============================================================
 
-export const APP_NAME = "NZOKO TRANSPORT";
-export const APP_SLOGAN = "Voyagez simplement. Voyagez en confiance.";
+export const APP_NAME = "OCÉAN DU NORD";
+export const APP_SLOGAN = "Sécurité. Confort. Fiabilité.";
 export const APP_TIMEZONE = "Africa/Brazzaville"; // UTC+1 fixe
 export const DEFAULT_CURRENCY = "XAF";
 
@@ -31,7 +31,7 @@ export const ROLE_LABELS: Record<RoleCode, string> = {
   ACCOUNTANT: "Comptable",
   DRIVER: "Chauffeur",
   SUPPORT: "Support client",
-  PASSENGER: "Client NZOKO",
+  PASSENGER: "Client Océan du Nord",
 };
 
 export const GLOBAL_ROLES: RoleCode[] = ["SUPER_ADMIN", "ADMIN"]; // voient toutes les agences
@@ -77,9 +77,11 @@ export const ROLE_PERMISSIONS: Record<RoleCode, PermissionCode[]> = {
     "report:read", "notification:read", "audit:read", "security:read",
     "stats:global", "stats:agency", "kb:manage",
   ],
+  // Chef d'agence : gère SON agence (bus ajoutés/supprimés par lui —
+  // resolveAgencyScope force agencyId sur toutes les routes /api/admin/*).
   AGENCY_MANAGER: [
     "agency:read", "user:read",
-    "city:read", "route:read", "bus:read", "driver:manage", "driver:read",
+    "city:read", "route:read", "bus:manage", "bus:read", "driver:manage", "driver:read",
     "seatlayout:read", "trip:manage", "trip:read",
     "booking:manage", "booking:read", "booking:create",
     "payment:read", "payment:cash-collect", "ticket:read",
@@ -280,19 +282,19 @@ export const COMPLAINT_STATUS_COLORS: Record<ComplaintStatus, string> = {
 export const LOYALTY = {
   pointsPerTrip: 100, // 1 voyage payé = 100 points
   tiers: [
-    { key: "BRONZE", label: "NZOKO Bronze", min: 0, max: 999, icon: "🥉" },
-    { key: "SILVER", label: "NZOKO Silver", min: 1000, max: 4999, icon: "🥈" },
-    { key: "GOLD", label: "NZOKO Gold", min: 5000, max: 14999, icon: "🥇" },
-    { key: "VIP", label: "NZOKO VIP", min: 15000, max: Number.MAX_SAFE_INTEGER, icon: "💎" },
+    { key: "BRONZE", label: "ONC Bronze", min: 0, max: 999, icon: "🥉" },
+    { key: "SILVER", label: "ONC Silver", min: 1000, max: 4999, icon: "🥈" },
+    { key: "GOLD", label: "ONC Gold", min: 5000, max: 14999, icon: "🥇" },
+    { key: "VIP", label: "ONC VIP", min: 15000, max: Number.MAX_SAFE_INTEGER, icon: "💎" },
   ],
 } as const;
 export type LoyaltyTier = (typeof LOYALTY.tiers)[number]["key"];
 
 export const LOYALTY_TIER_LABELS: Record<LoyaltyTier, string> = {
-  BRONZE: "NZOKO Bronze",
-  SILVER: "NZOKO Silver",
-  GOLD: "NZOKO Gold",
-  VIP: "NZOKO VIP",
+  BRONZE: "ONC Bronze",
+  SILVER: "ONC Silver",
+  GOLD: "ONC Gold",
+  VIP: "ONC VIP",
 };
 
 // Catalogue de récompenses (dépense de points)
@@ -323,7 +325,7 @@ export const PASSWORD_RESET = {
 // ---------- IDENTIFIANTS COURTS → E-MAILS RÉELS ----------
 // Alias de saisie acceptés au login (« superadmin » au lieu de l'e-mail
 // complet). Conventions 2026-09 : la boîte unique de l'administration
-// NZOKO est kivobusiness1@gmail.com — les comptes internes utilisent le
+// Océan du Nord est kivobusiness1@gmail.com — les comptes internes utilisent le
 // plus-addressing Gmail (kivobusiness1+<rôle>@gmail.com) : adresses
 // UNIQUES pour Neon Auth (l'e-mail est l'identité), mais TOUTES livrées
 // dans la MÊME boîte kivobusiness1@gmail.com. Chaque membre peut ensuite

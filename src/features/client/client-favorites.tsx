@@ -1,7 +1,7 @@
 "use client";
 
 // ============================================================
-// NZOKO — Trajets favoris : manuels (ajout/suppression) ou
+// Océan du Nord — Trajets favoris : manuels (ajout/suppression) ou
 // détectés automatiquement. Réservation directe en un geste.
 // ============================================================
 
@@ -114,7 +114,7 @@ export function ClientFavorites({ refreshKey }: { refreshKey?: number }) {
         <NzokoEmptyState
           icon={Heart}
           title="Aucun trajet favori"
-          description="Ajoutez vos trajets habituels ou voyagez régulièrement : NZOKO détecte automatiquement vos trajets préférés."
+          description="Ajoutez vos trajets habituels ou voyagez régulièrement : Océan du Nord détecte automatiquement vos trajets préférés."
           action={
             <Button variant="outline" onClick={() => setAddOpen(true)} className="gap-1.5">
               <HeartPlus className="size-4" aria-hidden /> Ajouter un favori

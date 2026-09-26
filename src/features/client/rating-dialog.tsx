@@ -1,7 +1,7 @@
 "use client";
 
 // ============================================================
-// NZOKO — Évaluation post-voyage (dialog)
+// Océan du Nord — Évaluation post-voyage (dialog)
 // 5 critères notés de 1 à 5 étoiles + commentaire optionnel.
 // ============================================================
 
@@ -72,7 +72,7 @@ export function RatingDialog({
         security: ratings.security,
         comment: comment.trim() ? comment.trim() : undefined,
       });
-      toast.success("Merci pour votre retour ⭐", { description: "Votre évaluation aide toute la communauté NZOKO." });
+      toast.success("Merci pour votre retour ⭐", { description: "Votre évaluation aide toute la communauté Océan du Nord." });
       onDone();
       onOpenChange(false);
     } catch (err) {

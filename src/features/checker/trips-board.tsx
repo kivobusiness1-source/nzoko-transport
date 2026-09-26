@@ -1,7 +1,7 @@
 "use client";
 
 // ============================================================
-// NZOKO — Voyages du jour du contrôleur (embarquement, progression)
+// Océan du Nord — Voyages du jour du contrôleur (embarquement, progression)
 // ============================================================
 
 import { Bus, Clock, MapPin, RefreshCw, Users } from "lucide-react";

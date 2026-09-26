@@ -1,16 +1,16 @@
 // ============================================================
-// NZOKO TRANSPORT — Miroir local des comptes Neon Auth (universel)
+// OCÉAN DU NORD — Miroir local des comptes Neon Auth (universel)
 // ============================================================
 // Neon Auth (Managed Better Auth) gère l'IDENTITÉ et la SESSION de
-// TOUS les comptes NZOKO (clients, guichets, agences, contrôleurs,
+// TOUS les comptes Océan du Nord (clients, guichets, agences, contrôleurs,
 // chauffeurs, comptables, support, admins, super-admins). Le métier
-// NZOKO (billets, fidélité, rôles, permissions, agences) exige une
+// Océan du Nord (billets, fidélité, rôles, permissions, agences) exige une
 // ligne User locale : ce service retrouve ou provisionne le miroir,
 // la colonne User.supabaseId servant d'identifiant du fournisseur
 // d'identité externe (Neon Auth).
 //
 // RÈGLES D'AUTORITÉ (exigence sécurité produit) :
-//  - le RÔLE et l'AGENCE vivent UNIQUEMENT ici (base NZOKO) : jamais
+//  - le RÔLE et l'AGENCE vivent UNIQUEMENT ici (base Océan du Nord) : jamais
 //    dans le jeton du navigateur ni dans le compte Neon ;
 //  - re-lien par identifiant Neon (supabaseId) ou adoption par e-mail :
 //    le compte local EXISTANT (notamment le staff) garde son rôle,
@@ -42,7 +42,7 @@ export function splitFullName(rawName: string | null | undefined): { firstName: 
   const parts = (rawName ?? "").trim().split(/\s+/).filter(Boolean);
   return {
     firstName: parts[0] ?? "Client",
-    lastName: parts.slice(1).join(" ") || "NZOKO",
+    lastName: parts.slice(1).join(" ") || "Océan du Nord",
   };
 }
 
@@ -87,7 +87,7 @@ export async function upsertNeonUserMirror(input: NeonMirrorInput): Promise<Neon
   if (existing) {
     // Re-lien / adoption — on n'écrase JAMAIS le rôle, l'agence ni les
     // permissions locaux. Le nom Neon n'écrase le nom local que pour les
-    // comptes créés via Neon (client) : le staff garde son identité NZOKO.
+    // comptes créés via Neon (client) : le staff garde son identité Océan du Nord.
     const isAdoption = existing.supabaseId !== input.neonUserId;
     const shouldUpdateName = hasName && (isAdoption ? existing.role.code === "PASSENGER" : true);
     const user = await db.user.update({
@@ -124,7 +124,7 @@ export async function upsertNeonUserMirror(input: NeonMirrorInput): Promise<Neon
   await db.notification.create({
     data: {
       userId: user.id,
-      title: "Bienvenue chez NZOKO TRANSPORT 👋",
+      title: "Bienvenue chez OCÉAN DU NORD 👋",
       message:
         "Votre espace client est prêt : billets, points fidélité et réclamations. Pensez à renseigner votre téléphone dans votre profil.",
       type: "SUCCESS",
@@ -136,6 +136,6 @@ export async function upsertNeonUserMirror(input: NeonMirrorInput): Promise<Neon
 
 /**
  * Alias historique (compatibilité) : l'ancien nom de la fonction.
- * Le pont est désormais universel — clients ET équipes NZOKO.
+ * Le pont est désormais universel — clients ET équipes Océan du Nord.
  */
 export const upsertNeonClientMirror = upsertNeonUserMirror;

@@ -1,7 +1,7 @@
 import { db } from "@/lib/db";
 
 // ============================================================
-// NZOKO TRANSPORT — Garde-fou de schéma GPS V4 (auto-réparation)
+// OCÉAN DU NORD — Garde-fou de schéma GPS V4 (auto-réparation)
 // ------------------------------------------------------------
 // Contexte (2026-09-22, cf. worklog Task 40) : la base de
 // PRODUCTION (Neon PostgreSQL) n'avait pas encore reçu les

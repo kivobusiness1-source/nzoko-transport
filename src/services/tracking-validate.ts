@@ -1,5 +1,5 @@
 // ============================================================
-// NZOKO TRANSPORT — Validation des positions GPS V5 (§8, §12)
+// OCÉAN DU NORD — Validation des positions GPS V5 (§8, §12)
 //
 // Fonctions PURES (aucune E/S) : chaque position reçue (isolée ou
 // en lot) reçoit un VERDICT fondé sur les seuils serveur (GPS_V5) :

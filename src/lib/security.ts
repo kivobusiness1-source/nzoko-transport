@@ -1,5 +1,5 @@
 // ============================================================
-// NZOKO TRANSPORT — Primitives de sécurité (tokens, références)
+// OCÉAN DU NORD — Primitives de sécurité (tokens, références)
 // ============================================================
 
 import crypto from "node:crypto";
@@ -73,9 +73,9 @@ export function generateSessionToken(): string {
   return randomFrom(TOKEN_ALPHABET, 48);
 }
 
-/** Code promo récompense — ex : NZOKO-A7K2M9 (base32 lisible, unique en base). */
+/** Code promo récompense — ex : Océan du Nord-A7K2M9 (base32 lisible, unique en base). */
 export function generatePromoCode(): string {
-  return `NZOKO-${randomFrom(REF_ALPHABET, 6)}`;
+  return `Océan du Nord-${randomFrom(REF_ALPHABET, 6)}`;
 }
 
 /** Code OTP à 6 chiffres (crypto.randomInt — uniformément aléatoire). */

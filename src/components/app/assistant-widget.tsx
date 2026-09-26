@@ -1,7 +1,7 @@
 "use client";
 
 // ============================================================
-// NZOKO TRANSPORT — Assistant IA flottant (voyages / tarifs / promos)
+// OCÉAN DU NORD — Assistant IA flottant (voyages / tarifs / promos)
 // Bouton rond + panneau de chat : quasi plein écran sur mobile
 // (375px), carte latérale sur ordinateur. Conversation persistée
 // en sessionStorage (session + messages). Le rendu du markdown
@@ -22,7 +22,7 @@ type ChatMessage = { role: "user" | "assistant"; content: string };
 const WELCOME: ChatMessage = {
   role: "assistant",
   content:
-    "Bonjour 👋 Je suis **l'assistant NZOKO**.\n\nPosez-moi vos questions sur nos destinations, horaires, tarifs et promotions — je réponds à partir des départs réels de notre réseau.",
+    "Bonjour 👋 Je suis **l'assistant Océan du Nord**.\n\nPosez-moi vos questions sur nos destinations, horaires, tarifs et promotions — je réponds à partir des départs réels de notre réseau.",
 };
 
 const SUGGESTIONS = [
@@ -246,7 +246,7 @@ export function AssistantWidget() {
         {open && (
           <motion.section
             role="dialog"
-            aria-label="Assistant NZOKO — voyages, tarifs, promotions"
+            aria-label="Assistant Océan du Nord — voyages, tarifs, promotions"
             initial={{ opacity: 0, y: 16, scale: 0.98 }}
             animate={{ opacity: 1, y: 0, scale: 1 }}
             exit={{ opacity: 0, y: 12, scale: 0.98 }}
@@ -260,7 +260,7 @@ export function AssistantWidget() {
               </span>
               <div className="min-w-0 flex-1">
                 <p className="flex items-center gap-1.5 text-sm font-bold">
-                  Assistant NZOKO
+                  Assistant Océan du Nord
                   <Sparkles className="h-3.5 w-3.5 opacity-80" aria-hidden />
                 </p>
                 <p className="truncate text-[11px] opacity-80">Voyages · Tarifs · Promotions</p>

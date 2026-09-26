@@ -1,7 +1,7 @@
 "use client";
 
 // ============================================================
-// NZOKO TRANSPORT — Coquille applicative monopage (v3)
+// OCÉAN DU NORD — Coquille applicative monopage (v3)
 // Route unique "/" : navigation par vues côté client.
 // Les vues métier sont importées depuis src/features/* (stub → rempli)
 // ============================================================
@@ -56,7 +56,7 @@ const AgentDesk = lazy(() => import("@/features/agent/agent-desk"));
 const AdminWorkspace = lazy(() => import("@/features/admin/admin-workspace"));
 const AgencyWorkspace = lazy(() => import("@/features/agency/agency-workspace"));
 const FinanceWorkspace = lazy(() => import("@/features/finance/finance-workspace"));
-// Espace client « MON ESPACE NZOKO » + écran d'authentification (Connexion /
+// Espace client « MON ESPACE Océan du Nord » + écran d'authentification (Connexion /
 // Inscription, comptes clients Supabase) — même principe : client-only,
 // jamais résolus côté serveur.
 const ClientWorkspace = lazy(() => import("@/features/client/client-workspace"));
@@ -71,12 +71,11 @@ import { ChunkErrorBoundary } from "@/components/app/chunk-error-boundary";
 function Brand({ onClick }: { onClick?: () => void }) {
   return (
     <button onClick={onClick} className="flex items-center gap-2 min-h-[44px] px-1" aria-label={`${APP_NAME} — accueil`}>
-      <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-primary text-primary-foreground shadow-sm">
-        <Bus className="h-5 w-5" />
-      </span>
+      {/* eslint-disable-next-line @next/next/no-img-element -- logo officiel Océan du Nord (PNG, aucune dépendance) */}
+      <img src="/logo.png" alt="" width={36} height={36} className="size-9 rounded-full object-contain" />
       <span className="hidden sm:flex flex-col leading-none text-left">
-        <span className="font-bold tracking-tight text-primary text-[15px]">NZOKO</span>
-        <span className="text-[10px] uppercase tracking-widest text-muted-foreground">Transport</span>
+        <span className="font-bold tracking-tight text-primary text-[15px]">Océan du Nord</span>
+        <span className="text-[10px] uppercase tracking-widest text-muted-foreground">Sécurité · Confort · Fiabilité</span>
       </span>
     </button>
   );
@@ -366,8 +365,8 @@ export default function NzokoApp() {
 
   // Retour OAuth social (Google — Neon Auth Managed) : après la redirection
   // Google → Neon → notre origine, le cookie de session Neon est posé mais
-  // la session NZOKO applicative n'existe pas encore. Si une session Neon
-  // est détectée (et qu'aucune session NZOKO ne vit déjà), on l'échange via
+  // la session Océan du Nord applicative n'existe pas encore. Si une session Neon
+  // est détectée (et qu'aucune session Océan du Nord ne vit déjà), on l'échange via
   // POST /api/neon-auth/exchange — le même pont que la connexion e-mail.
   // Best-effort et silencieux : aucun appel en mode local (sandbox), aucun
   // effet pour un visiteur sans session Neon.
@@ -377,7 +376,7 @@ export default function NzokoApp() {
       try {
         const providers = await api.auth.providers();
         if (cancelled || providers.mode !== "neon" || !providers.neonService) return;
-        if (useApp.getState().session) return; // déjà connecté NZOKO
+        if (useApp.getState().session) return; // déjà connecté Océan du Nord
         const { neonAuthCall, neonAuthClient } = await import("@/lib/neon-auth/client");
         const { data } = await neonAuthCall(() => neonAuthClient.getSession());
         if (cancelled || !data?.user) return; // pas de session Neon (visiteur simple)
@@ -387,7 +386,7 @@ export default function NzokoApp() {
         toast.success(`Bienvenue ${user.firstName} !`, { description: user.roleLabel });
       } catch {
         // Pas de session Neon valide, échange refusé (compte sans miroir
-        // NZOKO actif) ou réseau indisponible : l'utilisateur passe par
+        // Océan du Nord actif) ou réseau indisponible : l'utilisateur passe par
         // l'écran de connexion classique — aucun blocage, aucun bruit.
       }
     })();
@@ -488,7 +487,7 @@ export default function NzokoApp() {
       </header>
 
       <main className="flex-1 pb-24 md:pb-8">
-        <Link href="/" className="sr-only">NZOKO TRANSPORT — Page principale</Link>
+        <Link href="/" className="sr-only">OCÉAN DU NORD — Page principale</Link>
         {/* Récupération ChunkLoadError (chunks Turbopack obsolètes après un
             redémarrage du serveur dev ou de la machine) : auto-rechargement
             unique + écran de secours « Réessayer / Recharger ». La key par vue
@@ -516,7 +515,7 @@ export default function NzokoApp() {
             <div className="text-xs text-muted-foreground">
               <p>🇨🇬 Congo-Brazzaville · Pointe-Noire — Brazzaville — Dolisie — Nkayi — Ouesso</p>
               <p className="mt-0.5">
-                © {new Date().getFullYear()} NZOKO TRANSPORT · Tous droits réservés
+                © {new Date().getFullYear()} OCÉAN DU NORD · Tous droits réservés
               </p>
             </div>
           </div>

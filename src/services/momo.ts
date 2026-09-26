@@ -1,5 +1,5 @@
 // ============================================================
-// NZOKO TRANSPORT — Client MTN MoMo Open API (back-office)
+// OCÉAN DU NORD — Client MTN MoMo Open API (back-office)
 // Documentation officielle : https://momodeveloper.mtn.com/api-documentation
 //
 // Produits intégrés :

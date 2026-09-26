@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 
 // ============================================================
-// NZOKO TRANSPORT — CSP à NONCE (durcissement sécurité)
+// OCÉAN DU NORD — CSP à NONCE (durcissement sécurité)
 //
 // Convention Next.js 16 : "proxy" (ex-middleware, renommé natif).
 // La Content-Security-Policy est possédée par CE fichier

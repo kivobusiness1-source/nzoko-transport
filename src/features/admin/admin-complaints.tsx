@@ -1,7 +1,7 @@
 "use client";
 
 // ============================================================
-// NZOKO — Admin : réclamations clients (onglet "Réclamations")
+// Océan du Nord — Admin : réclamations clients (onglet "Réclamations")
 // File complète, recherche, filtre statut, prise en charge,
 // réponses et transitions de statut.
 // ============================================================
@@ -350,7 +350,7 @@ function ComplaintDetailDialog({
                     >
                       <p className="text-[11px] font-semibold">
                         {m.authorName}
-                        {m.isStaff && <span className="ml-1 font-normal text-primary">· Équipe NZOKO</span>}
+                        {m.isStaff && <span className="ml-1 font-normal text-primary">· Équipe Océan du Nord</span>}
                       </p>
                       <p className="mt-0.5 whitespace-pre-wrap text-sm leading-relaxed">{m.message}</p>
                       <p className="mt-1 text-right text-[10px] text-muted-foreground">{formatDateTime(m.createdAt)}</p>

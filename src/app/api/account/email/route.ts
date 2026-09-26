@@ -1,7 +1,7 @@
 // POST /api/account/email — changement de l'adresse e-mail de connexion
 // (Paramètres du compte).
 //
-// Contexte produit (2026-09) : les comptes internes NZOKO sont créés avec
+// Contexte produit (2026-09) : les comptes internes Océan du Nord sont créés avec
 // des adresses techniques kivobusiness1+<rôle>@gmail.com (toutes livrées
 // dans la boîte unique kivobusiness1@gmail.com). Chaque membre de
 // l'administration peut remplacer la sienne par son adresse personnelle —
@@ -9,7 +9,7 @@
 // dans le miroir applicatif (adoption par e-mail du pont d'échange).
 //
 // Sécurité :
-//  - session NZOKO obligatoire (cookie applicatif) ;
+//  - session Océan du Nord obligatoire (cookie applicatif) ;
 //  - MOT DE PASSE ACTUEL exigé (vérifié côté Neon Auth en mode neon —
 //    sign-in serveur→serveur, la vérification n'est JAMAIS locale pour un
 //    mot de passe qui vit chez Neon ; bcrypt local en mode sandbox) ;

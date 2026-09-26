@@ -1,5 +1,5 @@
 // ============================================================
-// NZOKO TRANSPORT — Livraison des codes OTP (SMS + e-mail)
+// OCÉAN DU NORD — Livraison des codes OTP (SMS + e-mail)
 // ============================================================
 // Neon Auth ne livre NI les SMS NI les e-mails lui-même dès que le
 // webhook « send.otp » est configuré : NOTRE application devient
@@ -196,7 +196,7 @@ async function sendEmailSmtp(to: string, subject: string, text: string, html?: s
 
 async function sendEmailResend(to: string, subject: string, text: string, html?: string): Promise<DeliveryResult> {
   const apiKey = process.env.RESEND_API_KEY ?? "";
-  const from = process.env.RESEND_FROM ?? "NZOKO Transport <onboarding@resend.dev>";
+  const from = process.env.RESEND_FROM ?? "Océan du Nord <onboarding@resend.dev>";
   if (!apiKey) {
     return { delivered: false, provider: "resend", error: "RESEND_API_KEY manquante." };
   }
@@ -236,11 +236,11 @@ export async function sendEmail(to: string, subject: string, text: string, html?
 }
 
 // ------------------------------------------------------------
-// Messages NZOKO (français, marché congolais)
+// Messages Océan du Nord (français, marché congolais)
 // ------------------------------------------------------------
 
 export function otpSmsMessage(code: string, expiresInMinutes: number): string {
-  return `NZOKO Transport : votre code de connexion est ${code}. Il expire dans ${expiresInMinutes} minutes. Ne le partagez jamais.`;
+  return `Océan du Nord : votre code de connexion est ${code}. Il expire dans ${expiresInMinutes} minutes. Ne le partagez jamais.`;
 }
 
 export function otpEmailContent(input: { code: string; otpType: string; expiresInMinutes: number }): { subject: string; text: string; html: string } {
@@ -250,11 +250,11 @@ export function otpEmailContent(input: { code: string; otpType: string; expiresI
       : input.otpType === "email-verification"
         ? "vérification de votre adresse e-mail"
         : "connexion à votre espace";
-  const subject = `NZOKO Transport — code ${input.code}`;
+  const subject = `Océan du Nord — code ${input.code}`;
   const text = `Votre code de ${action} est ${input.code}. Il expire dans ${input.expiresInMinutes} minutes. Ne le partagez jamais avec qui que ce soit.`;
   const html = `
   <div style="font-family:Arial,Helvetica,sans-serif;max-width:520px;margin:0 auto;border:1px solid #e5e7eb;border-radius:12px;overflow:hidden">
-    <div style="background:#16a34a;color:#fff;padding:20px 24px;font-size:18px;font-weight:bold">NZOKO TRANSPORT</div>
+    <div style="background:#16a34a;color:#fff;padding:20px 24px;font-size:18px;font-weight:bold">OCÉAN DU NORD</div>
     <div style="padding:24px">
       <p style="margin:0 0 12px">Votre code de <strong>${action}</strong> :</p>
       <p style="font-size:32px;letter-spacing:8px;font-weight:bold;margin:0 0 12px;color:#16a34a">${input.code}</p>
@@ -276,14 +276,14 @@ export function shortEventId(): string {
 
 /** Contenu de l'e-mail « mot de passe oublié » : code de réinitialisation à 6 chiffres. */
 export function passwordResetEmailContent(input: { code: string; expiresInMinutes: number }): { subject: string; text: string; html: string } {
-  const subject = `NZOKO Transport — réinitialisation de votre mot de passe (code ${input.code})`;
+  const subject = `Océan du Nord — réinitialisation de votre mot de passe (code ${input.code})`;
   const text =
-    `Vous avez demandé la réinitialisation du mot de passe de votre compte NZOKO Transport. ` +
+    `Vous avez demandé la réinitialisation du mot de passe de votre compte Océan du Nord. ` +
     `Votre code de vérification est ${input.code}. Il expire dans ${input.expiresInMinutes} minutes. ` +
     `Si vous n'êtes pas à l'origine de cette demande, ignorez simplement cet e-mail : votre mot de passe actuel reste valable.`;
   const html = `
   <div style="font-family:Arial,Helvetica,sans-serif;max-width:520px;margin:0 auto;border:1px solid #e5e7eb;border-radius:12px;overflow:hidden">
-    <div style="background:#16a34a;color:#fff;padding:20px 24px;font-size:18px;font-weight:bold">NZOKO TRANSPORT</div>
+    <div style="background:#16a34a;color:#fff;padding:20px 24px;font-size:18px;font-weight:bold">OCÉAN DU NORD</div>
     <div style="padding:24px">
       <p style="margin:0 0 12px">Vous avez demandé la <strong>réinitialisation de votre mot de passe</strong>. Voici votre code de vérification :</p>
       <p style="font-size:32px;letter-spacing:8px;font-weight:bold;margin:0 0 12px;color:#16a34a">${input.code}</p>

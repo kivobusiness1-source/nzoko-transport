@@ -1,7 +1,7 @@
 "use client";
 
 // ============================================================
-// NZOKO — En-tête de page de l'espace client (titre H2 + actions)
+// Océan du Nord — En-tête de page de l'espace client (titre H2 + actions)
 // Composant partagé par les 6 sections du shell.
 // ============================================================
 

@@ -1,5 +1,5 @@
 // ============================================================
-// NZOKO TRANSPORT — Identifiant du téléphone chauffeur (V5, §6)
+// OCÉAN DU NORD — Identifiant du téléphone chauffeur (V5, §6)
 //
 // Le téléphone est identifié par un UUID stable généré UNE fois
 // et conservé en localStorage — INDEPENDANT du compte chauffeur

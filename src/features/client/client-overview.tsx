@@ -1,7 +1,7 @@
 "use client";
 
 // ============================================================
-// NZOKO — Aperçu de l'espace client : carte héros (palier, solde
+// Océan du Nord — Aperçu de l'espace client : carte héros (palier, solde
 // de points, progression), 4 KPI, trajet préféré + offre
 // personnalisée, prochain départ avec compte à rebours.
 // ============================================================
@@ -113,7 +113,7 @@ export function ClientOverview({ refreshKey, onTab }: { refreshKey?: number; onT
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.3, ease: "easeOut" }}
         className="nzoko-hero relative overflow-hidden rounded-2xl p-5 text-white sm:p-6"
-        aria-label="Votre fidélité NZOKO"
+        aria-label="Votre fidélité Océan du Nord"
       >
         <div className="pointer-events-none absolute -right-12 -top-16 size-48 rounded-full bg-white/10" aria-hidden />
         <div className="pointer-events-none absolute -right-2 top-20 size-20 rounded-full bg-white/5" aria-hidden />

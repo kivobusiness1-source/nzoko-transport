@@ -1,5 +1,5 @@
 // ============================================================
-// NZOKO TRANSPORT — Utilitaires géographiques (V3)
+// OCÉAN DU NORD — Utilitaires géographiques (V3)
 // Haversine : distance orthodromique fiable aux courtes portées
 // (quartiers/agences d'une même ville). Décision TOUJOURS serveur.
 // ============================================================

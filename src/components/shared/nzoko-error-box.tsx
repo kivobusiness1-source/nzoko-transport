@@ -1,7 +1,7 @@
 "use client";
 
 // ============================================================
-// NZOKO TRANSPORT — Bloc d'erreur API avec bouton Réessayer
+// OCÉAN DU NORD — Bloc d'erreur API avec bouton Réessayer
 // 404 → module en attente du serveur · 403 → accès refusé
 // ============================================================
 

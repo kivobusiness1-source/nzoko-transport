@@ -1,5 +1,5 @@
 // ============================================================
-// NZOKO TRANSPORT — Constantes partagées client/serveur (auth)
+// OCÉAN DU NORD — Constantes partagées client/serveur (auth)
 // (fichier importable côté client sans dépendance node:crypto)
 // ============================================================
 

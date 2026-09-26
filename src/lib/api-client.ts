@@ -1,5 +1,5 @@
 // ============================================================
-// NZOKO TRANSPORT — Client API typé (frontend)
+// OCÉAN DU NORD — Client API typé (frontend)
 // Contrat unique consommé par toute l'interface.
 // Enveloppe : { success: true, data } | { success: false, error: { code, message } }
 // ============================================================
@@ -76,7 +76,7 @@ export const api = {
       request<RegisterResult>("/auth/register", { method: "POST", body: JSON.stringify(input) }),
     // Modes d'authentification actifs (adaptation de l'écran de connexion)
     providers: () => request<AuthProvidersDTO>("/auth/providers"),
-    // Pont Neon Auth → session NZOKO (après signIn/signUp/OTP réussis côté SDK).
+    // Pont Neon Auth → session Océan du Nord (après signIn/signUp/OTP réussis côté SDK).
     // `input.phone` (facultatif) : téléphone saisi à l'inscription e-mail —
     // normalisé + lié au compte par le serveur si libre (sinon 409 clair).
     exchangeNeonSession: (input?: { phone?: string }) =>
@@ -361,6 +361,8 @@ export const api = {
       request<BusDTO>("/admin/buses", { method: "POST", body: JSON.stringify(input) }),
     updateBus: (id: string, input: Partial<{ registrationNumber: string; brand: string; model: string; year: number | null; status: string; agencyId: string; seatLayoutId: string }>) =>
       request<BusDTO>(`/admin/buses/${id}`, { method: "PATCH", body: JSON.stringify(input) }),
+    deleteBus: (id: string) =>
+      request<{ deleted: boolean; id: string }>(`/admin/buses/${id}`, { method: "DELETE" }),
 
     seatLayouts: () => request<SeatLayoutDTO[]>("/admin/seat-layouts"),
     createSeatLayout: (input: { name: string; rows: number; columns: number; aisleAfter: number; vipRows: number[]; description?: string }) =>
@@ -451,7 +453,7 @@ export const api = {
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
-      a.download = `nzoko-rapport-${type}-${new Date().toISOString().slice(0, 10)}.csv`;
+      a.download = `ocean-du-nord-rapport-${type}-${new Date().toISOString().slice(0, 10)}.csv`;
       a.click();
       URL.revokeObjectURL(url);
     },
@@ -479,7 +481,7 @@ export const api = {
   },
 
   // ============================================================
-  // ESPACE CLIENT — MON ESPACE NZOKO (Task ID 10)
+  // ESPACE CLIENT — MON ESPACE Océan du Nord (Task ID 10)
   // ============================================================
   client: {
     profile: () => request<ClientProfileDTO>("/client/profile"),

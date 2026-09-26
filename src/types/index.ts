@@ -1,5 +1,5 @@
 // ============================================================
-// NZOKO TRANSPORT — Contrat de types partagé Frontend / Backend
+// OCÉAN DU NORD — Contrat de types partagé Frontend / Backend
 // Toute l'API respecte l'enveloppe : { success: true, data } | { success: false, error: { code, message } }
 // ============================================================
 
@@ -26,7 +26,7 @@ export interface SessionUser {
   roleLabel: string;
   agencyId: string | null;
   agencyName: string | null;
-  /** LOCAL = mot de passe NZOKO (bcrypt) · SUPABASE = miroir client Supabase Auth (historique) · NEON_AUTH = compte client géré par Neon Auth (Managed Better Auth). */
+  /** LOCAL = mot de passe Océan du Nord (bcrypt) · SUPABASE = miroir client Supabase Auth (historique) · NEON_AUTH = compte client géré par Neon Auth (Managed Better Auth). */
   authProvider: "LOCAL" | "SUPABASE" | "NEON_AUTH";
   permissions: PermissionCode[];
 }

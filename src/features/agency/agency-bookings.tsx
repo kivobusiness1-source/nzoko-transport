@@ -1,7 +1,7 @@
 "use client";
 
 // ============================================================
-// NZOKO TRANSPORT — Réservations agence (guichet)
+// OCÉAN DU NORD — Réservations agence (guichet)
 // Filtres + liste + détail + billet PDF A4 par réservation payée
 // (V3 : le token du billet est un secret, absent du DTO liste —
 //  le détail est chargé au clic puis le PDF officiel est ouvert)

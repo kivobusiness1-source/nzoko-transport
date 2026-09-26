@@ -1,5 +1,5 @@
 // ============================================================
-// NZOKO TRANSPORT — Helpers partagés des Route Handlers API
+// OCÉAN DU NORD — Helpers partagés des Route Handlers API
 // (pagination, clés de jour au fuseau Congo, lectures de query)
 // ============================================================
 

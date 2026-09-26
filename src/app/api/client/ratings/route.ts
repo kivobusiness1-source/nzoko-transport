@@ -75,7 +75,7 @@ export async function POST(req: NextRequest) {
       data: {
         userId: auth.userId,
         title: "Merci pour votre évaluation ⭐",
-        message: "Votre avis aide toute l'équipe NZOKO à améliorer chaque voyage. Merci !",
+        message: "Votre avis aide toute l'équipe Océan du Nord à améliorer chaque voyage. Merci !",
         type: "SUCCESS",
       },
     });

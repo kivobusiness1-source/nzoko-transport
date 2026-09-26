@@ -1,5 +1,5 @@
 // ============================================================
-// NZOKO TRANSPORT — Helpers SEO (SERVEUR uniquement)
+// OCÉAN DU NORD — Helpers SEO (SERVEUR uniquement)
 // Utilise headers() de Next.js → à n'importer que depuis des
 // composants serveur / routes de métadonnées.
 // ============================================================

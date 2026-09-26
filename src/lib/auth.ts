@@ -1,5 +1,5 @@
 // ============================================================
-// NZOKO TRANSPORT — Authentification serveur
+// OCÉAN DU NORD — Authentification serveur
 // bcrypt (cost 12) + sessions opaque en base + cookie HttpOnly
 // Protection fixation : nouveau token à chaque connexion.
 // ============================================================

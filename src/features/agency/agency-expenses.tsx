@@ -1,7 +1,7 @@
 "use client";
 
 // ============================================================
-// NZOKO TRANSPORT — Dépenses agence (CRUD si expense:manage)
+// OCÉAN DU NORD — Dépenses agence (CRUD si expense:manage)
 // ============================================================
 
 import { useApp } from "@/lib/store";

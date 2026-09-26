@@ -1,7 +1,7 @@
 "use client";
 
 // ============================================================
-// NZOKO — Tunnel de réservation (LE CŒUR) : 6 étapes
+// Océan du Nord — Tunnel de réservation (LE CŒUR) : 6 étapes
 // 1 Trajet → 2 Voyage → 3 Siège → 4 Passager → 5 Paiement → 6 Billet
 // ============================================================
 

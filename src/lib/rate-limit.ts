@@ -1,5 +1,5 @@
 // ============================================================
-// NZOKO TRANSPORT — Rate limiting en mémoire (anti brute force/spam)
+// OCÉAN DU NORD — Rate limiting en mémoire (anti brute force/spam)
 // Adapté mono-instance (sandbox). En production multi-instances :
 // remplacer par Redis (interface identique).
 // ============================================================

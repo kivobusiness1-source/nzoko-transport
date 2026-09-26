@@ -1,5 +1,5 @@
 // ============================================================
-// NZOKO TRANSPORT — Moteur de paiement
+// OCÉAN DU NORD — Moteur de paiement
 // Architecture indépendante des fournisseurs (PaymentProviderInterface).
 //
 // MTN MoMo : intégration RÉELLE via l'API officielle
@@ -111,8 +111,8 @@ const mtnMomoProvider: PaymentProviderInterface = {
       externalId: ctx.bookingReference ?? ctx.paymentId,
       msisdn,
       payerMessage: ctx.bookingReference
-        ? `Billet ${ctx.bookingReference} — NZOKO TRANSPORT`
-        : "NZOKO TRANSPORT",
+        ? `Billet ${ctx.bookingReference} — OCÉAN DU NORD`
+        : "OCÉAN DU NORD",
       payeeNote: `Paiement billet ${ctx.bookingReference ?? ""}`.trim(),
     });
 
@@ -636,7 +636,7 @@ export async function initiatePaymentRefund(
       externalId: bookingRef,
       referenceIdToRefund: payment.providerTransactionId,
       payerMessage: `Remboursement billet ${bookingRef}`,
-      payeeNote: "Remboursement NZOKO TRANSPORT",
+      payeeNote: "Remboursement OCÉAN DU NORD",
     });
   } else {
     // MOMO_TRANSFER — envoi de fonds vers le MSISDN du passager (ou saisi)
@@ -650,7 +650,7 @@ export async function initiatePaymentRefund(
       externalId: bookingRef,
       msisdn,
       payerMessage: `Remboursement billet ${bookingRef}`,
-      payeeNote: "Remboursement NZOKO TRANSPORT",
+      payeeNote: "Remboursement OCÉAN DU NORD",
     });
   }
 

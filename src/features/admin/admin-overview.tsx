@@ -1,7 +1,7 @@
 "use client";
 
 // ============================================================
-// NZOKO TRANSPORT — Vue d'ensemble admin
+// OCÉAN DU NORD — Vue d'ensemble admin
 // KPIs + séries 14 j + perf agences + alertes
 // (listes : admin-overview-lists.tsx)
 // ============================================================

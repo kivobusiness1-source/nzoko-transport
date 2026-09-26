@@ -1,11 +1,11 @@
 "use client";
 
 // ============================================================
-// NZOKO TRANSPORT — Paramètres du compte (dialogue)
+// OCÉAN DU NORD — Paramètres du compte (dialogue)
 // ============================================================
 // Accessible depuis le menu utilisateur (tous les rôles connectés).
 // Fonctionnalité 2026-09 « reprise de l'authentification » : chaque
-// membre de l'administration NZOKO démarre avec une adresse technique
+// membre de l'administration Océan du Nord démarre avec une adresse technique
 // kivobusiness1+<rôle>@gmail.com (boîte unique kivobusiness1@gmail.com)
 // et peut LA REMPLACER par son adresse personnelle ici — le changement
 // s'applique chez Neon Auth (source de vérité de la connexion) et dans

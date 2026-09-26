@@ -1,7 +1,7 @@
 "use client";
 
 // ============================================================
-// NZOKO TRANSPORT — Dépenses (comptable, filtre agence)
+// OCÉAN DU NORD — Dépenses (comptable, filtre agence)
 // ============================================================
 
 import { useApp } from "@/lib/store";

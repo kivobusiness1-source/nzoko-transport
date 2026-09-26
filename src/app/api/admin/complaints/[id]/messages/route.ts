@@ -43,7 +43,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
           complaintId: complaint.id,
           authorId: auth.userId,
           isStaff: true,
-          authorName: `${auth.sessionUser.firstName} (NZOKO)`,
+          authorName: `${auth.sessionUser.firstName} (Océan du Nord)`,
           message: body.message,
         },
       });
@@ -65,7 +65,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
         data: {
           userId: complaint.userId,
           title: `💬 Réponse à votre réclamation ${complaint.reference}`,
-          message: `${auth.sessionUser.firstName} (NZOKO) : ${body.message.slice(0, 160)}${body.message.length > 160 ? "…" : ""}`,
+          message: `${auth.sessionUser.firstName} (Océan du Nord) : ${body.message.slice(0, 160)}${body.message.length > 160 ? "…" : ""}`,
           type: "INFO",
         },
       });

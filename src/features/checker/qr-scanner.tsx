@@ -1,7 +1,7 @@
 "use client";
 
 // ============================================================
-// NZOKO — Scanner QR caméra (composant réutilisable)
+// Océan du Nord — Scanner QR caméra (composant réutilisable)
 // getUserMedia (caméra arrière) + boucle requestAnimationFrame
 // + décodage jsQR sur canvas. Nettoyage intégral des flux au
 // démontage, arrêt automatique après un scan réussi, anti-

@@ -1,5 +1,5 @@
 // ============================================================
-// NZOKO TRANSPORT — Billetterie électronique
+// OCÉAN DU NORD — Billetterie électronique
 // QR = token aléatoire (AUCUNE donnée passager dedans).
 // Anti-duplication : le statut VALID→USED est une transition atomique.
 // ============================================================

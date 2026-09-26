@@ -1,7 +1,7 @@
 "use client";
 
 // ============================================================
-// NZOKO — Dialog profil client : prénom / nom / e-mail +
+// Océan du Nord — Dialog profil client : prénom / nom / e-mail +
 // changement de mot de passe. Le téléphone (clé de rattachement
 // des billets) est affiché en lecture seule.
 // ============================================================
@@ -235,7 +235,7 @@ export function ClientProfileDialog({ open, onOpenChange }: { open: boolean; onO
                 <Info className="mt-0.5 size-4 shrink-0 text-primary" aria-hidden />
                 <span>
                   <span className="font-semibold text-foreground">Mot de passe géré par le fournisseur d’identité externe (Neon Auth).</span>{" "}
-                  Utilisez la réinitialisation depuis l&apos;écran de connexion pour le modifier — vos identifiants NZOKO restent inchangés.
+                  Utilisez la réinitialisation depuis l&apos;écran de connexion pour le modifier — vos identifiants Océan du Nord restent inchangés.
                 </span>
               </p>
             ) : (

@@ -1,9 +1,9 @@
 "use client";
 
 // ============================================================
-// NZOKO — Réclamations client : liste (référence copiable,
+// Océan du Nord — Réclamations client : liste (référence copiable,
 // catégorie avec icône), fil de discussion en bulles (client à
-// droite, équipe NZOKO à gauche), composer, création (dialog).
+// droite, équipe Océan du Nord à gauche), composer, création (dialog).
 // ============================================================
 
 import { useCallback, useEffect, useState } from "react";
@@ -301,7 +301,7 @@ function ComplaintDetail({ id, onBack }: { id: string; onBack: () => void }) {
                     className="flex size-8 shrink-0 items-center justify-center rounded-full bg-primary/10 text-[9px] font-bold text-primary"
                     aria-hidden
                   >
-                    NZOKO
+                    Océan du Nord
                   </span>
                 )}
                 <div
@@ -312,7 +312,7 @@ function ComplaintDetail({ id, onBack }: { id: string; onBack: () => void }) {
                 >
                   <p className={cn("text-[11px] font-semibold", !m.isStaff && "text-primary-foreground/80")}>
                     {m.authorName}
-                    {m.isStaff && <span className="ml-1 font-normal text-primary">· Équipe NZOKO</span>}
+                    {m.isStaff && <span className="ml-1 font-normal text-primary">· Équipe Océan du Nord</span>}
                   </p>
                   <p className="mt-0.5 whitespace-pre-wrap text-sm leading-relaxed">{m.message}</p>
                   <p className={cn("mt-1 text-right text-[10px]", m.isStaff ? "text-muted-foreground" : "text-primary-foreground/70")}>

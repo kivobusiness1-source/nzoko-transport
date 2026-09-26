@@ -1,5 +1,5 @@
 // ============================================================
-// NZOKO TRANSPORT — File offline des points GPS (IndexedDB)
+// OCÉAN DU NORD — File offline des points GPS (IndexedDB)
 //
 // Objectif : le chauffeur ne perd JAMAIS un point de position,
 // même sans réseau (zones blanches RN1/RN2…). Les points sont

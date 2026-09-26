@@ -1,7 +1,7 @@
 "use client";
 
 // ============================================================
-// NZOKO TRANSPORT — Journal : audit & sécurité (paginés)
+// OCÉAN DU NORD — Journal : audit & sécurité (paginés)
 // ============================================================
 
 import { useState } from "react";

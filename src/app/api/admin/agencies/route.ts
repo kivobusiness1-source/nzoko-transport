@@ -4,7 +4,7 @@
 import { NextRequest } from "next/server";
 import { z } from "zod";
 import { ok, routeError, ApiError, ERROR_CODES, getClientIp, assertSameOriginPost } from "@/lib/api-response";
-import { getAuth, assertAuthenticated, assertPermission } from "@/lib/auth";
+import { getAuth, assertAuthenticated, assertPermission, resolveAgencyScope } from "@/lib/auth";
 import { logAudit } from "@/lib/audit";
 import { db } from "@/lib/db";
 
@@ -35,9 +35,12 @@ const createSchema = z.object({
 
 export async function GET(req: NextRequest) {
   try {
-    assertPermission(assertAuthenticated(await getAuth(req)), "agency:read");
-
+    const auth = assertPermission(assertAuthenticated(await getAuth(req)), "agency:read");
+    // « Pas de mélanges » : un rôle d'agence (chef d'agence, agent,…) ne
+    // voit QUE son agence (les sélecteurs d'agence des formulaires aussi).
+    const agencyId = resolveAgencyScope(auth);
     const agencies = await db.agency.findMany({
+      where: agencyId ? { id: agencyId } : {},
       include: agencyInclude,
       orderBy: { name: "asc" },
     });

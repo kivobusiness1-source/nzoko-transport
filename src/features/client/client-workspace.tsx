@@ -1,7 +1,7 @@
 "use client";
 
 // ============================================================
-// NZOKO — « MON ESPACE NZOKO » : shell applicatif de l'espace
+// Océan du Nord — « MON ESPACE Océan du Nord » : shell applicatif de l'espace
 // client & fidélisation.
 // Desktop (lg+) : sidebar fixe (marque, carte utilisateur,
 // navigation verticale, CTA réservation, déconnexion).
@@ -15,7 +15,7 @@ import { useState } from "react";
 import { toast } from "sonner";
 import { motion } from "framer-motion";
 import {
-  Bus, Heart, LayoutDashboard, LogOut, MessageSquare, RotateCw, Star, Ticket, Wallet,
+  Heart, LayoutDashboard, LogOut, MessageSquare, RotateCw, Star, Ticket, Wallet,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
@@ -104,7 +104,7 @@ export default function ClientWorkspace() {
         <div className="flex items-center justify-between gap-2 pt-3">
           <div className="min-w-0">
             <p className="truncate text-lg font-bold leading-tight">Bonjour {session.firstName} 👋</p>
-            <p className="text-[11px] text-muted-foreground">Mon espace NZOKO</p>
+            <p className="text-[11px] text-muted-foreground">Mon espace Océan du Nord</p>
           </div>
           <div className="flex shrink-0 items-center gap-2">
             {pointsPill}
@@ -150,11 +150,10 @@ export default function ClientWorkspace() {
           <div className="flex flex-col rounded-2xl border bg-card p-3 shadow-sm">
             {/* Marque */}
             <div className="flex items-center gap-2.5 px-2 pb-3 pt-1">
-              <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-primary text-primary-foreground shadow-sm" aria-hidden>
-                <Bus className="h-5 w-5" />
-              </span>
+              {/* eslint-disable-next-line @next/next/no-img-element -- logo officiel Océan du Nord */}
+              <img src="/logo.png" alt="" width={36} height={36} className="size-9 shrink-0 rounded-full object-contain" aria-hidden />
               <span className="flex min-w-0 flex-col leading-tight">
-                <span className="font-bold tracking-tight text-primary">NZOKO</span>
+                <span className="font-bold tracking-tight text-primary">Océan du Nord</span>
                 <span className="text-[10px] uppercase tracking-widest text-muted-foreground">Espace client</span>
               </span>
             </div>

@@ -69,7 +69,7 @@ export async function POST(req: NextRequest) {
 
     // MODE NEON : l'inscription est gérée par Neon Auth (SDK signUp.email
     // via le proxy /api/auth/sign-up/email, code de vérification e-mail,
-    // miroir NZOKO créé par /api/neon-auth/exchange). Une seule identité :
+    // miroir Océan du Nord créé par /api/neon-auth/exchange). Une seule identité :
     // cette route locale ne doit plus créer de comptes en production.
     if (neonAuthMode === "neon" && isNeonAuthEnabled) {
       throw new ApiError(
@@ -205,7 +205,7 @@ export async function POST(req: NextRequest) {
     await db.notification.create({
       data: {
         userId: user.id,
-        title: "Bienvenue chez NZOKO TRANSPORT 👋",
+        title: "Bienvenue chez OCÉAN DU NORD 👋",
         message: "Votre espace client est prêt : billets, points fidélité et réclamations.",
         type: "SUCCESS",
       },

@@ -1,7 +1,7 @@
 "use client";
 
 // ============================================================
-// NZOKO TRANSPORT — Helpers de formatage locaux (fuseau Congo)
+// OCÉAN DU NORD — Helpers de formatage locaux (fuseau Congo)
 // (src/lib/format.ts est figé : helpers additionnels ici)
 // ============================================================
 

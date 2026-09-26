@@ -1,7 +1,7 @@
 "use client";
 
 // ============================================================
-// NZOKO TRANSPORT — Synthèse financière
+// OCÉAN DU NORD — Synthèse financière
 // Période + KPIs + barres mensuelles + agences + routes + catégories
 // ============================================================
 

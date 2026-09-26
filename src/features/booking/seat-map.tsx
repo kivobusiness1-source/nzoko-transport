@@ -1,7 +1,7 @@
 "use client";
 
 // ============================================================
-// NZOKO — Plan de sièges interactif (étape 3)
+// Océan du Nord — Plan de sièges interactif (étape 3)
 // Grille générée depuis layout { rows, columns, aisleAfter }.
 // ============================================================
 

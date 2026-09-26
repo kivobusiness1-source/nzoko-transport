@@ -1,5 +1,5 @@
 // ============================================================
-// NZOKO TRANSPORT — Codes promo (fidélité & campagnes)
+// OCÉAN DU NORD — Codes promo (fidélité & campagnes)
 // Validation partagée : route publique /api/bookings/promo/validate
 // ET moteur de réservation (createBooking) — UNE SEULE implémentation.
 // type PERCENT : value = % de remise ; FREE_TICKET : traitement manuel.

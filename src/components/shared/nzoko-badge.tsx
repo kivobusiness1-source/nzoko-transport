@@ -1,7 +1,7 @@
 "use client";
 
 // ============================================================
-// NZOKO — Badges de statut réutilisables (libellés + couleurs FR)
+// Océan du Nord — Badges de statut réutilisables (libellés + couleurs FR)
 // ============================================================
 
 import { Badge } from "@/components/ui/badge";

@@ -1,10 +1,10 @@
 // ============================================================
-// NZOKO TRANSPORT — Neon Auth (Managed Better Auth) côté serveur
+// OCÉAN DU NORD — Neon Auth (Managed Better Auth) côté serveur
 // ============================================================
-// Système d'IDENTITÉ et de SESSION centralisé de NZOKO :
+// Système d'IDENTITÉ et de SESSION centralisé de Océan du Nord :
 //  - tous les comptes (clients → super-admin) s'authentifient chez
 //    Neon Auth (téléphone + OTP, e-mail + mot de passe) ;
-//  - les rôles/permissions NZOKO restent dans NOTRE base (autorisation) ;
+//  - les rôles/permissions Océan du Nord restent dans NOTRE base (autorisation) ;
 //  - la session applicative nzoko_session est délivrée UNIQUEMENT par
 //    /api/neon-auth/exchange après validation serveur de la session Neon.
 //

@@ -1,7 +1,7 @@
 "use client";
 
 // ============================================================
-// NZOKO TRANSPORT — Enregistrement PWA + invite d'installation
+// OCÉAN DU NORD — Enregistrement PWA + invite d'installation
 // ============================================================
 
 import { useCallback, useEffect, useState } from "react";
@@ -27,7 +27,7 @@ export function PwaRegister() {
     //    à chaque recompilation/restart — un SW cache-first servait
     //    des modules périmés même après F5 (graphe de modules cassé →
     //    ChunkLoadError persistant sur l'espace admin). En dev, on
-    //    purge au contraire tout SW résiduel + caches NZOKO (guérit
+    //    purge au contraire tout SW résiduel + caches Océan du Nord (guérit
     //    un navigateur intoxiqué par une ancienne version du SW).
     if ("serviceWorker" in navigator) {
       if (process.env.NODE_ENV === "production") {
@@ -102,7 +102,7 @@ export function PwaRegister() {
       <div className="mx-auto mb-4 flex max-w-6xl items-start gap-3 rounded-xl border border-amber-200 bg-amber-50 p-3 px-4 text-amber-900">
         <Smartphone className="mt-0.5 h-5 w-5 shrink-0" />
         <div className="flex-1 text-sm">
-          <p className="font-semibold">Installez NZOKO sur votre iPhone</p>
+          <p className="font-semibold">Installez Océan du Nord sur votre iPhone</p>
           <p className="text-xs opacity-80">
             Touchez <strong>Partager</strong> puis <strong>« Sur l’écran d’accueil »</strong> pour un accès rapide à vos billets.
           </p>
@@ -120,7 +120,7 @@ export function PwaRegister() {
     <div className="mx-auto mb-4 flex max-w-6xl items-center gap-3 rounded-xl border border-primary/20 bg-primary/5 p-3 px-4">
       <Download className="h-5 w-5 shrink-0 text-primary" />
       <div className="flex-1 text-sm">
-        <p className="font-semibold text-primary">Installer l’application NZOKO</p>
+        <p className="font-semibold text-primary">Installer l’application Océan du Nord</p>
         <p className="text-xs text-muted-foreground">Accès rapide, plein écran et fonctionnement hors ligne de l’interface.</p>
       </div>
       <Button size="sm" onClick={install} className="h-9">
